@@ -38,6 +38,14 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Link } from "wouter";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -304,11 +312,74 @@ interface StripeConnectConnectionView {
   createdAt: string;
 }
 
-function statusBadgeVariant(
-  status: StripeConnectConnectionView["connectState"]["status"],
-): "default" | "secondary" | "destructive" {
-  if (status === "active") return "default";
-  if (status === "disabled" || status === "restricted") return "destructive";
+// ── Plain-English status for board members (founder-os#8152 / OP #66) ─────────
+// Maps the raw Stripe Connect state (status enum + capability flags + Stripe's
+// internal disabled_reason) into a board-member-readable { label, meaning, next }
+// so the surface never shows raw Stripe field names or account IDs as primary
+// content. Honest: "can charge but not pay out" is surfaced, not hidden.
+export interface GatewayPlainStatus {
+  label: string;         // the plain badge text
+  meaning: string;       // one line: what this means, no jargon
+  next: string;          // the action a board member should take (or reassurance)
+  tone: "ok" | "warn" | "action";
+}
+
+export function gatewayPlainStatus(
+  cs: StripeConnectConnectionView["connectState"],
+): GatewayPlainStatus {
+  const { status, chargesEnabled, payoutsEnabled, detailsSubmitted } = cs;
+
+  if (status === "active" && chargesEnabled && payoutsEnabled) {
+    return {
+      label: "Ready to accept payments",
+      meaning: "Owners can pay online and the money goes straight to the HOA's bank account.",
+      next: "Nothing needed — you're all set.",
+      tone: "ok",
+    };
+  }
+  if (status === "active" && chargesEnabled && !payoutsEnabled) {
+    return {
+      label: "Accepting payments — payouts not on yet",
+      meaning: "Owners can pay, but money can't be sent to the HOA's bank account until setup is finished.",
+      next: 'Click "Finish setup" to turn on payouts to the HOA\'s bank.',
+      tone: "warn",
+    };
+  }
+  if (status === "restricted") {
+    return {
+      label: "A few more details needed",
+      meaning: "Stripe needs a little more information before online payments can fully turn on.",
+      next: 'Click "Finish setup" and complete the requested details.',
+      tone: "action",
+    };
+  }
+  if (status === "disabled") {
+    return {
+      label: "Payments are turned off",
+      meaning: "Online payments aren't available for this HOA right now.",
+      next: 'Click "Finish setup" to reconnect — or contact support if it keeps happening.',
+      tone: "action",
+    };
+  }
+  if (status === "pending" || !detailsSubmitted) {
+    return {
+      label: "Setup not finished",
+      meaning: "The HOA's bank connection hasn't been completed yet.",
+      next: 'Click "Continue setup" to finish connecting the bank account.',
+      tone: "action",
+    };
+  }
+  return {
+    label: "Checking status…",
+    meaning: "We're confirming this HOA's payment setup.",
+    next: "Check back in a moment.",
+    tone: "warn",
+  };
+}
+
+function plainStatusVariant(tone: GatewayPlainStatus["tone"]): "default" | "secondary" | "destructive" {
+  if (tone === "ok") return "default";
+  if (tone === "action") return "destructive";
   return "secondary";
 }
 
@@ -317,12 +388,12 @@ function statusBadgeVariant(
 // production-looking screen is impossible to mistake for live.
 function KeyModeBadge({ keyMode }: { keyMode?: "test" | "live" | "unknown" }) {
   if (!keyMode || keyMode === "unknown") {
-    return <Badge variant="outline" data-testid="badge-key-mode-unknown">unknown</Badge>;
+    return <Badge variant="outline" data-testid="badge-key-mode-unknown">Mode unknown</Badge>;
   }
   if (keyMode === "live") {
-    return <Badge variant="default" data-testid="badge-key-mode-live">LIVE</Badge>;
+    return <Badge variant="default" data-testid="badge-key-mode-live">Live</Badge>;
   }
-  return <Badge variant="secondary" data-testid="badge-key-mode-test">TEST</Badge>;
+  return <Badge variant="secondary" data-testid="badge-key-mode-test">Test mode</Badge>;
 }
 
 function StripeConnectSection({ associationId }: { associationId: string | null }) {
@@ -343,8 +414,8 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
     const params = new URLSearchParams(window.location.search);
     if (params.get("stripeConnect") !== "callback") return;
     toast({
-      title: "Stripe onboarding complete",
-      description: "We're refreshing this HOA's connection status — payouts activate once Stripe verifies the details.",
+      title: "Payment setup complete",
+      description: "We're refreshing this HOA's status — deposits to the HOA's bank turn on once Stripe verifies the details.",
     });
     queryClient.invalidateQueries({ queryKey: [
       associationId
@@ -374,13 +445,13 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
         return;
       }
       toast({
-        title: "Connect onboarding started",
-        description: `Account ${data.accountId} (statement descriptor: ${data.statementDescriptor}).`,
+        title: "Payment setup started",
+        description: "Follow the steps to finish connecting the HOA's bank account.",
       });
     },
     onError: (err: Error) => {
       toast({
-        title: "Could not start Stripe onboarding",
+        title: "Could not start payment setup",
         description: err.message,
         variant: "destructive",
       });
@@ -395,60 +466,60 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
     <div className="space-y-4">
       <Card data-testid="card-stripe-connect">
         <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Connect this HOA to Stripe</CardTitle>
+          <CardTitle className="text-sm">Set up online payments for this HOA</CardTitle>
           <CardDescription>
-            This is the recommended path for accepting owner payments. Each HOA becomes a sub-merchant
-            under the YCM platform — owners see the HOA name on their bank statement, payouts route
-            directly to the HOA's bank account, and Stripe issues a 1099-K to the HOA at year-end.
+            The recommended way to let owners pay online. The HOA connects its own bank account —
+            owners see the HOA's name on their statement, the money goes straight to the HOA's bank
+            account, and the HOA gets its own year-end tax form (1099-K). Setup takes a few minutes.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {associationConnection && (
-            <div className="rounded-lg border p-3 space-y-2" data-testid="row-stripe-connect-status">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Current status</p>
-                <div className="flex items-center gap-2">
-                  <KeyModeBadge keyMode={associationConnection.keyMode} />
-                  <Badge variant={statusBadgeVariant(associationConnection.connectState.status)}>
-                    {associationConnection.connectState.status}
-                  </Badge>
+          {associationConnection && (() => {
+            const plain = gatewayPlainStatus(associationConnection.connectState);
+            return (
+              <div className="rounded-lg border p-3 space-y-2" data-testid="row-stripe-connect-status">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">Payment status</p>
+                  <div className="flex items-center gap-2">
+                    <KeyModeBadge keyMode={associationConnection.keyMode} />
+                    <Badge variant={plainStatusVariant(plain.tone)} data-testid="badge-gateway-plain-status">
+                      {plain.label}
+                    </Badge>
+                  </div>
                 </div>
+                <p className="text-xs text-muted-foreground" data-testid="text-gateway-meaning">
+                  {plain.meaning}
+                </p>
+                <p
+                  className={`text-xs ${plain.tone === "ok" ? "text-muted-foreground" : "font-medium"}`}
+                  data-testid="text-gateway-next-action"
+                >
+                  <span className="font-medium">Next:</span> {plain.next}
+                </p>
               </div>
-              {associationConnection.providerAccountId && (
-                <p className="text-xs text-muted-foreground">
-                  Stripe account: <code>{associationConnection.providerAccountId}</code>
-                </p>
-              )}
-              {associationConnection.connectState.statementDescriptor && (
-                <p className="text-xs text-muted-foreground">
-                  Statement descriptor: <code>{associationConnection.connectState.statementDescriptor}</code>
-                </p>
-              )}
-              {associationConnection.connectState.disabledReason && (
-                <p className="text-xs text-destructive">
-                  Disabled reason: {associationConnection.connectState.disabledReason}
-                </p>
-              )}
-              <p className="text-xs text-muted-foreground">
-                Charges: {associationConnection.connectState.chargesEnabled ? "enabled" : "disabled"} ·
-                Payouts: {associationConnection.connectState.payoutsEnabled ? "enabled" : "disabled"} ·
-                Details submitted: {associationConnection.connectState.detailsSubmitted ? "yes" : "no"}
-              </p>
-            </div>
-          )}
+            );
+          })()}
 
           <Button
             onClick={() => onboardMutation.mutate()}
             disabled={onboardMutation.isPending || !associationId}
             data-testid="button-connect-stripe"
           >
+            {/* Label matches the button named in gatewayPlainStatus().next
+                ("Finish setup" / "Continue setup") so the next-action copy
+                always points at a button that actually exists. */}
             {onboardMutation.isPending
-              ? "Starting onboarding…"
-              : associationConnection?.connectState.status === "active"
-                ? "Re-run Stripe onboarding"
-                : associationConnection
-                  ? "Continue Stripe onboarding"
-                  : "Connect with Stripe"}
+              ? "Opening setup…"
+              : !associationConnection
+                ? "Connect with Stripe"
+                : associationConnection.connectState.status === "active" &&
+                    associationConnection.connectState.chargesEnabled &&
+                    associationConnection.connectState.payoutsEnabled
+                  ? "Re-run setup"
+                  : associationConnection.connectState.status === "pending" ||
+                      !associationConnection.connectState.detailsSubmitted
+                    ? "Continue setup"
+                    : "Finish setup"}
           </Button>
         </CardContent>
       </Card>
@@ -457,7 +528,7 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
         <Card data-testid="card-stripe-connect-list">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Connected HOAs ({connections.length})</CardTitle>
-            <CardDescription>Stripe Connect status across the portfolio.</CardDescription>
+            <CardDescription>Online-payment status for each HOA.</CardDescription>
           </CardHeader>
           <CardContent>
             {isLoading ? (
@@ -471,26 +542,27 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
                 <TableHeader>
                   <TableRow>
                     <TableHead>HOA</TableHead>
-                    <TableHead>Stripe account</TableHead>
-                    <TableHead>Statement descriptor</TableHead>
+                    <TableHead>Shows on owner&apos;s statement as</TableHead>
                     <TableHead>Mode</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>Payment status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {connections.map((c) => (
+                  {connections.map((c) => {
+                    const plain = gatewayPlainStatus(c.connectState);
+                    return (
                     <TableRow key={c.id} data-testid={`row-stripe-connect-${c.id}`}>
                       <TableCell className="font-medium">{c.associationName ?? c.associationId}</TableCell>
-                      <TableCell><code className="text-xs">{c.providerAccountId ?? "—"}</code></TableCell>
-                      <TableCell><code className="text-xs">{c.connectState.statementDescriptor ?? "—"}</code></TableCell>
+                      <TableCell className="text-xs">{c.connectState.statementDescriptor ?? "—"}</TableCell>
                       <TableCell><KeyModeBadge keyMode={c.keyMode} /></TableCell>
                       <TableCell>
-                        <Badge variant={statusBadgeVariant(c.connectState.status)}>
-                          {c.connectState.status}
+                        <Badge variant={plainStatusVariant(plain.tone)}>
+                          {plain.label}
                         </Badge>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -581,10 +653,11 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div>
-            <CardTitle className="text-sm">Payout reconciliation</CardTitle>
+            <CardTitle className="text-sm">Bank-deposit check</CardTitle>
             <CardDescription>
-              When a Stripe payout lands in the HOA's bank, YCM explodes it back into one ledger entry per
-              owner. The per-owner net totals should match the bank deposit exactly.
+              Each time Stripe sends a deposit to the HOA's bank account, YCM matches it back to the
+              individual owner payments in the books. The totals should match the deposit exactly —
+              any difference is flagged for review.
             </CardDescription>
           </div>
           {data && (
@@ -595,9 +668,9 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All payouts</SelectItem>
-                  <SelectItem value="reconciled">Reconciled (variance 0)</SelectItem>
-                  <SelectItem value="unreconciled">Unreconciled (variance ≠ 0)</SelectItem>
+                  <SelectItem value="all">All deposits</SelectItem>
+                  <SelectItem value="reconciled">Matches the books</SelectItem>
+                  <SelectItem value="unreconciled">Needs review</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -614,20 +687,19 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
         ) : payouts.length === 0 ? (
           <EmptyState
             icon={RefreshCw}
-            title="No payouts to reconcile yet"
-            description="Once Stripe sends the first payout to a connected HOA's bank, its owner-level breakdown appears here."
+            title="No bank deposits to check yet"
+            description="Once Stripe sends the first deposit to a connected HOA's bank account, its owner-by-owner breakdown appears here."
             testId="empty-state-reconciliation"
           />
         ) : (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Payout</TableHead>
-                <TableHead>Arrived</TableHead>
-                <TableHead className="text-right">Owners</TableHead>
+                <TableHead>Deposit</TableHead>
+                <TableHead className="text-right">Owner payments</TableHead>
                 <TableHead className="text-right">Bank deposit</TableHead>
-                <TableHead className="text-right">Reconciled net</TableHead>
-                <TableHead className="text-right">Variance</TableHead>
+                <TableHead className="text-right">Matched in the books</TableHead>
+                <TableHead className="text-right">Difference</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -638,11 +710,13 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                     onClick={() => toggle(p.id)}
                     data-testid={`row-payout-${p.id}`}
                   >
+                    {/* The date is the board-facing identity of a deposit; the
+                        Stripe payout id stays as demoted reference text only. */}
                     <TableCell className="font-medium">
-                      <code className="text-xs">{p.payoutId}</code>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {p.arrivalDate ? new Date(p.arrivalDate).toLocaleDateString() : "—"}
+                      <div>{p.arrivalDate ? new Date(p.arrivalDate).toLocaleDateString() : "Date pending"}</div>
+                      <div className="text-[10px] font-normal text-muted-foreground">
+                        <code>{p.payoutId}</code>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">{p.chargeCount}</TableCell>
                     <TableCell className="text-right">{centsToUsd(p.payoutAmountCents)}</TableCell>
@@ -652,13 +726,13 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                         variant={p.varianceCents === 0 ? "default" : "destructive"}
                         data-testid={`badge-variance-${p.id}`}
                       >
-                        {centsToUsd(p.varianceCents)}
+                        {p.varianceCents === 0 ? "Matches" : `${centsToUsd(p.varianceCents)} off`}
                       </Badge>
                     </TableCell>
                   </TableRow>
                   {expanded.has(p.id) && (
                     <TableRow data-testid={`row-payout-detail-${p.id}`}>
-                      <TableCell colSpan={6} className="bg-muted/30 p-0">
+                      <TableCell colSpan={5} className="bg-muted/30 p-0">
                         <div className="p-3">
                           <Table>
                             <TableHeader>
@@ -666,9 +740,9 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                                 <TableHead>Owner</TableHead>
                                 <TableHead>Unit</TableHead>
                                 <TableHead>Type</TableHead>
-                                <TableHead className="text-right">Gross</TableHead>
-                                <TableHead className="text-right">Fees</TableHead>
-                                <TableHead className="text-right">Net</TableHead>
+                                <TableHead className="text-right">Amount paid</TableHead>
+                                <TableHead className="text-right">Processing fees</TableHead>
+                                <TableHead className="text-right">Deposited</TableHead>
                               </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -789,7 +863,11 @@ function GatewayTab({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium capitalize">{c.provider}</p>
                 {c.providerAccountId && (
-                  <p className="text-xs text-muted-foreground">Account: {c.providerAccountId}</p>
+                  // Raw acct_ id demoted to a hover tooltip (support reference);
+                  // the board-facing line is plain (#8152).
+                  <p className="text-xs text-muted-foreground" title={c.providerAccountId}>
+                    Connected and ready to take payments
+                  </p>
                 )}
               </div>
               <Badge variant="default">Active</Badge>
@@ -1504,9 +1582,63 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
 // ── Payment Activity Tab ──────────────────────────────────────────────────────
 
 type PaymentActivityStats = { totalPayments: number; totalCredits: number; totalAdjustments: number; last30DaysCount: number; last30DaysTotal: number };
-type ActivityEntry = { id: string; entryType: string; amount: number; postedAt: string; description: string | null; unitId: string; personId: string };
+type ActivityEntry = { id: string; entryType: string; amount: number; postedAt: string; description: string | null; unitId: string; personId: string; referenceType: string | null; referenceId: string | null };
+
+// A row is reversible when it is a credit-side receipt (payment/credit with a
+// negative amount). Stripe-backed rows route through the /refund endpoint (the
+// money must actually move); manual rows route through /reverse. Both post the
+// forward-only adjustment via the tested payment-edge-cases module
+// (founder-os#8535 / YCM#286).
+function isReversibleEntry(e: ActivityEntry): boolean {
+  return (e.entryType === "payment" || e.entryType === "credit") && e.amount < 0;
+}
 
 function PaymentActivityTab({ associationId }: { associationId: string | null }) {
+  const { toast } = useToast();
+  const [reversing, setReversing] = useState<ActivityEntry | null>(null);
+  const [reverseAmount, setReverseAmount] = useState("");
+  const [reverseReason, setReverseReason] = useState("");
+
+  const openReverse = (e: ActivityEntry) => {
+    setReversing(e);
+    setReverseAmount(Math.abs(e.amount).toFixed(2));
+    setReverseReason("");
+  };
+
+  const reverseMutation = useMutation({
+    mutationFn: async () => {
+      if (!reversing || !associationId) throw new Error("Nothing selected");
+      const amount = parseFloat(reverseAmount);
+      if (!(amount > 0)) throw new Error("Amount must be a positive number");
+      if (reverseReason.trim().length < 3) throw new Error("A reason is required");
+      const isStripe = reversing.referenceType === "stripe_charge";
+      if (isStripe) {
+        // Stripe-backed receipt: refund through Stripe so the money actually
+        // moves; the server posts the matching ledger reversal automatically.
+        const res = await apiRequest("POST", "/api/admin/payments/refund", {
+          associationId,
+          chargeId: reversing.referenceId,
+          amountCents: Math.round(amount * 100),
+        });
+        return res.json();
+      }
+      const res = await apiRequest("POST", "/api/admin/payments/reverse", {
+        associationId,
+        ledgerEntryId: reversing.id,
+        amount,
+        reason: reverseReason.trim(),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Reversal posted", description: "The ledger shows the money received and returned — history preserved." });
+      setReversing(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/financial/payment-activity", associationId] });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Reversal failed", description: err.message, variant: "destructive" }),
+  });
+
   const { data, isLoading } = useQuery<{ entries: ActivityEntry[]; stats: PaymentActivityStats }>({
     queryKey: ["/api/financial/payment-activity", associationId],
     queryFn: async () => {
@@ -1560,7 +1692,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
             <>
               <div className="hidden md:block overflow-auto">
                 <table className="w-full text-sm">
-                  <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Type", "Amount", "Unit", "Person", "Description"].map(h => <th key={h} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
+                  <thead><tr className="border-b text-xs text-muted-foreground">{["Date", "Type", "Amount", "Unit", "Person", "Description", ""].map((h, i) => <th key={i} className="text-left py-2 pr-4">{h}</th>)}</tr></thead>
                   <tbody>
                     {entries.slice().reverse().map((e) => (
                       <tr key={e.id} className="border-b last:border-0">
@@ -1569,7 +1701,20 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                         <td className={`py-1.5 pr-4 font-medium ${e.amount < 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>{e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}</td>
                         <td className="py-1.5 pr-4 font-mono text-xs">{e.unitId.slice(0, 8)}</td>
                         <td className="py-1.5 pr-4 font-mono text-xs">{e.personId.slice(0, 8)}</td>
-                        <td className="py-1.5 text-muted-foreground truncate max-w-xs">{e.description ?? "—"}</td>
+                        <td className="py-1.5 pr-4 text-muted-foreground truncate max-w-xs">{e.description ?? "—"}</td>
+                        <td className="py-1.5">
+                          {isReversibleEntry(e) ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs"
+                              onClick={() => openReverse(e)}
+                              data-testid={`reverse-entry-${e.id}`}
+                            >
+                              {e.referenceType === "stripe_charge" ? "Refund…" : "Reverse…"}
+                            </Button>
+                          ) : null}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1597,6 +1742,16 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                         {e.description}
                       </div>
                     ) : null}
+                    {isReversibleEntry(e) ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 w-full"
+                        onClick={() => openReverse(e)}
+                      >
+                        {e.referenceType === "stripe_charge" ? "Refund this payment…" : "Reverse this posting…"}
+                      </Button>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -1604,6 +1759,64 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={reversing !== null} onOpenChange={(open) => { if (!open) setReversing(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {reversing?.referenceType === "stripe_charge" ? "Refund this Stripe payment" : "Reverse this posting"}
+            </DialogTitle>
+            <DialogDescription>
+              {reversing?.referenceType === "stripe_charge"
+                ? "The money goes back to the payer through Stripe, and the ledger records the reversal automatically. The original entry is never deleted."
+                : "Posts an equal-and-opposite adjustment so the books show the money was received and then returned. The original entry is never deleted."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label htmlFor="reverse-amount">Amount to {reversing?.referenceType === "stripe_charge" ? "refund" : "reverse"} ($)</Label>
+              <Input
+                id="reverse-amount"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={reverseAmount}
+                onChange={(ev) => setReverseAmount(ev.target.value)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Original: ${reversing ? Math.abs(reversing.amount).toFixed(2) : "0.00"} — enter less for a partial {reversing?.referenceType === "stripe_charge" ? "refund" : "reversal"}.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="reverse-reason">Reason (required, goes in the audit log)</Label>
+              <Textarea
+                id="reverse-reason"
+                placeholder="e.g. duplicate payment; owner paid twice on 6/28"
+                value={reverseReason}
+                onChange={(ev) => setReverseReason(ev.target.value)}
+                rows={2}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReversing(null)} disabled={reverseMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => reverseMutation.mutate()}
+              disabled={reverseMutation.isPending || reverseReason.trim().length < 3}
+              data-testid="confirm-reverse"
+            >
+              {reverseMutation.isPending
+                ? "Posting…"
+                : reversing?.referenceType === "stripe_charge"
+                  ? "Refund payment"
+                  : "Post reversal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

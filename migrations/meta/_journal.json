@@ -365,6 +365,27 @@
 			"when": 1780400000003,
 			"tag": "0051_disbursement_dual_approval",
 			"breakpoints": true
+		},
+		{
+			"idx": 52,
+			"version": "7",
+			"when": 1780400001003,
+			"tag": "0052_ct_reserve_disclosure",
+			"breakpoints": true
+		},
+		{
+			"idx": 53,
+			"version": "7",
+			"when": 1780400001004,
+			"tag": "0053_rate_limit_counters",
+			"breakpoints": true
+		},
+		{
+			"idx": 54,
+			"version": "7",
+			"when": 1780400001005,
+			"tag": "0054_period_closes",
+			"breakpoints": true
 		}
 	]
 }

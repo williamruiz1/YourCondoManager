@@ -52,6 +52,7 @@ const UnitsPage = lazyWithReload(() => import("@/pages/units"), "@/pages/units")
 const PersonsPage = lazyWithReload(() => import("@/pages/persons"), "@/pages/persons");
 const BoardPage = lazyWithReload(() => import("@/pages/board"), "@/pages/board");
 const DocumentsPage = lazyWithReload(() => import("@/pages/documents"), "@/pages/documents");
+const RecordsRequestsPage = lazyWithReload(() => import("@/pages/records-requests"), "@/pages/records-requests");
 const RoadmapPage = lazyWithReload(() => import("@/pages/roadmap"), "@/pages/roadmap");
 const AdminUsersPage = lazyWithReload(() => import("@/pages/admin-users"), "@/pages/admin-users");
 const AdminAccessReviewPage = lazyWithReload(() => import("@/pages/admin-access-review"), "@/pages/admin-access-review");
@@ -71,6 +72,7 @@ const FinancialRulesPage = lazyWithReload(() => import("@/pages/financial-rules"
 const FinancialPaymentsPage = lazyWithReload(() => import("@/pages/financial-payments"), "@/pages/financial-payments");
 const FinancialReportsPage = lazyWithReload(() => import("@/pages/financial-reports"), "@/pages/financial-reports");
 const FinancialStatementPage = lazyWithReload(() => import("@/pages/financial-statement"), "@/pages/financial-statement");
+const ResaleCertificatePage = lazyWithReload(() => import("@/pages/resale-certificate"), "@/pages/resale-certificate");
 const FinancialGlStatementsPage = lazyWithReload(() => import("@/pages/financial-gl-statements"), "@/pages/financial-gl-statements");
 const FinancialArAgingPage = lazyWithReload(() => import("@/pages/financial-ar-aging"), "@/pages/financial-ar-aging");
 const FinancialBillingPage = lazyWithReload(() => import("@/pages/financial-billing"), "@/pages/financial-billing");
@@ -424,6 +426,9 @@ function WorkspaceRouter({
         <Route path="/app/board" component={BoardPage} />
         <Route path="/app/documents">
           <DocumentsPage />
+        </Route>
+        <Route path="/app/records-requests">
+          <RecordsRequestsPage />
         </Route>
         {/* 3.2 Q6 — `/app/admin` alias retired. Hard 404 via the catch-all
             below. The previous `<Route path="/app/admin" component={RoadmapPage} />`
