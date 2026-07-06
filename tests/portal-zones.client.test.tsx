@@ -189,7 +189,7 @@ describe("Portal zone files — render under session + heading per 1.1 Q5", () =
 });
 
 describe("Portal Finances — per-unit hierarchical breakdown (2026-05-25)", () => {
-  it("renders one collapsible card per unit with category split and entry detail", async () => {
+  it("renders the transposed per-unit table (units as columns) with dues/assessment split", async () => {
     installFetchStub({
       "/api/portal/financial-dashboard": {
         balance: 5618.61,
@@ -249,30 +249,70 @@ describe("Portal Finances — per-unit hierarchical breakdown (2026-05-25)", () 
             ],
           },
         ],
+        // 2026-07-03 — the by-unit section now renders from the endpoint's
+        // additive `perUnit` array (transposed table, PR #382); `byUnit`
+        // alone no longer shows the section.
+        perUnit: [
+          {
+            unitId: "u-1417F",
+            unitLabel: "1417-F",
+            dueNowDues: 0,
+            dueNowAssessment: 0,
+            dueNowTotal: 0,
+            balanceDues: 0,
+            balanceAssessment: 1525.42,
+            balanceTotal: 1525.42,
+          },
+          {
+            unitId: "u-1421B",
+            unitLabel: "1421-B",
+            dueNowDues: 0,
+            dueNowAssessment: 0,
+            dueNowTotal: 0,
+            balanceDues: 0,
+            balanceAssessment: 2121.77,
+            balanceTotal: 2121.77,
+          },
+          {
+            unitId: "u-1421C",
+            unitLabel: "1421-C",
+            dueNowDues: 0,
+            dueNowAssessment: 0,
+            dueNowTotal: 0,
+            balanceDues: 0,
+            balanceAssessment: 1971.42,
+            balanceTotal: 1971.42,
+          },
+        ],
       },
     });
     renderAt("/portal/finances", <PortalFinancesPage />);
     await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
 
-    // Per-unit section is rendered with one card per unit (financial-dashboard
+    // Per-unit section renders as the transposed table (financial-dashboard
     // resolves on a subsequent tick after the page mounts).
     await waitFor(() => expect(screen.getByTestId("portal-finances-by-unit")).toBeInTheDocument());
-    expect(screen.getByTestId("portal-finances-unit-u-1417F-label")).toHaveTextContent("1417-F");
-    expect(screen.getByTestId("portal-finances-unit-u-1421B-label")).toHaveTextContent("1421-B");
-    expect(screen.getByTestId("portal-finances-unit-u-1421C-label")).toHaveTextContent("1421-C");
+    expect(screen.getByTestId("portal-finances-by-unit-transpose")).toBeInTheDocument();
 
-    // Each unit shows its own total.
-    expect(screen.getByTestId("portal-finances-unit-u-1417F-total")).toHaveTextContent("1,525.42");
-    expect(screen.getByTestId("portal-finances-unit-u-1421B-total")).toHaveTextContent("2,121.77");
-    expect(screen.getByTestId("portal-finances-unit-u-1421C-total")).toHaveTextContent("1,971.42");
+    // One column per unit, labeled, plus the "All units" total column.
+    expect(screen.getByTestId("portal-finances-transpose-col-u-1417F")).toHaveTextContent("1417-F");
+    expect(screen.getByTestId("portal-finances-transpose-col-u-1421B")).toHaveTextContent("1421-B");
+    expect(screen.getByTestId("portal-finances-transpose-col-u-1421C")).toHaveTextContent("1421-C");
+    expect(screen.getByTestId("portal-finances-transpose-col-all")).toHaveTextContent("All units");
+
+    // Each unit's Total balance cell (balance row index 2 = the Total row).
+    expect(screen.getByTestId("portal-finances-transpose-cell-u-1417F-balance-2")).toHaveTextContent("1,525.42");
+    expect(screen.getByTestId("portal-finances-transpose-cell-u-1421B-balance-2")).toHaveTextContent("2,121.77");
+    expect(screen.getByTestId("portal-finances-transpose-cell-u-1421C-balance-2")).toHaveTextContent("1,971.42");
+    expect(screen.getByTestId("portal-finances-transpose-cell-all-balance-2")).toHaveTextContent("5,618.61");
+
+    // Dues-vs-assessment split rows are present per unit (HOA Dues row 0,
+    // Special Assessment row 1) — $0 dues still renders its cell.
+    expect(screen.getByTestId("portal-finances-transpose-cell-u-1417F-balance-0")).toHaveTextContent("$0.00");
+    expect(screen.getByTestId("portal-finances-transpose-cell-u-1417F-balance-1")).toHaveTextContent("1,525.42");
 
     // Grand total is surfaced at the section header.
     expect(screen.getByTestId("portal-finances-by-unit-grand-total")).toHaveTextContent("5,618.61");
-
-    // Category split visible even for $0 categories (e.g. HOA dues = charge).
-    // Per the coordinator update we do NOT surface late-fees yet.
-    expect(screen.getByTestId("portal-finances-unit-u-1417F-category-charge")).toBeInTheDocument();
-    expect(screen.queryByTestId("portal-finances-unit-u-1417F-category-late-fee")).not.toBeInTheDocument();
   });
 
   it("falls back gracefully when the server omits byUnit (legacy clients)", async () => {
