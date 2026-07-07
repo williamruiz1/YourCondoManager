@@ -13,6 +13,11 @@
 // Per-tier monthly minimums apply; calculator computes max(doors × tierRate, tier minimum).
 // Terminology: "communities" not "complexes" (spec §7).
 // Annual toggle = ~10% discount. Display only — no Stripe / billing wiring (separate PR owns that).
+// 2026-07-07 (#1321): completed the locked §8 composition — added the Add-ons section
+//   (§4.3/4.4/4.5 à-la-carte / premium / smart-upgrade modules), a Self-Managed comparison
+//   table (§8 #7), 4 more FAQ cards (AI / add-ons / competitors / data-ownership → 9 total),
+//   and per-page JSON-LD Product/Offer schema + title for SERP. Follow-ups flagged on #1321:
+//   dedicated /og/pricing.png asset, GA4 event wiring (needs measurement id), Cal.com demo embed.
 
 import {
   ArrowRight,
@@ -32,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { SiteFooter } from "@/components/site-footer";
 import { BrandMark } from "@/components/brand-mark";
 import { useStrings } from "@/i18n/use-strings";
+import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type PricingPageProps = {
   hasWorkspaceAccess: boolean;
@@ -344,6 +350,35 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
     const handleScroll = () => setScrolled(window.scrollY > 24);
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Per-page title via the canonical sole-title-setter hook (1.4 Q6).
+  useDocumentTitle("Pricing");
+
+  // Per-page SEO: JSON-LD Product/Offer schema for SERP rich results.
+  // (No head-management lib in this SPA; meta is global in index.html — Google
+  // renders JS so the injected JSON-LD is indexable. A dedicated /og/pricing.png
+  // OG asset is a follow-up; the global /brand/og-image.png covers social today.)
+  useEffect(() => {
+    const ld = document.createElement("script");
+    ld.type = "application/ld+json";
+    ld.setAttribute("data-pricing-jsonld", "true");
+    ld.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "Product",
+      name: "Your Condo Manager",
+      description:
+        "AI-native condo & HOA management for property managers and self-managed communities. Per-door / per-unit pricing that drops as you grow, with resident + board AI in every tier.",
+      brand: { "@type": "Brand", name: "Your Condo Manager" },
+      offers: [
+        { "@type": "Offer", name: "Property Managers — per door", priceCurrency: "USD", price: "4.00", description: "$4.50 → $4.00 per door/month (volume discount)", url: "https://yourcondomanager.org/pricing" },
+        { "@type": "Offer", name: "Self-Managed Communities — per unit", priceCurrency: "USD", price: "3.50", description: "$129/mo flat (≤40 units) → $3.50 per unit/month", url: "https://yourcondomanager.org/pricing" },
+      ],
+    });
+    document.head.appendChild(ld);
+    return () => {
+      ld.remove();
+    };
   }, []);
 
   return (
@@ -909,8 +944,133 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
                 </div>
               </div>
             </div>
+
+            {/* ── SM COMPARISON vs ALTERNATIVES (spec §8 #7) ── */}
+            <div className="mt-14 max-w-4xl mx-auto">
+              <h3 className="font-serif text-2xl text-center text-foreground mb-2">How self-managing on YCM compares</h3>
+              <p className="text-sm text-muted-foreground text-center mb-6">A 100-unit community, versus the common alternatives.</p>
+              <div className="overflow-x-auto rounded-2xl border border-border/70 shadow-sm">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-muted/60 text-foreground">
+                      <th className="text-left font-semibold px-5 py-3">Option</th>
+                      <th className="text-left font-semibold px-5 py-3">Typical cost</th>
+                      <th className="text-left font-semibold px-5 py-3 hidden sm:table-cell">Resident + board AI</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60">
+                    <tr className="bg-primary/5">
+                      <td className="px-5 py-3 font-bold text-primary">Your Condo Manager</td>
+                      <td className="px-5 py-3 font-bold text-primary">$3.50/unit (~$350/mo)</td>
+                      <td className="px-5 py-3 hidden sm:table-cell">Built in, every tier</td>
+                    </tr>
+                    <tr>
+                      <td className="px-5 py-3 text-foreground">PayHOA</td>
+                      <td className="px-5 py-3 text-muted-foreground">Flat tiers (~$49–$149/mo)</td>
+                      <td className="px-5 py-3 text-muted-foreground hidden sm:table-cell">None</td>
+                    </tr>
+                    <tr>
+                      <td className="px-5 py-3 text-foreground">Hiring a property manager</td>
+                      <td className="px-5 py-3 text-muted-foreground">8–10% of dues (often $1,000s/mo)</td>
+                      <td className="px-5 py-3 text-muted-foreground hidden sm:table-cell">Manager-dependent</td>
+                    </tr>
+                    <tr>
+                      <td className="px-5 py-3 text-foreground">DIY (spreadsheets + email)</td>
+                      <td className="px-5 py-3 text-muted-foreground">"Free" — hours of board time</td>
+                      <td className="px-5 py-3 text-muted-foreground hidden sm:table-cell">None</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground text-center">
+                Alternative costs are approximate and vary by region and contract; shown for positioning only.
+              </p>
+            </div>
           </section>
         )}
+
+        {/* ── ADD-ONS (uniform across both tracks — spec §4.3/4.4/4.5, §8 #5) ── */}
+        <section className="max-w-6xl mx-auto px-6 mb-28">
+          <div className="text-center mb-10 max-w-2xl mx-auto">
+            <h2 className="font-serif text-3xl tracking-tight text-foreground mb-3">Add only what your community needs</h2>
+            <p className="text-base text-foreground/80">
+              Every plan comes fully loaded. These optional modules cover specific building types and workflows —
+              turn any of them on or off anytime in <strong className="text-foreground">Settings</strong>. On the
+              Property-Manager track you pay only for the <strong className="text-foreground">communities that use each one</strong>.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Layer 3 — à-la-carte modules */}
+            <div className="rounded-2xl border border-border/70 p-6 shadow-sm bg-card">
+              <p className="text-xs font-bold tracking-[0.16em] uppercase text-muted-foreground mb-4">À-la-carte modules</p>
+              <ul className="space-y-4">
+                {[
+                  { name: "Amenities & Bookings", price: "$19/mo", who: "Pool, clubhouse, or gym communities" },
+                  { name: "Visitor & Security", price: "$29/mo", who: "Gated communities" },
+                  { name: "Governance Pack Premium", price: "$25/mo", who: "CIOA e-voting + architectural review" },
+                ].map((a) => (
+                  <li key={a.name} className="flex items-start gap-3">
+                    <CheckCircle2 className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+                    <div>
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="font-semibold text-foreground">{a.name}</span>
+                        <span className="text-sm font-bold text-primary">{a.price}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{a.who}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {/* Layer 4 — premium add-ons */}
+            <div className="rounded-2xl border border-border/70 p-6 shadow-sm bg-card">
+              <p className="text-xs font-bold tracking-[0.16em] uppercase text-muted-foreground mb-4">Premium add-ons</p>
+              <ul className="space-y-4">
+                {[
+                  { name: "Insurance Compliance Pro", price: "$39/mo", who: "FL / Sunbelt high-rises, post-Surfside" },
+                  { name: "AI Compliance Assistant Pro", price: "$49/mo", who: "Voice interface + deeper analysis + premium models" },
+                  { name: "Reserve Study Integration", price: "$49/mo", who: "Association Reserves, RDA, DMA connections" },
+                ].map((a) => (
+                  <li key={a.name} className="flex items-start gap-3">
+                    <Zap className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+                    <div>
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="font-semibold text-foreground">{a.name}</span>
+                        <span className="text-sm font-bold text-primary">{a.price}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{a.who}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {/* Layer 5 — smart upgrades */}
+            <div className="rounded-2xl border border-border/70 p-6 shadow-sm bg-card">
+              <p className="text-xs font-bold tracking-[0.16em] uppercase text-muted-foreground mb-4">Smart upgrades</p>
+              <ul className="space-y-4">
+                {[
+                  { name: "AI Insider", price: "$19.99/mo", who: "Early-access AI features + insider commands" },
+                  { name: "AI Ingestion Premium", price: "$99/mo", who: "OCR + paper-record digitization for legacy HOAs" },
+                  { name: "First Audit Insurance", price: "$250/yr", who: "Optional signup protection for board members" },
+                ].map((a) => (
+                  <li key={a.name} className="flex items-start gap-3">
+                    <ShieldCheck className="h-5 w-5 text-primary shrink-0 mt-0.5" aria-hidden="true" />
+                    <div>
+                      <div className="flex items-baseline gap-2 flex-wrap">
+                        <span className="font-semibold text-foreground">{a.name}</span>
+                        <span className="text-sm font-bold text-primary">{a.price}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground">{a.who}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+          <p className="mt-6 text-xs text-muted-foreground text-center">
+            Add-on prices are per community, per month unless noted. A 1.5% Stripe Connect application fee applies to online payments.
+          </p>
+        </section>
 
         {/* ── FAQ ── */}
         <section className="max-w-4xl mx-auto px-6 mb-28">
@@ -946,6 +1106,30 @@ export default function PricingPage({ hasWorkspaceAccess, onStartGoogleSignIn }:
               <h3 className="font-semibold text-foreground mb-1.5">What's included in the annual discount?</h3>
               <p className="text-sm text-muted-foreground">
                 Roughly 10% off the equivalent monthly rate, billed yearly upfront. You keep the same feature set + support tier.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground mb-1.5">Is AI included, or is it an add-on?</h3>
+              <p className="text-sm text-muted-foreground">
+                <strong>AI is built into every tier</strong> — resident and board members can ask questions about their community, account, and documents from day one. Higher tiers unlock the full AI compliance assistant. Optional premium AI (<strong>AI Compliance Assistant Pro</strong> at $49/mo, <strong>AI Insider</strong> at $19.99/mo, <strong>AI Ingestion Premium</strong> at $99/mo) layers on deeper analysis, early-access features, and OCR digitization when you want them.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground mb-1.5">What add-ons are available and how am I billed?</h3>
+              <p className="text-sm text-muted-foreground">
+                Optional modules cover specific building types and workflows — amenities & bookings, visitor & security, governance pack, insurance compliance, reserve-study integration, and more. Toggle any of them on or off anytime in Settings. On the <strong>Property-Manager track you pay only for the communities that enable each module</strong> (e.g. 2 of your 5 communities use amenities → you pay for 2). On the Self-Managed track it's a simple on/off toggle.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground mb-1.5">How does YCM compare to Buildium, AppFolio, Vantaca, or PayHOA?</h3>
+              <p className="text-sm text-muted-foreground">
+                YCM is the <strong>only platform where every resident and board member has AI</strong> that answers anything about their community — Buildium, PayHOA, and Smartwebs have none; AppFolio and Vantaca restrict AI to higher tiers or PM workflows only. Our per-door / per-unit rate also <strong>drops as you grow</strong>, versus flat or enterprise-quote pricing elsewhere. See the comparison tables above.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-foreground mb-1.5">Who owns my data, and can I cancel anytime?</h3>
+              <p className="text-sm text-muted-foreground">
+                <strong>You own your data.</strong> Export it anytime, no lock-in. Plans are month-to-month (or annual if you choose the discount) and you can <strong>cancel anytime</strong> — we'll help you export your full history on the way out.
               </p>
             </div>
           </div>
