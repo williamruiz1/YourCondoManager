@@ -40,6 +40,7 @@ import {
 } from "@shared/schema";
 import { runAutoMatch, type AutoMatchResult } from "../services/reconciliation/auto-matcher";
 import { refundConnectCharge, isRefundsEnabled } from "../services/refund-service";
+import { reversePayment } from "../services/payment-edge-cases";
 
 // ── Reusable request shape (mirrored from routes.ts) ─────────────────────────
 
@@ -122,6 +123,24 @@ const refundChargeSchema = z.object({
   // YCM's platform fee on a refund; allow an explicit override for the rare case.
   refundApplicationFee: z.boolean().optional(),
 });
+
+// Reverse a manual/non-Stripe posting on the owner ledger (founder-os#8535 /
+// YCM#286 — wires the tested payment-edge-cases module into a live route).
+// `amount` (positive dollars) omitted = reverse the full remaining amount.
+// `reason` is REQUIRED — every reversal is an auditable money decision.
+const reverseEntrySchema = z.object({
+  associationId: z.string().min(1),
+  ledgerEntryId: z.string().trim().min(1),
+  amount: z.coerce.number().positive().optional(),
+  reason: z.string().trim().min(3, "a reason is required for every reversal"),
+});
+
+// Ledger entries recorded from Stripe charges carry this referenceType (the
+// non-exported convention in services/stripe-reconciliation.ts). A Stripe-
+// backed receipt must be refunded through POST /refund (which moves the real
+// money AND posts the ledger reversal) — never ledger-reversed alone, or the
+// books would show money returned that Stripe still holds.
+const STRIPE_CHARGE_REFERENCE_TYPE = "stripe_charge";
 
 // ── Description builder ─────────────────────────────────────────────────────
 
@@ -353,6 +372,154 @@ async function recordSinglePayment(
   };
 }
 
+// ── Ledger reversal (founder-os#8535 / YCM#286) ─────────────────────────────
+
+export interface ReversalOutcome {
+  reversalEntryId: string;
+  reversedEntryId: string;
+  amountReversed: number;
+  priorBalance: number;
+  newBalance: number;
+}
+
+/**
+ * Reverse a credit-side owner-ledger entry (payment/credit) by posting the
+ * equal-and-opposite `adjustment` row the payment-edge-cases module computes.
+ * Forward-only: the original row is never touched.
+ *
+ * Guards the module doesn't (it's pure and sees one call at a time):
+ *   - the target must belong to the given association (404 otherwise);
+ *   - CUMULATIVE cap — prior reversals of the same target count against the
+ *     original magnitude, so repeated partial reversals can never exceed it.
+ *
+ * `allowStripeBacked` is set ONLY by the Stripe /refund path, which has
+ * already moved the real money; the standalone /reverse route refuses
+ * Stripe-backed entries so the ledger can't claim a refund Stripe never made.
+ */
+async function reverseLedgerEntry(params: {
+  associationId: string;
+  ledgerEntryId: string;
+  amount?: number;
+  reason: string;
+  actorEmail: string;
+  auditAction: string;
+  allowStripeBacked?: boolean;
+}): Promise<ReversalOutcome> {
+  const [target] = await db
+    .select()
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.id, params.ledgerEntryId),
+        eq(ownerLedgerEntries.associationId, params.associationId),
+      ),
+    )
+    .limit(1);
+  if (!target) {
+    const err: any = new Error("Ledger entry not found for this association");
+    err.status = 404;
+    err.code = "ENTRY_NOT_FOUND";
+    throw err;
+  }
+  if (!params.allowStripeBacked && target.referenceType === STRIPE_CHARGE_REFERENCE_TYPE) {
+    const err: any = new Error(
+      "This payment was collected through Stripe — refund it via POST /api/admin/payments/refund so the money actually moves; the ledger reversal posts automatically with it",
+    );
+    err.status = 409;
+    err.code = "USE_STRIPE_REFUND";
+    throw err;
+  }
+
+  // The unit's ledger — the balance context the module computes against.
+  const unitEntries = await db
+    .select()
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.associationId, params.associationId),
+        eq(ownerLedgerEntries.unitId, target.unitId),
+      ),
+    );
+
+  // Cumulative cap: sum prior reversals of THIS target (they reference it).
+  const alreadyReversed = unitEntries
+    .filter(
+      (e) =>
+        e.referenceType === "refund-reversal" &&
+        e.referenceId === target.id &&
+        e.entryType === "adjustment" &&
+        e.amount > 0,
+    )
+    .reduce((s, e) => s + e.amount, 0);
+  const originalMagnitude = Math.abs(target.amount);
+  const remaining = Math.round((originalMagnitude - alreadyReversed) * 100) / 100;
+  if (remaining <= 0) {
+    const err: any = new Error(
+      `Entry ${target.id} is already fully reversed ($${alreadyReversed.toFixed(2)} of $${originalMagnitude.toFixed(2)})`,
+    );
+    err.status = 400;
+    err.code = "ALREADY_REVERSED";
+    throw err;
+  }
+  const requested = params.amount ?? remaining;
+  if (requested > remaining + 1e-9) {
+    const err: any = new Error(
+      `Reversal $${requested.toFixed(2)} exceeds the remaining reversible amount $${remaining.toFixed(2)} (original $${originalMagnitude.toFixed(2)}, already reversed $${alreadyReversed.toFixed(2)})`,
+    );
+    err.status = 400;
+    err.code = "EXCEEDS_REMAINING";
+    throw err;
+  }
+
+  const result = reversePayment({
+    entries: unitEntries,
+    target,
+    amount: requested,
+    postedAt: new Date(),
+    description: `Refund $${requested.toFixed(2)} — reversal of ${target.entryType} (entry ${target.id}) — ${params.reason}`,
+  });
+
+  const [inserted] = await db
+    .insert(ownerLedgerEntries)
+    .values({
+      associationId: params.associationId,
+      unitId: target.unitId,
+      personId: target.personId,
+      entryType: result.entry.entryType,
+      amount: result.entry.amount,
+      postedAt: result.entry.postedAt,
+      description: result.entry.description,
+      referenceType: result.entry.referenceType,
+      referenceId: result.entry.referenceId,
+    })
+    .returning();
+
+  await db.insert(auditLogs).values({
+    actorEmail: params.actorEmail,
+    action: params.auditAction,
+    entityType: "owner_ledger_entry",
+    entityId: inserted.id,
+    associationId: params.associationId,
+    afterJson: {
+      reversedEntryId: result.reversedEntryId,
+      amountReversed: result.amountReversed,
+      priorBalance: result.priorBalance,
+      newBalance: result.newBalance,
+      reason: params.reason,
+      unitId: target.unitId,
+      personId: target.personId,
+    },
+  });
+
+  return {
+    reversalEntryId: inserted.id,
+    reversedEntryId: result.reversedEntryId,
+    amountReversed: result.amountReversed,
+    priorBalance: result.priorBalance,
+    newBalance: result.newBalance,
+  };
+}
+
 // ── Registrar ───────────────────────────────────────────────────────────────
 
 export function registerAdminPaymentsRoutes(
@@ -521,7 +688,53 @@ export function registerAdminPaymentsRoutes(
           },
         });
 
-        return res.status(201).json({ refund: result });
+        // founder-os#8535 / YCM#286 — keep the OWNER LEDGER consistent with
+        // Stripe: post the equal-and-opposite adjustment for the refunded
+        // amount against the ledger entry this charge was recorded as.
+        // FAIL-SOFT: the Stripe refund has already happened; a missing ledger
+        // entry (charge recorded before ledger reconciliation existed) or a
+        // reversal error must not fail the refund — it is reported + audited
+        // so the books can be trued up by hand.
+        let ledgerReversal: ReversalOutcome | { error: string } | null = null;
+        try {
+          const [chargeEntry] = await db
+            .select()
+            .from(ownerLedgerEntries)
+            .where(
+              and(
+                eq(ownerLedgerEntries.associationId, parsed.associationId),
+                eq(ownerLedgerEntries.referenceType, STRIPE_CHARGE_REFERENCE_TYPE),
+                eq(ownerLedgerEntries.referenceId, parsed.chargeId),
+              ),
+            )
+            .limit(1);
+          // Stripe can omit amount_cents on some refund shapes — without a
+          // concrete refunded amount there is nothing safe to post; fall to
+          // the fail-soft note instead of guessing.
+          if (chargeEntry && typeof result.amountCents === "number" && result.amountCents > 0) {
+            ledgerReversal = await reverseLedgerEntry({
+              associationId: parsed.associationId,
+              ledgerEntryId: chargeEntry.id,
+              amount: result.amountCents / 100,
+              reason: `Stripe refund ${result.refundId}${parsed.reason ? ` (${parsed.reason})` : ""}`,
+              actorEmail: req.adminUserEmail ?? "unknown",
+              auditAction: "payment.refund-ledger-reversal",
+              allowStripeBacked: true,
+            });
+          }
+        } catch (reversalErr: any) {
+          ledgerReversal = { error: reversalErr?.message ?? String(reversalErr) };
+          await db.insert(auditLogs).values({
+            actorEmail: req.adminUserEmail ?? "unknown",
+            action: "payment.refund-ledger-reversal-failed",
+            entityType: "stripe_refund",
+            entityId: result.refundId,
+            associationId: parsed.associationId,
+            afterJson: { chargeId: parsed.chargeId, error: ledgerReversal.error },
+          });
+        }
+
+        return res.status(201).json({ refund: result, ledgerReversal });
       } catch (error: any) {
         if (error instanceof z.ZodError) {
           return res.status(400).json({
@@ -531,6 +744,45 @@ export function registerAdminPaymentsRoutes(
           });
         }
         return res.status(400).json({ error: error.message, code: "REFUND_ERROR" });
+      }
+    },
+  );
+
+  // POST /api/admin/payments/reverse — reverse a manual/non-Stripe posting
+  // (founder-os#8535 / YCM#286). Posts the equal-and-opposite adjustment via
+  // the tested payment-edge-cases module. Forward-only, cumulative-capped,
+  // treasurer/admin-gated, audited. Stripe-backed receipts are refused with
+  // a pointer to /refund (which moves the money AND posts this reversal).
+  app.post(
+    "/api/admin/payments/reverse",
+    requireAdmin,
+    requireAdminRole(REFUND_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const parsed = reverseEntrySchema.parse(req.body);
+        assertAssociationScope(req, parsed.associationId);
+
+        const reversal = await reverseLedgerEntry({
+          associationId: parsed.associationId,
+          ledgerEntryId: parsed.ledgerEntryId,
+          amount: parsed.amount,
+          reason: parsed.reason,
+          actorEmail: req.adminUserEmail ?? "unknown",
+          auditAction: "payment.reverse",
+        });
+
+        return res.status(201).json({ reversal });
+      } catch (error: any) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({
+            error: "Invalid input",
+            code: "INVALID_INPUT",
+            issues: error.issues,
+          });
+        }
+        return res
+          .status(error.status ?? 400)
+          .json({ error: error.message, code: error.code ?? "REVERSE_ERROR" });
       }
     },
   );

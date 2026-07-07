@@ -256,7 +256,9 @@ function PortalBudgetRatificationCard() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/budget-ratifications");
       if (!res.ok) return [];
-      return (await res.json()) as PortalBudgetRatification[];
+      const json = await res.json();
+      // A non-array body (error object, auth shell) must not crash the whole finances page.
+      return Array.isArray(json) ? (json as PortalBudgetRatification[]) : [];
     },
   });
 
