@@ -41,7 +41,26 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CheckCircle2, AlertCircle, RefreshCw, ArrowRight, Building2 } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  ArrowRight,
+  Building2,
+  Lock,
+  LockOpen,
+  CalendarCheck,
+} from "lucide-react";
 
 // ── Wire-shape (matches what the server returns) ─────────────────────────────
 
@@ -53,6 +72,44 @@ interface ReportTotals {
   unmatchedLedgerEntryCount: number;
   gapCents: number;
 }
+// Month-close view (YCM#220 — treasurer period-close workflow).
+interface MonthCloseState {
+  associationId: string;
+  periodMonth: string;
+  periodStart: string;
+  periodEnd: string;
+  matchedCount: number;
+  unmatchedBankTxCount: number;
+  unmatchedLedgerEntryCount: number;
+  unmatchedTotal: number;
+  unmatchedBankTransactions: Array<{
+    id: string;
+    date: string;
+    name: string;
+    merchantName: string | null;
+    amountCents: number;
+  }>;
+  unmatchedLedgerEntries: Array<{
+    id: string;
+    personName: string;
+    unitNumber: string | null;
+    postedAt: string;
+    amount: number;
+    description: string | null;
+  }>;
+  isClosed: boolean;
+  close: {
+    status: string;
+    matchedCount: number;
+    unmatchedBankTxCount: number;
+    unmatchedLedgerEntryCount: number;
+    closedByEmail: string;
+    closedAt: string;
+    reopenedByEmail: string | null;
+    reopenedAt: string | null;
+  } | null;
+}
+
 interface ReconciliationReport {
   associationId: string;
   periodStart: string;
@@ -335,6 +392,92 @@ export default function AdminReconciliationPage() {
     onError: (err: any) => {
       toast({
         title: "Match failed",
+        description: err.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // ── Month-close (Tab "close") ──────────────────────────────────────────────
+  // Default to the previous calendar month (the one a treasurer typically
+  // closes at the start of a new month), in the association's local view.
+  const [closeMonth, setCloseMonth] = useState(() => {
+    const d = new Date();
+    d.setUTCDate(1);
+    d.setUTCMonth(d.getUTCMonth() - 1);
+    return d.toISOString().slice(0, 7); // YYYY-MM
+  });
+  const [confirmUnmatchedOpen, setConfirmUnmatchedOpen] = useState(false);
+
+  const monthCloseQuery = useQuery<MonthCloseState>({
+    queryKey: ["/api/admin/reconciliation/month-close", activeAssociationId, closeMonth],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        associationId: String(activeAssociationId),
+        month: closeMonth,
+      });
+      const res = await apiRequest(
+        "GET",
+        `/api/admin/reconciliation/month-close?${params.toString()}`,
+      );
+      return res.json();
+    },
+    enabled: Boolean(activeAssociationId) && tab === "close" && /^\d{4}-\d{2}$/.test(closeMonth),
+  });
+
+  const closeMonthMutation = useMutation({
+    mutationFn: async (input: { acknowledgeUnmatched?: boolean }) => {
+      const res = await apiRequest("POST", "/api/admin/reconciliation/month-close", {
+        associationId: activeAssociationId,
+        month: closeMonth,
+        acknowledgeUnmatched: input.acknowledgeUnmatched === true,
+      });
+      // A 409 UNMATCHED_ACK_REQUIRED is surfaced as an error we intercept below.
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        const err: any = new Error(body.error ?? "Close failed");
+        err.code = body.code;
+        err.detail = body.detail;
+        throw err;
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: `${closeMonth} closed`, description: "Period attested and locked." });
+      setConfirmUnmatchedOpen(false);
+      qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/month-close"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/audit-log"] });
+    },
+    onError: (err: any) => {
+      if (err.code === "UNMATCHED_ACK_REQUIRED") {
+        // Not a failure — open the confirm step acknowledging the count.
+        setConfirmUnmatchedOpen(true);
+        return;
+      }
+      toast({
+        title: "Close failed",
+        description: err.message ?? "Unknown error",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const reopenMonthMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/reconciliation/month-reopen", {
+        associationId: activeAssociationId,
+        month: closeMonth,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: `${closeMonth} reopened` });
+      qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/month-close"] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/audit-log"] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Reopen failed",
         description: err.message ?? "Unknown error",
         variant: "destructive",
       });
@@ -926,6 +1069,217 @@ export default function AdminReconciliationPage() {
 
   // ── Tab 3: Audit log ───────────────────────────────────────────────────────
 
+  function renderCloseMonthTab() {
+    const s = monthCloseQuery.data;
+    return (
+      <div className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Close the books for a month</CardTitle>
+            <CardDescription>
+              Confirm every bank transaction for the month is accounted for, then
+              attest a close. A closed month records who closed it and when.
+              Re-opening is an explicit action. This does not lock ledger entries —
+              it is the treasurer's period attestation.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <label className="block text-xs text-muted-foreground" htmlFor="close-month">
+                  Month
+                </label>
+                <Input
+                  id="close-month"
+                  type="month"
+                  value={closeMonth}
+                  onChange={(e) => setCloseMonth(e.target.value)}
+                  data-testid="input-close-month"
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => monthCloseQuery.refetch()}
+                data-testid="button-refresh-close"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {monthCloseQuery.isLoading && <Skeleton className="h-48 w-full" />}
+
+        {s && (
+          <>
+            {s.isClosed && s.close && (
+              <div
+                className="flex items-center gap-2 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-300"
+                data-testid="badge-month-closed"
+              >
+                <Lock className="h-4 w-4" />
+                <span>
+                  <strong>{s.periodMonth} is closed.</strong> Attested by{" "}
+                  {s.close.closedByEmail} on{" "}
+                  {new Date(s.close.closedAt).toLocaleString()}.
+                </span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Matched</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-semibold" data-testid="text-matched-count">
+                    {s.matchedCount}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">
+                    Unmatched
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div
+                    className={`text-2xl font-semibold ${s.unmatchedTotal > 0 ? "text-amber-600" : ""}`}
+                    data-testid="text-unmatched-count"
+                  >
+                    {s.unmatchedTotal}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {s.unmatchedBankTxCount} bank · {s.unmatchedLedgerEntryCount} ledger
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm text-muted-foreground">Period</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-sm">
+                    {s.periodStart} → {s.periodEnd}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {s.unmatchedTotal > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    Unmatched transactions ({s.unmatchedTotal})
+                  </CardTitle>
+                  <CardDescription>
+                    These are still open for the month. You can close with known
+                    stragglers, but you'll be asked to acknowledge the count.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="text-right">Amount</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {s.unmatchedBankTransactions.map((t) => (
+                        <TableRow key={`bank-${t.id}`} data-testid={`row-unmatched-bank-${t.id}`}>
+                          <TableCell>
+                            <Badge variant="secondary">Bank</Badge>
+                          </TableCell>
+                          <TableCell>{t.date}</TableCell>
+                          <TableCell>{t.merchantName ?? t.name}</TableCell>
+                          <TableCell className="text-right">
+                            {dollarFromCents(t.amountCents)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {s.unmatchedLedgerEntries.map((e) => (
+                        <TableRow key={`ledger-${e.id}`} data-testid={`row-unmatched-ledger-${e.id}`}>
+                          <TableCell>
+                            <Badge variant="outline">Ledger</Badge>
+                          </TableCell>
+                          <TableCell>{e.postedAt.slice(0, 10)}</TableCell>
+                          <TableCell>
+                            {e.personName}
+                            {e.unitNumber ? ` · Unit ${e.unitNumber}` : ""}
+                            {e.description ? ` — ${e.description}` : ""}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {dollarFromAmount(e.amount)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
+            <div className="flex items-center gap-3">
+              {s.isClosed ? (
+                <Button
+                  variant="outline"
+                  onClick={() => reopenMonthMutation.mutate()}
+                  disabled={reopenMonthMutation.isPending}
+                  data-testid="button-reopen-month"
+                >
+                  <LockOpen className="mr-2 h-4 w-4" />
+                  Re-open {s.periodMonth}
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => closeMonthMutation.mutate({ acknowledgeUnmatched: false })}
+                  disabled={closeMonthMutation.isPending}
+                  data-testid="button-close-month"
+                >
+                  <CalendarCheck className="mr-2 h-4 w-4" />
+                  Close {s.periodMonth}
+                </Button>
+              )}
+              {s.unmatchedTotal === 0 && !s.isClosed && (
+                <span className="flex items-center gap-1 text-sm text-green-700 dark:text-green-400">
+                  <CheckCircle2 className="h-4 w-4" /> Fully reconciled
+                </span>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Confirm-on-unmatched step (soft guard, not a hard block). */}
+        <AlertDialog open={confirmUnmatchedOpen} onOpenChange={setConfirmUnmatchedOpen}>
+          <AlertDialogContent data-testid="dialog-confirm-unmatched">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Close with unmatched transactions?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {closeMonth} still has {s?.unmatchedTotal ?? 0} unmatched
+                transaction(s). Closing now attests the period with these known
+                stragglers still open. You can re-open the month later if needed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid="button-confirm-cancel">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => closeMonthMutation.mutate({ acknowledgeUnmatched: true })}
+                data-testid="button-confirm-close-unmatched"
+              >
+                Acknowledge &amp; close
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
   function renderAuditTab() {
     if (auditQuery.isLoading) {
       return <Skeleton className="h-48 w-full" />;
@@ -1021,6 +1375,9 @@ export default function AdminReconciliationPage() {
           <TabsTrigger value="report" data-testid="tab-report">
             Report
           </TabsTrigger>
+          <TabsTrigger value="close" data-testid="tab-close">
+            Close month
+          </TabsTrigger>
           <TabsTrigger value="audit" data-testid="tab-audit">
             Match history
           </TabsTrigger>
@@ -1033,6 +1390,9 @@ export default function AdminReconciliationPage() {
         </TabsContent>
         <TabsContent value="report" className="mt-4">
           {renderReportTab()}
+        </TabsContent>
+        <TabsContent value="close" className="mt-4">
+          {renderCloseMonthTab()}
         </TabsContent>
         <TabsContent value="audit" className="mt-4">
           {renderAuditTab()}

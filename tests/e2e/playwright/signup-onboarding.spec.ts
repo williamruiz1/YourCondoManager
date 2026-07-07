@@ -30,6 +30,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect } from "@playwright/test";
+import { gotoStable } from "./helpers/nav-helper";
 import { runAxeAuditSoft } from "./helpers/a11y-check";
 import {
   createRealBackend,
@@ -139,7 +140,7 @@ test.describe("Wave 16a/26 — signup → onboarding", () => {
         });
       });
 
-      await page.goto("/signup");
+      await gotoStable(page, "/signup");
       await expect(page).toHaveURL(/\/signup/);
 
       // Arm `waitForResponse` BEFORE the navigation that triggers the
@@ -158,7 +159,7 @@ test.describe("Wave 16a/26 — signup → onboarding", () => {
       ]);
 
       authState = "authed";
-      await page.goto("/app");
+      await gotoStable(page, "/app");
       await expect(page).toHaveURL(/\/app/);
 
       // Wave 25 — axe-core audit on the post-signup workspace shell.
@@ -235,18 +236,22 @@ test.describe("Wave 16a/26 — signup → onboarding", () => {
     //    real dev server. The mocked endpoints intercept the two API
     //    calls; everything else (page bundle, route handler, error
     //    surfaces) is real.
-    await page.goto("/signup");
+    await gotoStable(page, "/signup");
     await expect(page).toHaveURL(/\/signup/);
 
     // Arm `waitForResponse` BEFORE the navigation that triggers the
     // signup-complete fetch. See the route-mock block above for the
     // engine-race rationale (Firefox + WebKit complete the request
     // before a post-goto `waitForResponse` can register).
+    // gotoStable: /signup/success fires a client-side redirect while the
+    // document is still loading — webkit reports the goto as "interrupted"
+    // (founder-os#8337). The waitForResponse races in parallel, so the
+    // signup-complete contract is still asserted.
     await Promise.all([
       page.waitForResponse((res) =>
         res.url().includes("/api/public/signup/complete") && res.status() === 200,
       ),
-      page.goto(`/signup/success?session_id=${STRIPE_SESSION_ID}`),
+      gotoStable(page, `/signup/success?session_id=${STRIPE_SESSION_ID}`),
     ]);
 
     // 3. Seed the rows that `provisionWorkspace()` would have written
@@ -289,7 +294,7 @@ test.describe("Wave 16a/26 — signup → onboarding", () => {
     //    for real (tryHydrateAdminFromSession → admin_users load →
     //    admin_association_scopes load). The URL settling on /app
     //    confirms the gate passed and the workspace shell rendered.
-    await page.goto("/app");
+    await gotoStable(page, "/app");
     await expect(page).toHaveURL(/\/app/);
 
     // Sanity check the descriptor for failure traces.

@@ -6,8 +6,10 @@ import path from "path";
 import fs from "fs";
 import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
+import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
 import { db } from "./db";
 import { debug } from "./logger";
+import { reserveDisclosureDollars, reserveDisclosureBasis } from "./ct-reserve-disclosure";
 import { sendEmail } from "./email/send";
 import {
   validateSlug as validateTenantAliasSlug,
@@ -17,6 +19,7 @@ import {
   isTenantAliasEnabled,
 } from "./email/tenant-sender";
 import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
+import { buildPerUnitBreakdown } from "@shared/portal-per-unit";
 import { invalidateAlertCache } from "./alerts";
 import { getMigrationHealth } from "./migration-health";
 
@@ -105,6 +108,7 @@ import {
   budgets,
   budgetVersions,
   budgetLines,
+  budgetRatifications,
   insertFinancialAccountSchema,
   insertFinancialCategorySchema,
   insertGovernanceComplianceTemplateSchema,
@@ -187,6 +191,7 @@ import {
   insertDelinquencyEscalationSchema,
   collectionsHandoffs,
   insertCollectionsHandoffSchema,
+  assessmentLiens,
   bankStatementImports,
   bankStatementTransactions,
   insertBankStatementTransactionSchema,
@@ -284,12 +289,15 @@ import {
 } from "@shared/payment-period";
 import { registerAiAssistantRoutes } from "./routes/ai-assistant";
 import { registerPressingItemsRoutes } from "./routes/pressing-items";
+import { buildArAgingReport } from "./services/ar-aging";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
+import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
+import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -1379,6 +1387,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   const { registerAmenityRoutes } = await import("./routes/amenities");
   registerAmenityRoutes(app, requireAdmin, requireAdminRole, requirePortal);
 
+  // CT CGS §47-260 — owner records-request workflow + statutory retention
+  // (founder-os#8017).
+  const { registerRecordsRequestRoutes } = await import("./routes/records-requests");
+  registerRecordsRequestRoutes(app, requireAdmin, requireAdminRole);
+
   // Autopay enrollment & recurring collection routes
   registerAutopayRoutes(app, {
     requireAdmin,
@@ -1450,6 +1463,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     assertAssociationScope,
   });
 
+  // HOA Remediation Phase 2 — dual-approval (maker-checker) on disbursements
+  // (money-OUT). Segregation of duties: a disbursement must be approved by a
+  // DIFFERENT admin than the one who created it before it can be marked paid.
+  // NET-NEW / ADDITIVE — touches no existing owner-ledger / GL / payout path.
+  // Endpoints: /api/admin/disbursements[/:id/{submit,approve,reject,pay}].
+  registerAdminDisbursementRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
   // Owner account statement (readiness P0-3 / Issue #206). Opening balance,
   // in-period line items, closing balance for a date range — the document a
   // treasurer hands an owner. Two surfaces:
@@ -1460,6 +1485,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdminRole,
     requirePortal,
     getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // founder-os#8013 — CT resale / 6(d) certificate (CGS §47-270).
+  registerResaleCertificateRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
     assertAssociationScope,
   });
 
@@ -3622,84 +3654,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/uploads/:filename", async (req, res) => {
     try {
-      const rawFilename = getParam(req.params.filename);
-      // Prevent path traversal: only allow basename, no slashes or dots leading out
-      const filename = path.basename(rawFilename);
-      if (!filename || filename !== rawFilename || filename.startsWith(".")) {
-        return res.status(400).json({ message: "Invalid filename" });
+      // Validation + authorization live in server/uploads-access.ts (extracted
+      // for unit-testability per founder-os#8541 / YCM#218; includes the
+      // auth-before-exists, empty-scope-fail-closed, and inline-vs-attachment
+      // hardenings documented there).
+      const validated = validateUploadFilename(getParam(req.params.filename), uploadDir);
+      if (!validated.ok) {
+        return res.status(400).json({ message: validated.message });
       }
 
-      const filePath = path.join(uploadDir, filename);
-      // Ensure the resolved path is still inside uploadDir
-      const resolvedPath = path.resolve(filePath);
-      if (!resolvedPath.startsWith(path.resolve(uploadDir) + path.sep)) {
-        return res.status(400).json({ message: "Invalid filename" });
+      const authUser = req.isAuthenticated?.() && req.user
+        ? (req.user as { adminUserId?: string | null; email?: string | null })
+        : null;
+
+      const decision = await authorizeUploadAccess(
+        { fileUrl: validated.fileUrl, authUser, portalAccessId: req.header("x-portal-access-id") || "" },
+        {
+          getAdminUserById: (id) => storage.getAdminUserById(id),
+          getAdminUserByEmail: (email) => storage.getAdminUserByEmail(email),
+          getAdminAssociationScopesByUserId: (userId) => storage.getAdminAssociationScopesByUserId(userId),
+          documentExistsInAssociations: async (fileUrl, associationIds) => {
+            const [row] = await db
+              .select({ id: documents.id })
+              .from(documents)
+              .where(and(eq(documents.fileUrl, fileUrl), inArray(documents.associationId, associationIds)))
+              .limit(1);
+            return Boolean(row);
+          },
+          versionExistsInAssociations: async (fileUrl, associationIds) => {
+            const [row] = await db
+              .select({ documentId: documentVersions.documentId })
+              .from(documentVersions)
+              .innerJoin(documents, eq(documentVersions.documentId, documents.id))
+              .where(and(eq(documentVersions.fileUrl, fileUrl), inArray(documents.associationId, associationIds)))
+              .limit(1);
+            return Boolean(row);
+          },
+          getPortalAccessById: (id) => storage.getPortalAccessById(id),
+          getPortalDocuments: (portalAccessId) => storage.getPortalDocuments(portalAccessId),
+          getDocumentVersions: (documentId) => storage.getDocumentVersions(documentId),
+        },
+      );
+
+      if (decision.kind === "deny") {
+        return res.status(decision.status).json({ message: decision.message });
       }
 
-      if (!fs.existsSync(resolvedPath)) {
+      // Existence is checked AFTER authorization (H1) so unauthorized callers
+      // cannot enumerate which upload filenames exist.
+      if (!fs.existsSync(validated.resolvedPath)) {
         return res.status(404).json({ message: "File not found" });
       }
 
-      const fileUrl = `/api/uploads/${filename}`;
-
-      if (req.isAuthenticated?.() && req.user) {
-        const authUser = req.user as { adminUserId?: string | null; email?: string | null };
-        const adminUser = authUser.adminUserId
-          ? await storage.getAdminUserById(authUser.adminUserId)
-          : (authUser.email ? await storage.getAdminUserByEmail(authUser.email.trim().toLowerCase()) : undefined);
-        if (adminUser && adminUser.isActive === 1) {
-          // For non-platform-admin users, verify the file belongs to a document in their scoped associations
-          if (adminUser.role !== "platform-admin") {
-            const scopedAssociationIds = await storage.getAdminAssociationScopesByUserId(adminUser.id)
-              .then((scopes) => scopes.map((s) => s.associationId));
-            if (scopedAssociationIds.length > 0) {
-              // Check documents table for an entry with this fileUrl in the scoped associations
-              const [matchingDoc] = await db
-                .select({ id: documents.id })
-                .from(documents)
-                .where(and(eq(documents.fileUrl, fileUrl), inArray(documents.associationId, scopedAssociationIds)))
-                .limit(1);
-              if (!matchingDoc) {
-                // Also check document versions
-                const [matchingVersion] = await db
-                  .select({ documentId: documentVersions.documentId })
-                  .from(documentVersions)
-                  .innerJoin(documents, eq(documentVersions.documentId, documents.id))
-                  .where(and(eq(documentVersions.fileUrl, fileUrl), inArray(documents.associationId, scopedAssociationIds)))
-                  .limit(1);
-                if (!matchingVersion) {
-                  return res.status(403).json({ message: "File is not accessible for your association scope" });
-                }
-              }
-            }
-          }
-          return res.sendFile(resolvedPath);
-        }
+      if (decision.disposition === "attachment") {
+        res.setHeader("Content-Disposition", `attachment; filename="${validated.filename.replace(/"/g, "")}"`);
       }
-
-      const portalAccessId = req.header("x-portal-access-id") || "";
-      if (!portalAccessId) {
-        return res.status(403).json({ message: "Upload access requires admin or portal credentials" });
-      }
-
-      const portalAccess = await storage.getPortalAccessById(portalAccessId);
-      if (!portalAccess || portalAccess.status !== "active") {
-        return res.status(403).json({ message: "Portal access required" });
-      }
-
-      const portalDocs = await storage.getPortalDocuments(portalAccess.id);
-      const directMatch = portalDocs.some((doc) => doc.fileUrl === fileUrl);
-      if (directMatch) {
-        return res.sendFile(resolvedPath);
-      }
-
-      const versionLists = await Promise.all(portalDocs.map((doc) => storage.getDocumentVersions(doc.id)));
-      const versionMatch = versionLists.some((versions) => versions.some((version) => version.fileUrl === fileUrl));
-      if (versionMatch) {
-        return res.sendFile(resolvedPath);
-      }
-
-      return res.status(403).json({ message: "File is not visible for this portal access" });
+      return res.sendFile(validated.resolvedPath);
     } catch (error: any) {
       return res.status(500).json({ message: error.message });
     }
@@ -4237,6 +4247,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/financial/statements/income-statement?associationId=...
+  //   → income & expense statement (income by account, expense by account, net)
+  //     + the reconcile-to-cent trust indicator. Same per-association GL gate.
+  app.get("/api/financial/statements/income-statement", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      if (!isGlEnabledForAssociation(associationId)) return res.status(404).json({ message: "Financial statements are not enabled for this association (GL is off)." });
+      const statements = await buildFinancialStatements(associationId);
+      res.json({ associationId, generatedAt: statements.generatedAt, derived: true, incomeStatement: statements.incomeStatement, reconciliation: statements.reconciliation });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   // GET /api/financial/gl/accounts?associationId=...  → DERIVED per-GL-account
   // balances (the dues-driven Cash 1010 / AR 1200 / Income 4000 roll-up). This
   // is the SEAM for the Chart of Accounts screen (/app/financial/foundation),
@@ -4434,6 +4460,127 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
       const [updated] = await db.update(collectionsHandoffs).set(updates).where(eq(collectionsHandoffs.id, id)).returning();
       res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Statutory assessment liens (CT CGS §47-258 / DE §81-316) — #8014 ─────────
+  app.get("/api/financial/assessment-liens", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const { listAssessmentLiens } = await import("./services/assessment-lien-service");
+      const rows = await listAssessmentLiens(associationId);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-258(a)+(e): create a lien (arises automatically; SOL expiry set from arose-date).
+  app.post("/api/financial/assessment-liens", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = req.body?.associationId as string | undefined;
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationInputScope(req, associationId);
+      const { createAssessmentLien } = await import("./services/assessment-lien-service");
+      const lien = await createAssessmentLien({
+        associationId,
+        unitId: req.body.unitId,
+        personId: req.body.personId ?? null,
+        escalationId: req.body.escalationId ?? null,
+        sourceReference: req.body.sourceReference ?? null,
+        aroseDate: new Date(req.body.aroseDate),
+        principalAmount: Number(req.body.principalAmount),
+        monthlyCommonExpense: req.body.monthlyCommonExpense != null ? Number(req.body.monthlyCommonExpense) : 0,
+        statuteSection: req.body.statuteSection ?? "47-258",
+      });
+      res.status(201).json(lien);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-258(b): compute the 9-month super-priority for a lien (read-only calc).
+  app.get("/api/financial/assessment-liens/:id/super-priority", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const [lien] = await db.select().from(assessmentLiens).where(eq(assessmentLiens.id, req.params.id as string)).limit(1);
+      if (!lien) return res.status(404).json({ message: "Not found" });
+      assertAssociationScope(req, lien.associationId);
+      const { computeSuperPriority } = await import("./services/assessment-lien-service");
+      const enforcementDate = req.query.enforcementDate ? new Date(String(req.query.enforcementDate)) : new Date();
+      const result = computeSuperPriority({
+        monthlyCommonExpense: lien.monthlyCommonExpense,
+        totalLienAmount: lien.principalAmount,
+        enforcementDate,
+        statuteSection: lien.statuteSection,
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // release: apply a payment to a lien → released / active / expired.
+  app.post("/api/financial/assessment-liens/:id/apply-payment", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const [lien] = await db.select().from(assessmentLiens).where(eq(assessmentLiens.id, req.params.id as string)).limit(1);
+      if (!lien) return res.status(404).json({ message: "Not found" });
+      assertAssociationScope(req, lien.associationId);
+      const { applyPaymentToAssessmentLien } = await import("./services/assessment-lien-service");
+      const updated = await applyPaymentToAssessmentLien({
+        lienId: lien.id,
+        associationId: lien.associationId,
+        amountPaid: Number(req.body.amountPaid),
+      });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-258(m): evaluate the pre-foreclosure gate + issue the 60-day notice.
+  app.post("/api/financial/assessment-liens/:id/pre-foreclosure", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const [lien] = await db.select().from(assessmentLiens).where(eq(assessmentLiens.id, req.params.id as string)).limit(1);
+      if (!lien) return res.status(404).json({ message: "Not found" });
+      assertAssociationScope(req, lien.associationId);
+      const { issuePreForeclosureNotice } = await import("./services/assessment-lien-service");
+      const outcome = await issuePreForeclosureNotice({
+        associationId: lien.associationId,
+        lienId: lien.id,
+        unitId: lien.unitId,
+        personId: lien.personId,
+        recipientEmail: req.body.recipientEmail,
+        mortgageeEmail: req.body.mortgageeEmail ?? null,
+        gate: {
+          monthsOwed: Number(req.body.monthsOwed),
+          boardVoteOrPolicyAttested: Boolean(req.body.boardVoteOrPolicyAttested),
+          writtenDemandSent: Boolean(req.body.writtenDemandSent),
+          mortgageeCopySent: Boolean(req.body.mortgageeCopySent),
+          aroseDate: lien.aroseDate,
+          asOf: new Date(),
+        },
+        notice: {
+          ownerName: req.body.ownerName,
+          unitNumber: req.body.unitNumber,
+          associationName: req.body.associationName,
+          principalDebt: Number(req.body.principalDebt ?? lien.principalAmount),
+          fees: Number(req.body.fees ?? 0),
+          attorneyCosts: req.body.attorneyCosts != null ? Number(req.body.attorneyCosts) : 0,
+          issuedAt: new Date(),
+          paymentInstructions: req.body.paymentInstructions ?? "Contact the management office to arrange payment.",
+          mortgageeName: req.body.mortgageeName ?? null,
+          mortgageeContact: req.body.mortgageeContact ?? null,
+          statuteSection: lien.statuteSection,
+        },
+      });
+      if (!outcome.gate.allowed) {
+        return res.status(422).json(outcome);
+      }
+      res.status(201).json(outcome);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -5284,6 +5431,176 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ───────────────────────────────────────────────────────────────────────
+  // CT CGS §47-261e — budget negative-option (owner-veto) ratification (#8015)
+  // ───────────────────────────────────────────────────────────────────────
+
+  // List ratifications for an association.
+  app.get("/api/financial/budget-ratifications", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req as AdminRequest, associationId);
+      const { listBudgetRatifications } = await import("./services/budget-ratification-service");
+      res.json(await listBudgetRatifications(associationId));
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(a) — open an annual-budget ratification (adopted → summary-pending).
+  app.post("/api/financial/budget-ratifications", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const associationId = String(req.body.associationId || "");
+      assertAssociationScope(req as AdminRequest, associationId);
+      const { openBudgetRatification } = await import("./services/budget-ratification-service");
+      const row = await openBudgetRatification({
+        associationId,
+        budgetId: req.body.budgetId ?? null,
+        budgetVersionId: req.body.budgetVersionId ?? null,
+        adoptedAt: req.body.adoptedAt ? new Date(req.body.adoptedAt) : new Date(),
+        reserveStatement: req.body.reserveStatement ?? null,
+        declarationOverrideCount: req.body.declarationOverrideCount ?? null,
+        createdBy: (req as AdminRequest).adminUserEmail ?? null,
+      });
+      res.status(201).json(row);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(a) — distribute the 30-day owner summary + set the 10–60-day window.
+  app.post("/api/financial/budget-ratifications/:id/distribute-summary", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const id = getParam(req.params.id);
+      const [row] = await db.select().from(budgetRatifications).where(eq(budgetRatifications.id, id)).limit(1);
+      if (!row) return res.status(404).json({ message: "Budget ratification not found" });
+      assertAssociationScope(req as AdminRequest, row.associationId);
+      const { distributeBudgetSummary } = await import("./services/budget-ratification-service");
+      const result = await distributeBudgetSummary({
+        ratificationId: id,
+        summarySentAt: req.body.summarySentAt ? new Date(req.body.summarySentAt) : new Date(),
+        meetingDate: new Date(req.body.meetingDate),
+        associationName: String(req.body.associationName || "Your Association"),
+        fiscalYear: req.body.fiscalYear ?? new Date().getUTCFullYear(),
+        budgetTotal: Number(req.body.budgetTotal ?? 0),
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(a) — close the window and tally the negative-option vote.
+  app.post("/api/financial/budget-ratifications/:id/tally", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const id = getParam(req.params.id);
+      const [row] = await db.select().from(budgetRatifications).where(eq(budgetRatifications.id, id)).limit(1);
+      if (!row) return res.status(404).json({ message: "Budget ratification not found" });
+      assertAssociationScope(req as AdminRequest, row.associationId);
+      const { tallyAndResolveRatification } = await import("./services/budget-ratification-service");
+      const updated = await tallyAndResolveRatification({
+        ratificationId: id,
+        rejectVoteCount: Number(req.body.rejectVoteCount ?? 0),
+      });
+      safeInvalidateAlertCache();
+      res.json(updated);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(b) — preview the special-assessment threshold gate (pure; no persist).
+  app.post("/api/financial/budget-ratifications/special-assessment/evaluate", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const { evaluateSpecialAssessmentGate } = await import("./services/budget-ratification-service");
+      res.json(
+        evaluateSpecialAssessmentGate({
+          assessmentAmount: Number(req.body.assessmentAmount ?? 0),
+          baselineAnnualBudget: Number(req.body.baselineAnnualBudget ?? 0),
+          thresholdPct: req.body.thresholdPct != null ? Number(req.body.thresholdPct) : undefined,
+        }),
+      );
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(b) — create a special assessment (below threshold → imposed; at/above → opens vote).
+  app.post("/api/financial/budget-ratifications/special-assessment", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const associationId = String(req.body.associationId || "");
+      assertAssociationScope(req as AdminRequest, associationId);
+      const { createSpecialAssessment } = await import("./services/budget-ratification-service");
+      const result = await createSpecialAssessment({
+        associationId,
+        assessmentAmount: Number(req.body.assessmentAmount ?? 0),
+        baselineAnnualBudget: Number(req.body.baselineAnnualBudget ?? 0),
+        adoptedAt: req.body.adoptedAt ? new Date(req.body.adoptedAt) : new Date(),
+        thresholdPct: req.body.thresholdPct != null ? Number(req.body.thresholdPct) : undefined,
+        reserveStatement: req.body.reserveStatement ?? null,
+        declarationOverrideCount: req.body.declarationOverrideCount ?? null,
+        createdBy: (req as AdminRequest).adminUserEmail ?? null,
+      });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // §47-261e(c) — impose an emergency assessment (two-thirds board + attestation).
+  app.post("/api/financial/budget-ratifications/emergency", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const associationId = String(req.body.associationId || "");
+      assertAssociationScope(req as AdminRequest, associationId);
+      const { imposeEmergencyAssessment } = await import("./services/budget-ratification-service");
+      const result = await imposeEmergencyAssessment({
+        associationId,
+        assessmentAmount: Number(req.body.assessmentAmount ?? 0),
+        boardSeatCount: Number(req.body.boardSeatCount ?? 0),
+        boardVotesInFavor: Number(req.body.boardVotesInFavor ?? 0),
+        attestation: String(req.body.attestation || ""),
+        attestedBy: req.body.attestedBy ?? (req as AdminRequest).adminUserEmail ?? null,
+        adoptedAt: req.body.adoptedAt ? new Date(req.body.adoptedAt) : new Date(),
+        createdBy: (req as AdminRequest).adminUserEmail ?? null,
+      });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Owner-portal budget surface — pending/active ratifications the owner can see
+  // and their negative-option (owner-veto) right (§47-261e(a)).
+  app.get("/api/portal/budget-ratifications", requirePortal, async (req: PortalRequest, res) => {
+    try {
+      const { listBudgetRatifications } = await import("./services/budget-ratification-service");
+      const all = await listBudgetRatifications(req.portalAssociationId!);
+      const ownerFacing = all.filter((r) =>
+        ["summary-distributed", "voting-open", "ratified", "rejected", "imposed-no-vote", "emergency-imposed"].includes(r.status),
+      );
+      res.json(
+        ownerFacing.map((r) => ({
+          id: r.id,
+          ratificationType: r.ratificationType,
+          statuteCitation: r.statuteCitation,
+          status: r.status,
+          outcome: r.outcome,
+          meetingDate: r.meetingDate,
+          votingWindowMinDate: r.votingWindowMinDate,
+          votingWindowMaxDate: r.votingWindowMaxDate,
+          reserveStatement: r.reserveStatement,
+          assessmentAmount: r.assessmentAmount,
+          totalOwnerCount: r.totalOwnerCount,
+          rejectThresholdCount: r.rejectThresholdCount,
+          rejectVoteCount: r.rejectVoteCount,
+        })),
+      );
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
   app.get("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getVendors(getAssociationIdQuery(req));
@@ -6056,6 +6373,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(200).json(result);
       }
 
+      // A real Stripe delivery (carries a `stripe-signature` header) that is a valid
+      // Stripe *event* payload — `normalizeStripeWebhookPayload` only returns non-null
+      // for a genuine Stripe event (id+type+data) — but carries NO `associationId`
+      // metadata (so the per-association processing block above was skipped). This is
+      // a platform-level billing event (checkout.session.*, customer.subscription.*,
+      // invoice.*) that this per-HOA owner-payment handler is not designed to act on.
+      // Per Stripe best practice, ACKNOWLEDGE it with a 2xx so Stripe does not treat
+      // the delivery as failed, retry, and eventually disable the endpoint. This does
+      // NOT credit or write anything (this event class was never credited here — it
+      // was previously 400'd by the generic validator below). The internal-API path
+      // (no `stripe-signature` header) and the HMAC/shared-secret paths are untouched:
+      // an internal caller posts the normalized `{associationId, provider, ...}` shape,
+      // which is NOT a Stripe event payload, so `normalizedStripeEvent` is null and this
+      // branch does not fire.
+      if (stripeSignature && normalizedStripeEvent && !normalizedStripeEvent.associationId) {
+        console.log("[webhook] acknowledged unhandled Stripe event", {
+          type: normalizedStripeEvent.eventType,
+          id: normalizedStripeEvent.providerEventId,
+        });
+        return res.status(200).json({ received: true, handled: false });
+      }
+
       if (stripeSignature || hmacSignature) {
         // HMAC-SHA256 verification — lookup signing secret for this association
         const associationIdForVerify = typeof req.body.associationId === "string" ? req.body.associationId : null;
@@ -6759,6 +7098,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // GET /api/financial/ar-aging?associationId — AR AGING / DELINQUENCY (read-only,
+  // owner-ledger-derived, no GL flag / no assessment needed).
+  app.get("/api/financial/ar-aging", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+      const report = await buildArAgingReport(associationId);
+      res.json(report);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // GET /api/admin/financial/reconciliation-report?associationId
   // Per-owner balance reconciliation: expected (charges − payments via canonical
   // formula) vs actual (sum of ledger entries) per ownership row. Empty state when
@@ -6987,6 +7340,116 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         totalOutstanding,
         delinquentUnits,
         budgetUtilization,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // GET /api/financial/reports/cash-flow?startDate&endDate&associationId
+  //
+  // READ-ONLY cash-activity report for a self-managed HOA (cash-basis approximation).
+  // Cash IN  = owner-ledger payments received (by postedAt).
+  // Cash OUT = vendor invoices (by invoiceDate, excluding draft/void) + utility
+  //            payments (by paidDate ?? dueDate ?? createdAt), grouped by expense
+  //            category. Mirrors how the Budgets "actual" figure is computed, so
+  //            the numbers reconcile with the Budget-vs-Actual report. Never writes
+  //            any table; moves no money.
+  app.get("/api/financial/reports/cash-flow", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      if (!associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, associationId);
+
+      const startDateParam = typeof req.query.startDate === "string" ? req.query.startDate : null;
+      const endDateParam = typeof req.query.endDate === "string" ? req.query.endDate : null;
+      const startDate = startDateParam ? new Date(startDateParam) : new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+      const endDate = endDateParam ? new Date(endDateParam) : new Date();
+
+      const inRange = (d: Date | null | undefined) => {
+        if (!d) return false;
+        const t = new Date(d).getTime();
+        return t >= startDate.getTime() && t <= endDate.getTime();
+      };
+      const monthKey = (d: Date | null | undefined) => {
+        const dt = d ? new Date(d) : new Date();
+        return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}`;
+      };
+
+      // ── Cash IN: owner-ledger payments received in the period ──
+      const paymentRows = await db.select().from(ownerLedgerEntries).where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        eq(ownerLedgerEntries.entryType, "payment"),
+        gte(ownerLedgerEntries.postedAt, startDate),
+        lte(ownerLedgerEntries.postedAt, endDate),
+      ));
+
+      // ── Cash OUT: vendor invoices + utility payments ──
+      const [invoices, utilities, categories] = await Promise.all([
+        storage.getVendorInvoices(associationId),
+        storage.getUtilityPayments(associationId),
+        storage.getFinancialCategories(associationId),
+      ]);
+      const categoryNameById = new Map(categories.map((c) => [c.id, c.name]));
+      const nameForCategory = (categoryId: string | null | undefined) =>
+        (categoryId && categoryNameById.get(categoryId)) || "Uncategorized";
+
+      // Aggregate into monthly buckets + per-category outflow
+      const monthMap = new Map<string, { cashIn: number; cashOut: number }>();
+      const bump = (key: string, field: "cashIn" | "cashOut", amount: number) => {
+        const cur = monthMap.get(key) ?? { cashIn: 0, cashOut: 0 };
+        cur[field] += amount;
+        monthMap.set(key, cur);
+      };
+
+      let totalCashIn = 0;
+      for (const p of paymentRows) {
+        const amt = Math.abs(p.amount);
+        totalCashIn += amt;
+        bump(monthKey(p.postedAt), "cashIn", amt);
+      }
+
+      const outByCategory = new Map<string, number>();
+      let totalCashOut = 0;
+
+      for (const inv of invoices) {
+        if (inv.status === "draft" || inv.status === "void") continue;
+        if (!inRange(inv.invoiceDate)) continue;
+        const amt = Math.abs(inv.amount);
+        totalCashOut += amt;
+        bump(monthKey(inv.invoiceDate), "cashOut", amt);
+        const cat = nameForCategory(inv.categoryId);
+        outByCategory.set(cat, (outByCategory.get(cat) ?? 0) + amt);
+      }
+
+      for (const u of utilities) {
+        const when = u.paidDate ?? u.dueDate ?? u.createdAt;
+        if (!inRange(when)) continue;
+        const amt = Math.abs(u.amount);
+        totalCashOut += amt;
+        bump(monthKey(when), "cashOut", amt);
+        const cat = nameForCategory(u.categoryId) === "Uncategorized"
+          ? `Utilities${u.utilityType ? ` — ${u.utilityType}` : ""}`
+          : nameForCategory(u.categoryId);
+        outByCategory.set(cat, (outByCategory.get(cat) ?? 0) + amt);
+      }
+
+      const series = Array.from(monthMap.entries())
+        .map(([month, v]) => ({ month, cashIn: v.cashIn, cashOut: v.cashOut, net: v.cashIn - v.cashOut }))
+        .sort((a, b) => a.month.localeCompare(b.month));
+
+      const byCategory = Array.from(outByCategory.entries())
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount);
+
+      res.json({
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        cashIn: { total: totalCashIn },
+        cashOut: { total: totalCashOut, byCategory },
+        netCashFlow: totalCashIn - totalCashOut,
+        series,
+        basis: "Cash-basis approximation. Cash in = owner payments received (by post date). Cash out = vendor invoices (by invoice date, excluding drafts/voids) and utility payments (by paid/due date).",
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -12968,67 +13431,87 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       await db.delete(portalLoginTokens).where(eq(portalLoginTokens.email, email));
       await db.insert(portalLoginTokens).values({ associationId: null, email, otpHash, expiresAt });
 
+      // Resolve the owner's community (association) name so the email is branded to THEIR HOA,
+      // not to the platform. The OTP flow is email-only (one code covers all of an email's
+      // associations). If the email maps to exactly one association, use that name; if it maps
+      // to multiple (rare) or none resolvable, fall back to a neutral label — never invent a name.
+      let communityName = "Your community portal";
+      {
+        const distinctAssocIds = Array.from(new Set(activeAccesses.map((a) => a.associationId)));
+        if (distinctAssocIds.length === 1) {
+          const [assocRow] = await db
+            .select({ name: associations.name })
+            .from(associations)
+            .where(eq(associations.id, distinctAssocIds[0]));
+          if (assocRow?.name) communityName = assocRow.name;
+        }
+      }
+
       // Send the OTP via email; fall back to simulation mode
       const emailProviderReady = isEmailProviderConfigured();
       if (emailProviderReady) {
         try {
           await sendPlatformEmail({
             to: email,
-            subject: "Your Owner Portal Login Code — Your Condo Management",
+            subject:
+              communityName === "Your community portal"
+                ? "Your login code — Your Condo Manager Owner Portal"
+                : `Your ${communityName} login code`,
             html: `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background-color:#f8fafc;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
-  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f8fafc;padding:40px 16px">
+<body style="margin:0;padding:0;background-color:#f5f9f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f9f8;padding:40px 16px">
     <tr><td align="center">
-      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px">
+      <table width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;border-radius:14px;overflow:hidden;box-shadow:0 1px 3px rgba(1,77,74,0.08)">
 
         <!-- Header -->
-        <tr><td style="background-color:#1e293b;border-radius:12px 12px 0 0;padding:28px 32px">
+        <tr><td style="background-color:#014D4A;background:linear-gradient(135deg,#014D4A,#036a66);padding:30px 32px">
           <table width="100%" cellpadding="0" cellspacing="0">
             <tr>
-              <td>
-                <div style="display:inline-block;background-color:#6366f1;color:#ffffff;font-size:13px;font-weight:700;letter-spacing:0.05em;padding:6px 12px;border-radius:6px">YCM</div>
+              <td style="vertical-align:middle;width:42px">
+                <div style="width:38px;height:38px;border-radius:9px;background-color:#ffffff;color:#014D4A;font-size:20px;font-weight:800;text-align:center;line-height:38px;font-family:'Plus Jakarta Sans',Helvetica,Arial,sans-serif">${(communityName.match(/[A-Za-z]/)?.[0] ?? "C").toUpperCase()}</div>
+              </td>
+              <td style="vertical-align:middle;padding-left:12px">
+                <div style="font-size:18px;font-weight:700;color:#ffffff;letter-spacing:-0.01em">${communityName}</div>
+                <div style="font-size:12.5px;color:#bfe8e2;margin-top:1px">Owner Portal</div>
               </td>
             </tr>
-            <tr><td style="padding-top:14px">
-              <div style="font-size:20px;font-weight:600;color:#ffffff">Your Condo Management</div>
-              <div style="font-size:13px;color:#94a3b8;margin-top:2px">Owner Portal</div>
-            </td></tr>
           </table>
         </td></tr>
 
         <!-- Body -->
-        <tr><td style="background-color:#ffffff;padding:32px">
-          <p style="margin:0 0 8px;font-size:22px;font-weight:600;color:#0f172a">Your login code</p>
-          <p style="margin:0 0 28px;font-size:15px;color:#475569;line-height:1.6">
+        <tr><td style="background-color:#ffffff;padding:34px 32px">
+          <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#0f2725">Your login code</p>
+          <p style="margin:0 0 26px;font-size:15px;color:#5b716e;line-height:1.6">
             Use the code below to sign in to your owner portal.<br>
-            This code expires in <strong style="color:#0f172a">15 minutes</strong>.
+            It expires in <strong style="color:#0f2725">15 minutes</strong>.
           </p>
 
           <!-- Code block -->
-          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px">
-            <tr><td style="background-color:#f1f5f9;border:2px dashed #cbd5e1;border-radius:10px;padding:28px;text-align:center">
-              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#64748b;margin-bottom:10px;font-weight:600">One-time code</div>
-              <div style="font-size:42px;font-weight:700;letter-spacing:0.3em;color:#1e293b;font-family:'Courier New',Courier,monospace">${otp}</div>
+          <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:26px">
+            <tr><td style="background-color:#eafaf8;border:2px dashed #8fd0c8;border-radius:12px;padding:26px;text-align:center">
+              <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.14em;color:#0f8a4a;margin-bottom:10px;font-weight:700">One-time code</div>
+              <div style="font-size:42px;font-weight:700;letter-spacing:0.3em;color:#014D4A;font-family:'Courier New',Courier,monospace">${otp}</div>
             </td></tr>
           </table>
 
-          <p style="margin:0 0 16px;font-size:14px;color:#475569;line-height:1.6">
-            Enter this code on the login screen to access your account. For security, do not share this code with anyone — Your Condo Management will never ask for it.
+          <p style="margin:0 0 16px;font-size:14px;color:#5b716e;line-height:1.6">
+            Enter this code on the login screen to access your account. For your security, never share this code — we will never ask you for it.
           </p>
 
-          <table cellpadding="0" cellspacing="0" style="margin-bottom:8px">
-            <tr><td style="background-color:#fef3c7;border-left:3px solid #f59e0b;border-radius:0 4px 4px 0;padding:10px 14px">
-              <span style="font-size:13px;color:#92400e">If you did not request this code, you can safely ignore this email.</span>
+          <table cellpadding="0" cellspacing="0" style="margin-bottom:4px">
+            <tr><td style="background-color:#fff8e8;border-left:3px solid #b8860b;border-radius:0 6px 6px 0;padding:10px 14px">
+              <span style="font-size:13px;color:#7a5a12">If you did not request this code, you can safely ignore this email — no one can access your account without it.</span>
             </td></tr>
           </table>
         </td></tr>
 
         <!-- Footer -->
-        <tr><td style="background-color:#f1f5f9;border-radius:0 0 12px 12px;padding:20px 32px">
-          <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">
-            &copy; ${new Date().getFullYear()} Your Condo Management &nbsp;&middot;&nbsp; Owner Portal &nbsp;&middot;&nbsp; This is an automated message, please do not reply.
+        <tr><td style="background-color:#f5f9f8;border-top:1px solid #e3ecea;padding:20px 32px">
+          <p style="margin:0;font-size:12px;color:#8aa3a0;text-align:center;line-height:1.6">
+            This is an automated message — please do not reply.<br>
+            Powered by Your Condo Manager
           </p>
         </td></tr>
 
@@ -13037,7 +13520,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   </table>
 </body>
 </html>`,
-            text: `Your Condo Management — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nDo not share this code with anyone. If you did not request it, you can safely ignore this email.\n\n© ${new Date().getFullYear()} Your Condo Management`,
+            text: `${communityName} — Owner Portal\n\nYour login code is: ${otp}\n\nThis code expires in 15 minutes. Enter it on the login screen to access your account.\n\nFor your security, never share this code. If you did not request it, you can safely ignore this email.\n\nPowered by Your Condo Manager`,
           });
         } catch (emailErr: any) {
           console.error("[portal-otp][email-send-failed]", { email, error: emailErr.message });
@@ -13891,6 +14374,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
       const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
       const activePlan = paymentPlansAll.find((p) => p.status === "active") ?? null;
+      // 2026-07-01 (display-only) — most-recent payment date, derived read-only
+      // from the ledger. Drives the owner-portal "Paid in full on <date>" state
+      // when the owner owes nothing. No money logic, no ledger write — just the
+      // `postedAt` of the newest `payment`/`credit` entry.
+      const lastPayment = myEntries
+        .filter((e) => e.entryType === "payment" || e.entryType === "credit")
+        .map((e) => (e.postedAt ? new Date(e.postedAt) : null))
+        .filter((d): d is Date => d != null && !Number.isNaN(d.getTime()))
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
       // Next due date from the soonest upcoming nextRunDate
       const nextDue = activeSchedules
         .map((s) => s.nextRunDate ? new Date(s.nextRunDate) : null)
@@ -13981,12 +14473,40 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const amountDueResolution = resolveAmountDue(planInput, new Date());
       const amountDueThisPeriod = toAmountDueThisPeriod(amountDueResolution);
 
+      // 2026-07-03 (display-only) — the "My Finances" summary tiles are
+      // labeled "Total paid (YTD)" / "Total charges (YTD)" and the client
+      // reads `dashboard.totalCharges` / `dashboard.totalPayments`, but the
+      // endpoint previously only sent `totalCharged` / `totalPaid`, so both
+      // tiles rendered $0.00. Provide the exact fields the client expects,
+      // filtered to the current calendar year (year-to-date). Same entry-type
+      // groupings as the all-time totals above; scoped to `myEntries` (all of
+      // this owner's units). Read-only aggregation — no ledger/money writes.
+      const ytdStart = new Date(new Date().getFullYear(), 0, 1);
+      const myEntriesYtd = myEntries.filter((e) => e.postedAt && new Date(e.postedAt) >= ytdStart);
+
+      // 2026-07-03 — per-unit dues-vs-assessment breakdown (additive, read-only).
+      // Owners with multiple units want each unit's "due now" and "balance"
+      // split into HOA dues vs special assessment (installment). Pure partition
+      // of the figures already computed above (`byUnit` +
+      // `specialAssessmentUpcomingInstallments`) using the SAME dues-vs-
+      // assessment classification the owner-wide "What's due now" split uses, so
+      // the per-unit sums reconcile EXACTLY to the owner-wide totals. The
+      // upcoming installment is scoped to the owner's primary unit (ownerUnitId)
+      // and is attributed there; other units show $0 installment due now. Moves
+      // no money; changes no totals.
+      const perUnit = buildPerUnitBreakdown(byUnit, specialAssessmentUpcomingInstallments, ownerUnitId);
+
       res.json({
         balance,
         totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
         totalPaid: Math.abs(myEntries.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
+        // Year-to-date fields consumed by the summary tiles on My Finances.
+        totalCharges: myEntriesYtd.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
+        totalPayments: Math.abs(myEntriesYtd.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
         feeSchedules: activeSchedules.map((s) => ({ id: s.id, name: s.chargeDescription, amount: s.amount, frequency: s.frequency })),
         nextDueDate: nextDue ? nextDue.toISOString() : null,
+        // 2026-07-01 (display-only) — drives the "Paid in full on <date>" state.
+        lastPaymentDate: lastPayment ? lastPayment.toISOString() : null,
         paymentPlan: activePlan ? {
           id: activePlan.id,
           totalAmount: activePlan.totalAmount,
@@ -14000,6 +14520,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         specialAssessmentUpcomingInstallments,
         // 2026-05-25 — per-unit hierarchical breakdown (additive).
         byUnit,
+        // 2026-07-03 — per-unit dues-vs-assessment breakdown (additive, read-only).
+        perUnit,
         grandTotal: balance,
         // 2026-05-25 — plan-aware "Amount due this period" (additive).
         // null when no active plan, or when the plan is quarterly and we
@@ -17687,16 +18209,13 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       let totalOwnerAccounts = 0;
 
       await Promise.all(visibleAssociations.map(async (assoc) => {
-        const [accounts, ledgerSummary] = await Promise.all([
-          storage.getFinancialAccounts(assoc.id),
-          storage.getOwnerLedgerSummary(assoc.id),
-        ]);
+        const ledgerSummary = await storage.getOwnerLedgerSummary(assoc.id);
 
-        for (const acct of accounts) {
-          if (acct.accountType === "reserve" || acct.name.toLowerCase().includes("reserve")) {
-            totalReserveFunds += 0; // balances aren't stored on account rows; use placeholder
-          }
-        }
+        // CT CIOA §47-261e(a) / §47-270(a)(5): the reserve amount is a board-declared
+        // per-association disclosure figure (associations.reserveBalanceCents), NOT a
+        // sum of per-account bank balances. Cents → dollars for this dollar-valued
+        // aggregate. No CT funding-mandate check (CT discloses; DE §81-315 mandates).
+        totalReserveFunds += reserveDisclosureDollars(assoc);
 
         const delinquent = ledgerSummary.filter((e) => e.balance > 0);
         totalDelinquentAccounts += delinquent.length;
@@ -17756,7 +18275,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           state: assoc.state || null,
           unitCount: unitsList.length,
           operatingBalance: 0,
-          reserveBalance: 0,
+          // CT CIOA §47-261e(a)/§47-270(a)(5): board-declared reserve disclosure
+          // (associations.reserveBalanceCents), cents → dollars. Null → 0.
+          reserveBalance: reserveDisclosureDollars(assoc),
           delinquencyPct: Math.round(delinquencyPct * 10) / 10,
           openWorkOrders: openWOs,
           status,
@@ -17873,7 +18394,12 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         occupancyRatePercent: overview.occupancyRatePercent,
         activeOwners: overview.activeOwners,
         activeOccupants: overview.activeOccupants,
-        reserveFund: 0, // placeholder — no reserve balance table
+        // CT CIOA §47-270(a)(5) (resale cert) + §47-261e(a) (budget summary): the
+        // board-declared reserve amount + the basis on which it is calculated/funded.
+        // reserveFund in dollars (cents → dollars); reserveBasis is the narrative.
+        // Disclosure only — no CT reserve-study or funding-floor mandate (DE §81-315).
+        reserveFund: reserveDisclosureDollars(assoc),
+        reserveBasis: reserveDisclosureBasis(assoc),
         openTickets: overview.maintenanceOpen,
         highPriorityTickets: highPriorityOpen,
         maintenanceOverdue: overview.maintenanceOverdue,

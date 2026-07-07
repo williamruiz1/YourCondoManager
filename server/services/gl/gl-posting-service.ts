@@ -24,15 +24,20 @@ import {
   glAccounts,
   glEntries,
   ownerLedgerEntries,
+  vendorInvoices,
+  financialCategories,
   type GlAccount,
   type InsertGlEntry,
 } from "@shared/schema";
 import {
   CHART_OF_ACCOUNTS,
   postOwnerLedgerEntries,
+  postVendorInvoices,
+  expenseAccountCodeForCategory,
   validateInvariants,
   type JournalEntry,
   type OwnerLedgerEntryLike,
+  type VendorInvoiceLike,
 } from "./posting";
 import { isGlEnabledForAssociation } from "./flag";
 
@@ -105,6 +110,43 @@ async function loadOwnerLedger(associationId: string): Promise<OwnerLedgerEntryL
   }));
 }
 
+/**
+ * Load vendor invoices for an association as the pure-core input shape, resolving
+ * each invoice's expense account from its financial_category name (falling back to
+ * the vendor name, then to 5000 General Operating Expense). Read-only — never
+ * mutates vendor_invoices. The pure mapper drops draft/void/zero invoices, so the
+ * GL only carries committed costs (received/approved → A/P, paid → cash).
+ */
+async function loadVendorInvoices(associationId: string): Promise<VendorInvoiceLike[]> {
+  const rows = await db
+    .select({
+      id: vendorInvoices.id,
+      amount: vendorInvoices.amount,
+      status: vendorInvoices.status,
+      invoiceDate: vendorInvoices.invoiceDate,
+      vendorName: vendorInvoices.vendorName,
+      invoiceNumber: vendorInvoices.invoiceNumber,
+      categoryName: financialCategories.name,
+    })
+    .from(vendorInvoices)
+    .leftJoin(financialCategories, eq(vendorInvoices.categoryId, financialCategories.id))
+    .where(eq(vendorInvoices.associationId, associationId));
+
+  return rows.map((r) => ({
+    id: r.id,
+    amount: r.amount,
+    status: r.status,
+    // Vendor invoices carry no separate "posted" timestamp; the invoice date is
+    // the economic event date for the expense leg.
+    postedAt: r.invoiceDate,
+    description: r.invoiceNumber
+      ? `${r.vendorName} — invoice ${r.invoiceNumber}`
+      : r.vendorName,
+    // Category drives the 5xxx expense account; fall back to vendor name keywords.
+    expenseAccountCode: expenseAccountCodeForCategory(r.categoryName ?? r.vendorName),
+  }));
+}
+
 /** Turn validated journal entries into gl_entries insert rows. */
 function toInsertRows(
   associationId: string,
@@ -168,8 +210,16 @@ export async function syncAssociationGl(
   const accountByKey = await ensureChartOfAccounts(associationId);
   const accountsSeeded = accountByKey.size;
 
+  // The owner-ledger (dues/A-R, INCOME) side + the vendor-invoice (A-P/cash,
+  // EXPENSE) side both derive into the same balanced-journal corpus. Posting them
+  // together gives the GL a real income statement (income AND costs) and an A/P
+  // balance. Each side is independently balanced, so the corpus balances.
   const ledger = await loadOwnerLedger(associationId);
-  const journals = postOwnerLedgerEntries(ledger);
+  const invoices = await loadVendorInvoices(associationId);
+  const journals = [
+    ...postOwnerLedgerEntries(ledger),
+    ...postVendorInvoices(invoices),
+  ];
 
   // HARD GATE: validate double-entry + interfund invariants BEFORE writing.
   const violations = validateInvariants(journals);

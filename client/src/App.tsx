@@ -52,6 +52,7 @@ const UnitsPage = lazyWithReload(() => import("@/pages/units"), "@/pages/units")
 const PersonsPage = lazyWithReload(() => import("@/pages/persons"), "@/pages/persons");
 const BoardPage = lazyWithReload(() => import("@/pages/board"), "@/pages/board");
 const DocumentsPage = lazyWithReload(() => import("@/pages/documents"), "@/pages/documents");
+const RecordsRequestsPage = lazyWithReload(() => import("@/pages/records-requests"), "@/pages/records-requests");
 const RoadmapPage = lazyWithReload(() => import("@/pages/roadmap"), "@/pages/roadmap");
 const AdminUsersPage = lazyWithReload(() => import("@/pages/admin-users"), "@/pages/admin-users");
 const AdminAccessReviewPage = lazyWithReload(() => import("@/pages/admin-access-review"), "@/pages/admin-access-review");
@@ -63,12 +64,17 @@ const GoLiveReadinessPage = lazyWithReload(() => import("@/pages/go-live-readine
 const AdminReconciliationPage = lazyWithReload(() => import("@/pages/admin-reconciliation"), "@/pages/admin-reconciliation");
 // founder-os#2479 — admin manual payment recording surface.
 const AdminPaymentsRecordPage = lazyWithReload(() => import("@/pages/admin-payments-record"), "@/pages/admin-payments-record");
+// HOA Remediation Phase 2 — disbursement dual-approval (maker-checker) queue.
+const AdminDisbursementsPage = lazyWithReload(() => import("@/pages/admin-disbursements"), "@/pages/admin-disbursements");
 const ExecutivePage = lazyWithReload(() => import("@/pages/executive"), "@/pages/executive");
 const FinancialFoundationPage = lazyWithReload(() => import("@/pages/financial-foundation"), "@/pages/financial-foundation");
 const FinancialRulesPage = lazyWithReload(() => import("@/pages/financial-rules"), "@/pages/financial-rules");
 const FinancialPaymentsPage = lazyWithReload(() => import("@/pages/financial-payments"), "@/pages/financial-payments");
 const FinancialReportsPage = lazyWithReload(() => import("@/pages/financial-reports"), "@/pages/financial-reports");
 const FinancialStatementPage = lazyWithReload(() => import("@/pages/financial-statement"), "@/pages/financial-statement");
+const ResaleCertificatePage = lazyWithReload(() => import("@/pages/resale-certificate"), "@/pages/resale-certificate");
+const FinancialGlStatementsPage = lazyWithReload(() => import("@/pages/financial-gl-statements"), "@/pages/financial-gl-statements");
+const FinancialArAgingPage = lazyWithReload(() => import("@/pages/financial-ar-aging"), "@/pages/financial-ar-aging");
 const FinancialBillingPage = lazyWithReload(() => import("@/pages/financial-billing"), "@/pages/financial-billing");
 const FinancialExpensesPage = lazyWithReload(() => import("@/pages/financial-expenses"), "@/pages/financial-expenses");
 const FinancialBankConnectionsPage = lazyWithReload(() => import("@/pages/financial-bank-connections"), "@/pages/financial-bank-connections");
@@ -173,7 +179,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
   },
   {
     id: "finance",
-    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/rules", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports", "/app/financial/statement", "/app/financial/bank-connections"],
+    matchPrefixes: ["/app/financial/foundation", "/app/financial/billing", "/app/financial/rules", "/app/financial/payments", "/app/financial/expenses", "/app/financial/reports", "/app/financial/ar-aging", "/app/financial/statements", "/app/financial/statement", "/app/financial/bank-connections"],
     testId: "tabs-finance-inpage",
     tabs: [
       { label: "Chart of Accounts", href: "/app/financial/foundation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
@@ -183,6 +189,8 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Bank Accounts", href: "/app/financial/bank-connections", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Expenses", href: "/app/financial/expenses", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Reports", href: "/app/financial/reports", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "AR Aging", href: "/app/financial/ar-aging", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
+      { label: "Statements", href: "/app/financial/statements", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { label: "Owner Statement", href: "/app/financial/statement", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
     ],
   },
@@ -219,6 +227,7 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
       { label: "Access Review", href: "/app/admin/access-review", roles: ["platform-admin"] },
       { label: "Reconciliation", href: "/app/admin/reconciliation", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"] },
       { label: "Record Payment", href: "/app/admin/payments/record", roles: ["platform-admin", "board-officer"] },
+      { label: "Disbursement Approvals", href: "/app/admin/disbursements", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"] },
       { label: "Owner Portal", href: "/portal", roles: ["platform-admin"] },
     ],
   },
@@ -418,6 +427,9 @@ function WorkspaceRouter({
         <Route path="/app/documents">
           <DocumentsPage />
         </Route>
+        <Route path="/app/records-requests">
+          <RecordsRequestsPage />
+        </Route>
         {/* 3.2 Q6 — `/app/admin` alias retired. Hard 404 via the catch-all
             below. The previous `<Route path="/app/admin" component={RoadmapPage} />`
             declaration is intentionally removed; legitimate access to the
@@ -436,6 +448,8 @@ function WorkspaceRouter({
         <Route path="/app/admin/reconciliation" component={AdminReconciliationPage} />
         {/* founder-os#2479 — admin manual payment recording. */}
         <Route path="/app/admin/payments/record" component={AdminPaymentsRecordPage} />
+        {/* HOA Remediation Phase 2 — disbursement dual-approval (maker-checker). */}
+        <Route path="/app/admin/disbursements" component={AdminDisbursementsPage} />
         {/* Legacy alias from the dispatch spec (/admin/payments/record). */}
         <Route path="/admin/payments/record">
           <RouteRedirect to="/app/admin/payments/record" />
@@ -449,6 +463,8 @@ function WorkspaceRouter({
         <Route path="/app/financial/payments"><RouteGuard route="/app/financial/payments"><ZoneBoundary zone="Financials"><FinancialPaymentsPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/expenses"><RouteGuard route="/app/financial/expenses"><ZoneBoundary zone="Financials"><FinancialExpensesPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/reports"><RouteGuard route="/app/financial/reports"><ZoneBoundary zone="Financials"><FinancialReportsPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/statements"><RouteGuard route="/app/financial/statements"><ZoneBoundary zone="Financials"><FinancialGlStatementsPage /></ZoneBoundary></RouteGuard></Route>
+        <Route path="/app/financial/ar-aging"><RouteGuard route="/app/financial/ar-aging"><ZoneBoundary zone="Financials"><FinancialArAgingPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/statement"><RouteGuard route="/app/financial/statement"><ZoneBoundary zone="Financials"><FinancialStatementPage /></ZoneBoundary></RouteGuard></Route>
         <Route path="/app/financial/bank-connections"><RouteGuard route="/app/financial/bank-connections"><ZoneBoundary zone="Financials"><FinancialBankConnectionsPage /></ZoneBoundary></RouteGuard></Route>
         {/* Finance — legacy redirects (3.2 Q4 archive — preserved verbatim;

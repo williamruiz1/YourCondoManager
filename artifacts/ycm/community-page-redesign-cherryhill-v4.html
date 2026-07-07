@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html class="light" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Cherry Hill Court Condominiums — Community</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap" rel="stylesheet"/>
+<script>
+  tailwind.config = { theme: { extend: {
+    colors: { teal:"#014D4A", teal2:"#003432", accent:"#2DBDB0", ink:"#13201e", mut:"#5c726f",
+              line:"#e3edeb", surface:"#f5f9f8", card:"#ffffff", soft:"#e9f6f4" },
+    fontFamily: { serif:['"Source Serif 4"','serif'], body:['Inter','sans-serif'] },
+    maxWidth: { container:"1200px" }, spacing: { gut:"24px", md:"40px" }
+  }}}
+</script>
+<style>
+  body{font-family:Inter,sans-serif;color:#13201e;background:#f5f9f8}
+  .serif{font-family:"Source Serif 4",serif}
+  .material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24}
+  .fill{font-variation-settings:'FILL' 1,'wght' 500}
+  .hero-grad{background:linear-gradient(135deg,#014D4A 0%,#003432 100%)}
+  .mark{width:30px;height:30px;border-radius:8px;background:#014D4A;position:relative;display:inline-block}
+  .mark i{position:absolute;bottom:7px;width:4px;background:#fff;border-radius:1px}
+  .mark i:nth-child(1){left:7px;height:7px}.mark i:nth-child(2){left:13px;height:11px}.mark i:nth-child(3){left:19px;height:16px}
+  .heromock{background:linear-gradient(160deg,#ffffff,#eafaf8);border:1px solid rgba(255,255,255,.4)}
+</style>
+</head>
+<body class="antialiased">
+
+<nav class="bg-card border-b border-line sticky top-0 z-50">
+  <div class="flex justify-between items-center px-md w-full h-16 max-w-container mx-auto">
+    <div class="flex items-center gap-2.5"><span class="mark"><i></i><i></i><i></i></span><span class="serif font-bold text-[19px] text-teal">Cherry Hill Court</span></div>
+    <div class="hidden md:flex items-center gap-8 text-sm font-semibold">
+      <a class="text-teal border-b-2 border-accent pb-1" href="#">Home</a>
+      <a class="text-mut hover:text-teal transition-colors" href="#about">About</a>
+      <a class="text-mut hover:text-teal transition-colors" href="#board">Board</a>
+      <a class="text-mut hover:text-teal transition-colors" href="#documents">Documents</a>
+      <a class="text-mut hover:text-teal transition-colors" href="#contact">Contact</a>
+    </div>
+    <a href="https://app.yourcondomanager.org/portal" class="bg-teal text-white px-5 py-2 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity">Owner Portal</a>
+  </div>
+</nav>
+
+<main>
+  <!-- Hero -->
+  <section class="hero-grad text-white overflow-hidden">
+    <div class="max-w-container mx-auto px-md py-20 flex flex-col lg:flex-row items-center gap-14">
+      <div class="lg:w-1/2 space-y-6">
+        <div class="inline-flex items-center gap-2 bg-white/10 px-4 py-1.5 rounded-full border border-white/20">
+          <span class="material-symbols-outlined text-[18px]">location_on</span>
+          <span class="text-xs font-semibold uppercase tracking-wider">New Haven, Connecticut · 18 Residences</span>
+        </div>
+        <h1 class="serif font-bold text-[44px] leading-[1.08]">Welcome to Cherry Hill Court Condominiums</h1>
+        <p class="text-[17px] text-white/80 max-w-xl">A self-managed residential community where clarity meets convenience. Residents manage dues, documents, and requests through the secure Owner Portal — all in one place.</p>
+        <div class="flex flex-wrap gap-4 pt-2">
+          <a href="https://app.yourcondomanager.org/portal" class="bg-accent text-teal2 px-7 py-3.5 rounded-lg font-semibold flex items-center gap-2 shadow-lg hover:brightness-110 transition-all">Owner Portal <span class="material-symbols-outlined">arrow_forward</span></a>
+          <a href="#contact" class="border-2 border-white/30 text-white px-7 py-3.5 rounded-lg font-semibold hover:bg-white/10 transition-all">Contact the Board</a>
+        </div>
+      </div>
+      <div class="lg:w-1/2 relative w-full">
+        <div class="heromock relative z-10 rounded-2xl shadow-2xl p-6 text-ink">
+          <div class="flex items-center justify-between mb-5"><div class="flex items-center gap-2"><span class="mark"></span><b class="serif text-teal">Owner Portal</b></div><span class="text-xs text-mut">Welcome back</span></div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div class="bg-soft rounded-xl p-4"><div class="text-xs text-mut uppercase tracking-wide">Your units</div><div class="serif text-2xl font-bold text-teal">3</div></div>
+            <div class="bg-soft rounded-xl p-4"><div class="text-xs text-mut uppercase tracking-wide">Account balance</div><div class="serif text-2xl font-bold text-teal">$7,592.61</div></div>
+          </div>
+          <div class="bg-white border border-line rounded-xl p-4 flex items-center justify-between"><div><div class="text-sm font-semibold">Monthly dues</div><div class="text-xs text-mut">Due July 1</div></div><span class="bg-accent text-teal2 text-xs font-bold px-3 py-1.5 rounded-full">Pay now</span></div>
+        </div>
+        <div class="absolute -top-10 -right-10 w-56 h-56 bg-accent/25 blur-[90px] rounded-full"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- About + Quick facts -->
+  <section id="about" class="py-20">
+    <div class="max-w-container mx-auto px-md grid lg:grid-cols-12 gap-gut items-start">
+      <div class="lg:col-span-7 space-y-5">
+        <h2 class="serif font-semibold text-[30px] border-l-4 border-accent pl-5 text-teal">About the community</h2>
+        <div class="space-y-4 text-[15.5px] text-[#33514d] leading-relaxed">
+          <p>Cherry Hill Court is an 18-residence condominium community in New Haven, Connecticut. Run by an elected board of resident owners, the community is self-managed — day-to-day operations, finances, and governance are handled directly by the board with the support of YourCondoManager.</p>
+          <p>Owners stay informed and take care of everything — dues, account statements, maintenance requests, and governing documents — through a single secure Owner Portal. Prospective buyers, lenders, and insurers can request documents and certificates through the community's official channels.</p>
+          <p>This page is the community's public front door. Owners should sign in to the Owner Portal for account-specific information; the contacts below are here for general inquiries.</p>
+        </div>
+      </div>
+      <div class="lg:col-span-5 bg-card border border-line rounded-2xl p-8 shadow-sm">
+        <h3 class="text-sm font-semibold text-teal mb-7 uppercase tracking-widest">Quick facts</h3>
+        <div class="space-y-7">
+          <div class="flex gap-4"><div class="w-12 h-12 rounded-xl bg-soft flex items-center justify-center text-teal shrink-0"><span class="material-symbols-outlined">gavel</span></div><div><h4 class="font-semibold text-[15px]">Governed under CT&nbsp;CIOA</h4><p class="text-xs text-mut">Connecticut Common Interest Ownership Act</p></div></div>
+          <div class="flex gap-4"><div class="w-12 h-12 rounded-xl bg-soft flex items-center justify-center text-teal shrink-0"><span class="material-symbols-outlined">home</span></div><div><h4 class="font-semibold text-[15px]">18 residences</h4><p class="text-xs text-mut">Owner-occupied &amp; rented units</p></div></div>
+          <div class="flex gap-4"><div class="w-12 h-12 rounded-xl bg-soft flex items-center justify-center text-teal shrink-0"><span class="material-symbols-outlined">payments</span></div><div><h4 class="font-semibold text-[15px]">Online dues</h4><p class="text-xs text-mut">Secure card &amp; bank payment</p></div></div>
+          <div class="flex gap-4"><div class="w-12 h-12 rounded-xl bg-soft flex items-center justify-center text-teal shrink-0"><span class="material-symbols-outlined">groups</span></div><div><h4 class="font-semibold text-[15px]">Self-managed</h4><p class="text-xs text-mut">Resident-elected board</p></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Board & Management -->
+  <section id="board" class="py-20 bg-card border-y border-line">
+    <div class="max-w-container mx-auto px-md">
+      <div class="text-center mb-14 space-y-2">
+        <h2 class="serif font-semibold text-[30px] text-teal">Board &amp; Management</h2>
+        <p class="text-mut">The volunteers elected to serve the Cherry Hill Court community.</p>
+      </div>
+      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-gut">
+        <div class="bg-[#fbfdfd] p-6 rounded-2xl border border-line hover:shadow-md transition-shadow group">
+          <div class="w-14 h-14 bg-soft rounded-full mb-4 flex items-center justify-center text-teal group-hover:bg-teal group-hover:text-white transition-colors"><span class="material-symbols-outlined text-[28px]">person</span></div>
+          <h4 class="serif font-semibold text-[18px]">Board President</h4><p class="text-sm text-accent font-semibold mb-3">Executive Committee</p>
+          <p class="text-sm text-mut mb-5">Presides over board meetings and oversees community governance.</p>
+          <a class="text-teal text-sm font-semibold flex items-center gap-1 hover:underline" href="#contact">Contact <span class="material-symbols-outlined text-[18px]">mail</span></a>
+        </div>
+        <div class="bg-[#fbfdfd] p-6 rounded-2xl border border-line hover:shadow-md transition-shadow group">
+          <div class="w-14 h-14 bg-soft rounded-full mb-4 flex items-center justify-center text-teal group-hover:bg-teal group-hover:text-white transition-colors"><span class="material-symbols-outlined text-[28px]">account_balance</span></div>
+          <h4 class="serif font-semibold text-[18px]">Treasurer</h4><p class="text-sm text-accent font-semibold mb-3">Finance &amp; Budgets</p>
+          <p class="text-sm text-mut mb-5">Manages community finances, dues, and the annual budget.</p>
+          <a class="text-teal text-sm font-semibold flex items-center gap-1 hover:underline" href="#contact">Contact <span class="material-symbols-outlined text-[18px]">mail</span></a>
+        </div>
+        <div class="bg-[#fbfdfd] p-6 rounded-2xl border border-line hover:shadow-md transition-shadow group">
+          <div class="w-14 h-14 bg-soft rounded-full mb-4 flex items-center justify-center text-teal group-hover:bg-teal group-hover:text-white transition-colors"><span class="material-symbols-outlined text-[28px]">edit_note</span></div>
+          <h4 class="serif font-semibold text-[18px]">Secretary</h4><p class="text-sm text-accent font-semibold mb-3">Records &amp; Admin</p>
+          <p class="text-sm text-mut mb-5">Maintains records, meeting minutes, and communications.</p>
+          <a class="text-teal text-sm font-semibold flex items-center gap-1 hover:underline" href="#contact">Contact <span class="material-symbols-outlined text-[18px]">mail</span></a>
+        </div>
+        <div class="bg-[#fbfdfd] p-6 rounded-2xl border border-line hover:shadow-md transition-shadow group">
+          <div class="w-14 h-14 bg-soft rounded-full mb-4 flex items-center justify-center text-teal group-hover:bg-teal group-hover:text-white transition-colors"><span class="material-symbols-outlined text-[28px]">support_agent</span></div>
+          <h4 class="serif font-semibold text-[18px]">Management</h4><p class="text-sm text-accent font-semibold mb-3">General Inquiries</p>
+          <p class="text-sm text-mut mb-5">Day-to-day support, powered by YourCondoManager.</p>
+          <a class="text-teal text-sm font-semibold flex items-center gap-1 hover:underline" href="mailto:support@yourcondomanager.org">Email <span class="material-symbols-outlined text-[18px]">mail</span></a>
+        </div>
+      </div>
+      <p class="text-center text-xs text-mut italic mt-8">Board member names are set by the community and appear here once confirmed. For account-specific matters, owners should use the Owner Portal.</p>
+    </div>
+  </section>
+
+  <!-- Documents request band (lender / resale / insurance) -->
+  <section id="documents" class="py-16">
+    <div class="max-w-container mx-auto px-md">
+      <div class="bg-teal2 p-12 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-8 text-white">
+        <div class="space-y-2">
+          <div class="inline-flex items-center gap-2 text-accent text-xs font-bold uppercase tracking-widest"><span class="material-symbols-outlined text-[18px]">verified</span> For lenders, insurers &amp; closings</div>
+          <h3 class="serif font-semibold text-[26px]">Need official documents?</h3>
+          <p class="text-white/75 max-w-lg text-[15px]">Resale certificates, governing documents, and insurance information can be requested through our secure document portal. Governing documents are not posted publicly — they're released through verified, official requests.</p>
+        </div>
+        <a href="https://app.yourcondomanager.org/portal" class="bg-white text-teal px-9 py-4 rounded-xl font-semibold hover:bg-soft transition-colors shrink-0 shadow-lg">Request Documents</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer id="contact" class="bg-card border-t border-line">
+  <div class="flex flex-col md:flex-row justify-between items-center px-md py-10 max-w-container mx-auto w-full gap-6">
+    <div>
+      <div class="flex items-center gap-2.5 mb-2"><span class="mark"><i></i><i></i><i></i></span><span class="serif font-bold text-teal text-[17px]">Cherry Hill Court Condominiums</span></div>
+      <p class="text-sm text-mut">New Haven, CT · Self-managed · Powered by YourCondoManager</p>
+    </div>
+    <div class="flex flex-wrap justify-center gap-7 text-sm font-medium">
+      <a class="text-mut hover:text-teal transition-colors" href="https://app.yourcondomanager.org/portal">Owner Portal</a>
+      <a class="text-mut hover:text-teal transition-colors" href="mailto:support@yourcondomanager.org">Contact</a>
+      <a class="text-mut hover:text-teal transition-colors" href="/privacy">Privacy</a>
+      <a class="text-mut hover:text-teal transition-colors" href="/terms">Terms</a>
+    </div>
+  </div>
+  <div class="text-center text-xs text-mut pb-6">© 2026 Cherry Hill Court Condominium Association · All rights reserved.</div>
+</footer>
+
+</body>
+</html>

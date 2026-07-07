@@ -16,9 +16,15 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# cancel-in-progress MUST be false for deploys: with `true`, every new merge
+# cancelled the RUNNING deploy — on 2026-07-03 FIVE consecutive deploys were
+# cancelled this way and production sat >=5 merges stale (migrations included).
+# `false` queues: the running deploy finishes, then the newest pending run
+# lands (GitHub keeps only the latest pending run per group — deploys still
+# coalesce, they just never get killed mid-flight).
 concurrency:
   group: fly-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:

@@ -23,6 +23,20 @@ export const associations = pgTable("associations", {
   // Maps onboarding (Phase 1): coordinates stored after admin confirms satellite view
   latitudeDeg: decimal("latitude_deg", { precision: 10, scale: 7 }),
   longitudeDeg: decimal("longitude_deg", { precision: 10, scale: 7 }),
+  // CT CIOA reserve disclosure (#8016, from the #1035 audit §Area 1). Connecticut
+  // does NOT mandate a reserve study or a minimum funding level — that is Delaware
+  // (DUCIOA §81-315). CT requires DISCLOSURE only: the annual budget summary must
+  // STATE the reserve amount + the basis on which reserves are calculated/funded
+  // (CGS §47-261e(a)), and the resale certificate must state the reserve amount
+  // (CGS §47-270(a)(5)). These two fields are the board-declared persisted store
+  // for that disclosure — NOT a live bank balance and NOT a funding-mandate gate.
+  // reserveBalanceCents: the stated reserve amount, in cents (matches the cents
+  // convention used by financialAccounts.currentBalanceCents). Null = not yet stated.
+  reserveBalanceCents: integer("reserve_balance_cents"),
+  // reserveBasis: the §47-261e(a) narrative — "the basis on which reserves are
+  // calculated and funded" (e.g. "per the 2026 reserve study, funded at 10% of the
+  // annual operating budget"). Null = not yet stated.
+  reserveBasis: text("reserve_basis"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -33,9 +47,28 @@ export const units = pgTable("units", {
   unitNumber: text("unit_number").notNull(),
   building: text("building"),
   squareFootage: real("square_footage"),
+  // ── Phase 1 (P0-3): unique per-unit payment reference ──────────────────────
+  // A short, human-readable, stable per-unit reference (e.g. "CHC-0007") that
+  // owners put on their remittance (Stripe metadata + mailed-check memo). The
+  // reconciliation matcher's Tier-0 pass resolves a deposit to this unit at
+  // confidence 1.0 BEFORE any name-guessing. NULLABLE + backfillable — additive;
+  // units without a ref match exactly as they do today (person/name path).
+  // Uniqueness is scoped per association (see units_assoc_account_ref_uq).
+  unitAccountRef: text("unit_account_ref"),
+  // ── Phase 1 (P0-1): designated primary contact for the payer roster ────────
+  // Which co-owner is the "primary contact" for the unit's balance. NULLABLE —
+  // when null, callers fall back to the earliest-startDate active ownership.
+  // Additive metadata; does NOT change the balance owner (the UNIT is the
+  // balance-bearing entity). Kept as a plain varchar holding a persons.id
+  // (persons is declared after units, so no inline .references() wrapper to
+  // avoid a forward-declaration cycle); the migration adds the FK constraint.
+  primaryContactPersonId: varchar("primary_contact_person_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   uniqueAssociationBuildingUnitNumber: uniqueIndex("units_association_building_unit_number_uq").on(table.associationId, table.buildingId, table.unitNumber),
+  // P0-3: a unit_account_ref must be unique WITHIN an association. Postgres
+  // treats NULLs as distinct, so un-backfilled units (NULL ref) don't collide.
+  uniqueAssociationAccountRef: uniqueIndex("units_assoc_account_ref_uq").on(table.associationId, table.unitAccountRef),
 }));
 
 export const buildings = pgTable("buildings", {
@@ -282,6 +315,42 @@ export const goLiveGateAttestations = pgTable("go_live_gate_attestations", {
     table.associationId,
     table.gateId,
     table.attestedByUserId,
+  ),
+}));
+
+// YCM#220 / readiness P2-5 — treasurer month-close attestation. ONE row per
+// (association, calendar month) recording that a treasurer/admin closed the
+// books for that period: who + when + a snapshot of the matched/unmatched
+// reconciliation counts at close time. `status` toggles closed → reopened
+// (re-opening is an explicit, audit-logged action). "Is June reconciled?" is
+// answered by a single row lookup: a `closed`-status row for (assoc, '2026-06')
+// means yes. This is an ATTESTATION record only — it does NOT lock ledger
+// writes retroactively (full period-locking of postings is out of scope). The
+// forensic close/reopen history lives in audit_logs. See
+// migrations/0054_period_closes.sql.
+export const periodCloses = pgTable("period_closes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  periodMonth: text("period_month").notNull(), // 'YYYY-MM' (e.g. '2026-06')
+  status: text("status").notNull().default("closed"), // 'closed' | 'reopened'
+  matchedCount: integer("matched_count").notNull().default(0),
+  unmatchedBankTxCount: integer("unmatched_bank_tx_count").notNull().default(0),
+  unmatchedLedgerEntryCount: integer("unmatched_ledger_entry_count").notNull().default(0),
+  closedByUserId: text("closed_by_user_id").notNull(),
+  closedByEmail: text("closed_by_email").notNull(),
+  closedAt: timestamp("closed_at").defaultNow().notNull(),
+  reopenedByUserId: text("reopened_by_user_id"),
+  reopenedByEmail: text("reopened_by_email"),
+  reopenedAt: timestamp("reopened_at"),
+  notes: text("notes"),
+}, (table) => ({
+  assocMonthUniq: uniqueIndex("period_closes_assoc_month_uniq").on(
+    table.associationId,
+    table.periodMonth,
+  ),
+  assocLookupIdx: index("period_closes_assoc_idx").on(
+    table.associationId,
+    table.periodMonth,
   ),
 }));
 
@@ -611,6 +680,72 @@ export const utilityPayments = pgTable("utility_payments", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// ── Disbursements — dual-approval (maker-checker) money-OUT control ────────────
+//
+// HOA Remediation Phase 2 (hoa-remediation-roadmap.html): segregation of duties
+// on disbursements — the #1 embezzlement control. A disbursement records a
+// money-OUT request (a payment to a vendor / against a vendor invoice) that MUST
+// be approved by a DIFFERENT admin than the one who created it (maker ≠ checker)
+// before it can be marked payable / paid.
+//
+// NET-NEW, ADDITIVE, ZERO live-book exposure: this table + its lifecycle are new.
+// It does NOT post to the owner ledger, the GL, or any existing money path — it
+// is an approval-gate record that PRECEDES any real payment. Marking a
+// disbursement "paid" here records the approved-payment fact; it wires to no
+// existing payout rail in this phase.
+//
+// Lifecycle (status): draft → pending-approval → approved → paid
+//                             (or → rejected from draft / pending-approval)
+// Maker ≠ checker is enforced SERVER-SIDE in the service layer, not just the UI:
+// createdByAdminUserId can never equal approvedByAdminUserId / rejectedByAdminUserId.
+export const disbursementStatusEnum = pgEnum("disbursement_status", [
+  "draft",
+  "pending-approval",
+  "approved",
+  "paid",
+  "rejected",
+]);
+
+export const disbursements = pgTable("disbursements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The payee. vendorId is the linked vendor (optional — an ad-hoc payee is
+  // allowed via vendorName only). Amount is stored in INTEGER CENTS so money
+  // math is exact (mirrors the GL cents convention).
+  vendorId: varchar("vendor_id").references(() => vendors.id),
+  vendorName: text("vendor_name").notNull(),
+  // Optional link to the vendor invoice this disbursement pays.
+  vendorInvoiceId: varchar("vendor_invoice_id").references(() => vendorInvoices.id),
+  amountCents: integer("amount_cents").notNull(),
+  memo: text("memo"),
+  status: disbursementStatusEnum("status").notNull().default("draft"),
+  // MAKER — the admin who created the request. notNull: every disbursement has
+  // an accountable originator. This is the identity checked against the approver.
+  createdByAdminUserId: varchar("created_by_admin_user_id").notNull().references(() => adminUsers.id),
+  createdByEmail: text("created_by_email").notNull(),
+  // CHECKER — the DIFFERENT admin who approved (or rejected) the request.
+  // Null until an approve/reject decision is recorded. Enforced ≠ maker.
+  approvedByAdminUserId: varchar("approved_by_admin_user_id").references(() => adminUsers.id),
+  approvedByEmail: text("approved_by_email"),
+  approvedAt: timestamp("approved_at"),
+  rejectedByAdminUserId: varchar("rejected_by_admin_user_id").references(() => adminUsers.id),
+  rejectedByEmail: text("rejected_by_email"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  // Set when a disbursement is marked paid (records the approved-payment fact;
+  // wires to no live payout rail in this phase).
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  // Unit-of-work read index: list a tenant's disbursements by recency + status.
+  disbursementsAssocStatusIdx: index("disbursements_assoc_status_created_idx").on(
+    table.associationId,
+    table.status,
+    table.createdAt,
+  ),
+}));
+
 export const paymentMethodConfigs = pgTable("payment_method_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -729,7 +864,23 @@ export const ownerLedgerEntryTypeEnum = pgEnum("owner_ledger_entry_type", ["char
 export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The UNIT is the balance-bearing entity (Phase 1 / P0-1). unitId stays
+  // notNull and is the sole balance key. Every existing row already carries a
+  // valid unitId, so the unit balance is fully derivable today.
   unitId: varchar("unit_id").notNull().references(() => units.id),
+  // Phase 1 (P0-1) — SEMANTIC pivot: personId is now "tendered-by" METADATA
+  // (who paid), NOT the balance owner. The UNIT bears the balance; co-owners
+  // are jointly & severally liable. We deliberately keep the Drizzle/TS type
+  // notNull() (so the ~30 existing call sites that read entry.personId stay
+  // type-clean and BACKWARD-COMPATIBLE — no cascade), while relaxing the intent:
+  // for a unit-level payment where no single person tendered, callers set the
+  // unit's primary-contact person as the "tendered-by" value rather than being
+  // blocked. The ACTUAL database NOT NULL relaxation (so a NULL personId can be
+  // stored) is a staged, gated, flag-guarded step deferred to the migration
+  // PLAN (docs/phase1-unit-centric-migration-plan.md §Phase C) — it is NOT run
+  // here and NOT reflected in the column type, precisely to avoid breaking
+  // existing data / existing readers. Balance-of-record reads should group by
+  // unitId, not personId (see buildUnitAccountStatement).
   personId: varchar("person_id").notNull().references(() => persons.id),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull(),
   amount: real("amount").notNull(),
@@ -741,7 +892,11 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   bankTransactionId: varchar("bank_transaction_id"),
   settledAt: timestamp("settled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  // Phase 1 (P0-1): unit-scoped statement + aging reads group by
+  // (associationId, unitId, postedAt). Additive index — no column change.
+  byAssocUnitPosted: index("owner_ledger_entries_assoc_unit_posted_idx").on(table.associationId, table.unitId, table.postedAt),
+}));
 
 export const paymentPlanStatusEnum = pgEnum("payment_plan_status", ["active", "completed", "defaulted", "cancelled"]);
 export const paymentPlans = pgTable("payment_plans", {
@@ -2124,6 +2279,17 @@ export const insertGoLiveGateAttestationSchema = createInsertSchema(goLiveGateAt
 export type GoLiveGateAttestation = typeof goLiveGateAttestations.$inferSelect;
 export type InsertGoLiveGateAttestation = z.infer<typeof insertGoLiveGateAttestationSchema>;
 
+// Period-close attestation (YCM#220). Server manages id + timestamps + the
+// reopen fields; only association, month, snapshot counts, and closer identity
+// come from the service on close.
+export const insertPeriodCloseSchema = createInsertSchema(periodCloses).omit({
+  id: true,
+  closedAt: true,
+  reopenedAt: true,
+});
+export type PeriodClose = typeof periodCloses.$inferSelect;
+export type InsertPeriodClose = z.infer<typeof insertPeriodCloseSchema>;
+
 export const insertOnboardingProgressSchema = createInsertSchema(onboardingProgress, {
   stepsCompleted: z.array(z.number().int().min(1).max(7)).default([]),
   stepsSkipped: z.array(z.number().int().min(1).max(7)).default([]),
@@ -2188,6 +2354,20 @@ export const insertBudgetVersionSchema = createInsertSchema(budgetVersions).omit
 export const insertBudgetLineSchema = createInsertSchema(budgetLines).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorSchema = createInsertSchema(vendors).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorInvoiceSchema = createInsertSchema(vendorInvoices).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertDisbursementSchema = createInsertSchema(disbursements).omit({
+  id: true,
+  status: true,
+  approvedByAdminUserId: true,
+  approvedByEmail: true,
+  approvedAt: true,
+  rejectedByAdminUserId: true,
+  rejectedByEmail: true,
+  rejectedAt: true,
+  rejectionReason: true,
+  paidAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertUtilityPaymentSchema = createInsertSchema(utilityPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentMethodConfigSchema = createInsertSchema(paymentMethodConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentGatewayConnectionSchema = createInsertSchema(paymentGatewayConnections).omit({ id: true, createdAt: true, updatedAt: true, lastValidatedAt: true });
@@ -2389,6 +2569,9 @@ export type Vendor = typeof vendors.$inferSelect;
 export type InsertVendor = z.infer<typeof insertVendorSchema>;
 export type VendorInvoice = typeof vendorInvoices.$inferSelect;
 export type InsertVendorInvoice = z.infer<typeof insertVendorInvoiceSchema>;
+export type Disbursement = typeof disbursements.$inferSelect;
+export type InsertDisbursement = z.infer<typeof insertDisbursementSchema>;
+export type DisbursementStatus = (typeof disbursementStatusEnum.enumValues)[number];
 export type UtilityPayment = typeof utilityPayments.$inferSelect;
 export type InsertUtilityPayment = z.infer<typeof insertUtilityPaymentSchema>;
 export type PaymentMethodConfig = typeof paymentMethodConfigs.$inferSelect;
@@ -2883,6 +3066,110 @@ export const electionProxyDocuments = pgTable("election_proxy_documents", {
 export const insertElectionProxyDocumentSchema = createInsertSchema(electionProxyDocuments).omit({ id: true, createdAt: true });
 export type ElectionProxyDocument = typeof electionProxyDocuments.$inferSelect;
 export type InsertElectionProxyDocument = z.infer<typeof insertElectionProxyDocumentSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Budget ratification — Connecticut CGS §47-261e negative-option (owner-veto)
+// adoption of budgets + special assessments. The statutory ratification flow
+// sits OVER the existing budgets/budgetVersions engine and binds the version
+// status to a real owner vote (negative option) instead of an admin flip.
+//   §47-261e(a) — 30-day owner budget summary (with reserve statement) + a
+//                 ratification meeting 10–60 days out; the budget is ratified
+//                 UNLESS a majority of all unit owners reject it; on rejection
+//                 the last-ratified budget continues.
+//   §47-261e(b) — special assessment: the (a) ratification procedure applies
+//                 when the assessment meets/exceeds the threshold (default 15%
+//                 of the current annual budget); below it the board may impose
+//                 it without an owner vote.
+//   §47-261e(c) — emergency special assessment: a two-thirds board vote + a
+//                 written emergency attestation makes it effective immediately,
+//                 without owner ratification.
+//   §47-261e(d)/(e) — loan-security owner-approval mechanics: OUT OF SCOPE here
+//                 (smaller follow-on per the dispatch).
+export const budgetRatificationTypeEnum = pgEnum("budget_ratification_type", [
+  "annual-budget", // §47-261e(a)
+  "special-assessment", // §47-261e(b)
+  "emergency-assessment", // §47-261e(c)
+]);
+export const budgetRatificationStatusEnum = pgEnum("budget_ratification_status", [
+  "summary-pending", // adopted; 30-day owner summary not yet distributed
+  "summary-distributed", // summary sent; ratification meeting scheduled
+  "voting-open", // ratification meeting / window open
+  "ratified", // window closed; majority did NOT reject → effective
+  "rejected", // majority of all owners rejected → reverted to last-ratified
+  "imposed-no-vote", // §(b) special assessment below threshold → imposed, no vote
+  "emergency-imposed", // §(c) two-thirds emergency attestation → imposed immediately
+  "superseded",
+]);
+
+export const budgetRatifications = pgTable("budget_ratifications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  budgetId: varchar("budget_id").references(() => budgets.id),
+  budgetVersionId: varchar("budget_version_id").references(() => budgetVersions.id),
+  // Reuse the elections/voting/quorum engine for the negative-option ballot.
+  electionId: varchar("election_id").references(() => elections.id),
+  ratificationType: budgetRatificationTypeEnum("ratification_type").notNull().default("annual-budget"),
+  statuteCitation: text("statute_citation").notNull().default("CGS §47-261e"),
+  // §47-261e(a) — summary distribution + ratification window
+  adoptedAt: timestamp("adopted_at").notNull(),
+  summaryDueBy: timestamp("summary_due_by").notNull(), // adoptedAt + 30 days
+  summarySentAt: timestamp("summary_sent_at"),
+  reserveStatementIncluded: integer("reserve_statement_included").notNull().default(0), // §47-261e(a)
+  reserveStatement: text("reserve_statement"),
+  meetingDate: timestamp("meeting_date"),
+  votingWindowMinDate: timestamp("voting_window_min_date"), // summarySentAt + 10 days
+  votingWindowMaxDate: timestamp("voting_window_max_date"), // summarySentAt + 60 days
+  // Negative-option tally — budget ratified UNLESS a majority of all owners reject
+  totalOwnerCount: integer("total_owner_count").notNull().default(0),
+  rejectVoteCount: integer("reject_vote_count").notNull().default(0),
+  rejectThresholdRule: text("reject_threshold_rule").notNull().default("majority-of-all"),
+  rejectThresholdCount: integer("reject_threshold_count"),
+  // §47-261e(b) — special-assessment threshold gate
+  assessmentAmount: real("assessment_amount"),
+  baselineAnnualBudget: real("baseline_annual_budget"),
+  specialAssessmentThresholdPct: real("special_assessment_threshold_pct").notNull().default(15),
+  requiresOwnerRatification: integer("requires_owner_ratification").notNull().default(1),
+  // §47-261e(c) — emergency attestation
+  boardSeatCount: integer("board_seat_count"),
+  boardVotesInFavor: integer("board_votes_in_favor"),
+  emergencyAttestation: text("emergency_attestation"),
+  emergencyAttestedBy: text("emergency_attested_by"),
+  emergencyAttestedAt: timestamp("emergency_attested_at"),
+  // Outcome
+  status: budgetRatificationStatusEnum("status").notNull().default("summary-pending"),
+  outcome: text("outcome"), // 'ratified' | 'rejected' | 'imposed-no-vote' | 'emergency-imposed'
+  revertedToBudgetVersionId: varchar("reverted_to_budget_version_id").references(() => budgetVersions.id),
+  resolvedAt: timestamp("resolved_at"),
+  notes: text("notes"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export const insertBudgetRatificationSchema = createInsertSchema(budgetRatifications).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  resolvedAt: true,
+});
+export type BudgetRatification = typeof budgetRatifications.$inferSelect;
+export type InsertBudgetRatification = z.infer<typeof insertBudgetRatificationSchema>;
+
+// §47-261e(a) — per-owner log of the 30-day budget-summary distribution.
+export const budgetRatificationSummarySends = pgTable("budget_ratification_summary_sends", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ratificationId: varchar("ratification_id").notNull().references(() => budgetRatifications.id),
+  recipientPersonId: varchar("recipient_person_id").references(() => persons.id),
+  recipientEmail: text("recipient_email").notNull(),
+  noticeSendId: varchar("notice_send_id").references(() => noticeSends.id),
+  subjectRendered: text("subject_rendered"),
+  bodyRendered: text("body_rendered"),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueRecipientPerRatification: uniqueIndex("budget_ratification_summary_sends_ratification_email_uq").on(table.ratificationId, table.recipientEmail),
+}));
+export const insertBudgetRatificationSummarySendSchema = createInsertSchema(budgetRatificationSummarySends).omit({ id: true, sentAt: true });
+export type BudgetRatificationSummarySend = typeof budgetRatificationSummarySends.$inferSelect;
+export type InsertBudgetRatificationSummarySend = z.infer<typeof insertBudgetRatificationSummarySendSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -4095,3 +4382,351 @@ export const budgetLineGlMappings = pgTable(
 export const insertBudgetLineGlMappingSchema = createInsertSchema(budgetLineGlMappings).omit({ id: true, createdAt: true, updatedAt: true });
 export type BudgetLineGlMapping = typeof budgetLineGlMappings.$inferSelect;
 export type InsertBudgetLineGlMapping = z.infer<typeof insertBudgetLineGlMappingSchema>;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// rate_limit_counters — the shared, multi-machine-correct backing store for the
+// Postgres-backed rate limiter (see server/rate-limit.ts + docs/rate-limiting.md).
+//
+// WHY THIS TABLE: the in-memory limiter keeps an independent counter per Fly
+// machine, so with `min_machines_running = 1` + auto-start (fly.toml already
+// provisions 2 machines), an attacker load-balanced across machines gets Nx the
+// intended quota on money-mutation + auth-brute-force surfaces. This table makes
+// the counter shared across all machines using the EXISTING Postgres — no Redis,
+// no new infra service.
+//
+// One row per (limiter key = tier:client-ip). A fixed-window counter: `count`
+// increments within a window; when `windowStart` advances to a new window the
+// row atomically resets to 1 (see the ON CONFLICT upsert in server/rate-limit.ts).
+// ADDITIVE — touches no existing table/row. Fail-open: if this table is
+// unavailable the limiter degrades to the per-machine in-memory limiter.
+// ──────────────────────────────────────────────────────────────────────────────
+export const rateLimitCounters = pgTable(
+  "rate_limit_counters",
+  {
+    /** `${tier}:${clientIp}` — one bucket per tier per client. */
+    key: text("key").primaryKey(),
+    /** Start of the current fixed window (ms since epoch, floored to windowMs). */
+    windowStart: timestamp("window_start").notNull(),
+    /** Requests seen in the current window. */
+    count: integer("count").notNull().default(0),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    // Sweep stale windows cheaply (DELETE WHERE window_start < cutoff).
+    byWindow: index("rate_limit_counters_window_idx").on(table.windowStart),
+  }),
+);
+
+export type RateLimitCounter = typeof rateLimitCounters.$inferSelect;
+// Connecticut resale / "6(d)" certificate — CGS §47-270 (founder-os#8013)
+// ──────────────────────────────────────────────────────────────────────────────
+// A CT condo/HOA association MUST furnish a resale certificate within 10
+// business days of a unit-owner's request, for a statutory fee of $185 (CPI-
+// adjusted per §47-213; +$10 expedite for ≤3-business-day turnaround). A unit
+// legally cannot close without it, and §47-270(c) caps the purchaser's liability
+// at the amounts stated — so accuracy is financially binding on the association.
+//
+// `resaleCertificateRequests` = the intake/workflow row (who requested, when,
+// the 10-business-day SLA clock, the fee, expedite flag, fulfillment status).
+// `resaleCertificates` = the generated, immutable snapshot of the §47-270(a)
+// disclosures plus the (b)/(c) statutory metadata, stored as JSON `payload`.
+//
+// State is parameterized (`state` defaults to "CT") so the template can later
+// carry DE §81-409 etc. without a schema change — but ONLY CT is implemented.
+export const resaleCertificateRequestStatusEnum = pgEnum("resale_certificate_request_status", [
+  "requested",
+  "in-progress",
+  "fulfilled",
+  "cancelled",
+]);
+
+export const resaleCertificateRequests = pgTable(
+  "resale_certificate_requests",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    associationId: varchar("association_id").notNull().references(() => associations.id),
+    unitId: varchar("unit_id").notNull().references(() => units.id),
+    // The selling unit owner who made the request (§47-270(b)(1) — request in a
+    // record "from a unit owner").
+    personId: varchar("person_id").notNull().references(() => persons.id),
+    state: text("state").notNull().default("CT"),
+    requestedAt: timestamp("requested_at").notNull(),
+    // §47-270(b)(1): furnish not later than 10 business days after receipt (3 if
+    // expedited). Computed at request time + stored so the SLA clock is auditable.
+    expedited: integer("expedited").notNull().default(0),
+    dueAt: timestamp("due_at").notNull(),
+    // Statutory fee in whole dollars at request time ($185, or $195 expedited).
+    feeUsd: integer("fee_usd").notNull(),
+    purchaserName: text("purchaser_name"),
+    status: resaleCertificateRequestStatusEnum("status").notNull().default("requested"),
+    fulfilledAt: timestamp("fulfilled_at"),
+    certificateId: varchar("certificate_id"),
+    notes: text("notes"),
+    createdBy: text("created_by"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    byAssocStatus: index("resale_cert_requests_assoc_status_idx").on(table.associationId, table.status),
+    byUnit: index("resale_cert_requests_unit_idx").on(table.unitId),
+  }),
+);
+
+export const resaleCertificates = pgTable(
+  "resale_certificates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    associationId: varchar("association_id").notNull().references(() => associations.id),
+    unitId: varchar("unit_id").notNull().references(() => units.id),
+    requestId: varchar("request_id").references(() => resaleCertificateRequests.id),
+    state: text("state").notNull().default("CT"),
+    statuteCitation: text("statute_citation").notNull().default("CGS §47-270"),
+    generatedAt: timestamp("generated_at").notNull(),
+    // §47-270 validity window — the certificate speaks as of generatedAt; many
+    // associations treat it as valid for a bounded period. Stored for the
+    // attestation block.
+    validUntil: timestamp("valid_until"),
+    feeUsd: integer("fee_usd").notNull(),
+    // Full structured §47-270(a)(1)-(15) + (b)/(c) snapshot. Immutable once written.
+    payload: jsonb("payload").notNull(),
+    // Board attestation (§47-270 the certificate is signed/attested by the board).
+    attestedByName: text("attested_by_name"),
+    attestedAt: timestamp("attested_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    byAssocUnit: index("resale_certs_assoc_unit_idx").on(table.associationId, table.unitId),
+  }),
+);
+
+export const insertResaleCertificateRequestSchema = createInsertSchema(resaleCertificateRequests).omit({
+  id: true,
+  dueAt: true,
+  feeUsd: true,
+  status: true,
+  fulfilledAt: true,
+  certificateId: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type ResaleCertificateRequest = typeof resaleCertificateRequests.$inferSelect;
+export type InsertResaleCertificateRequest = z.infer<typeof insertResaleCertificateRequestSchema>;
+
+export const insertResaleCertificateSchema = createInsertSchema(resaleCertificates).omit({
+  id: true,
+  createdAt: true,
+});
+export type ResaleCertificate = typeof resaleCertificates.$inferSelect;
+export type InsertResaleCertificate = z.infer<typeof insertResaleCertificateSchema>;
+// Statutory assessment lien (CT CGS §47-258 / DE §81-316) — BUILD #8014
+// ──────────────────────────────────────────────────────────────────────────────
+//
+// Connecticut General Statutes §47-258 gives a common-interest community an
+// AUTOMATIC lien on a unit for unpaid common-expense assessments, with a 9-month
+// SUPER-PRIORITY over a first mortgage. Delaware §81-316 carries the same 9-month
+// super-priority — the super-priority calc is state-portable (see
+// server/services/assessment-lien-service.ts → computeSuperPriority).
+//
+// This is a GREENFIELD lien primitive: it sits OVER the existing delinquency /
+// escalation / notice engine (delinquencyEscalations, delinquencyNotices,
+// noticeSends) and does NOT replace it. The lien is the statutory lifecycle
+// object; the escalation/notice rows remain the operational collections feed.
+//
+// §47-258(a) — lien arises automatically on the unpaid assessment (arose-date).
+// §47-258(b) — 9-month super-priority over first mortgage.
+// §47-258(d) — no separate recording is required for the lien to be enforceable.
+// §47-258(e) — a 3-year statute of limitations runs from the arose-date.
+// §47-258(m) — a 2-month + board-vote/standard-policy + written-demand-with-
+//              mortgagee-copy GATE precedes foreclosure, then a 60-day notice.
+//
+// ALL queries are association-scoped (associationId). ADDITIVE — touches no
+// existing table/row. Actual foreclosure filing / legal action is OUT OF SCOPE.
+
+export const assessmentLienStatusEnum = pgEnum("assessment_lien_status", [
+  "active", "released", "expired",
+]);
+
+export const assessmentLiens = pgTable("assessment_liens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  /** Optional tie back to the escalation that drove this lien (operational feed). */
+  escalationId: varchar("escalation_id").references(() => delinquencyEscalations.id),
+  /** Free-form reference (e.g. originating special-assessment id / ledger key). */
+  sourceReference: text("source_reference"),
+  /** §47-258(a): the date the lien arose = the date the assessment became due. */
+  aroseDate: timestamp("arose_date").notNull(),
+  /** Principal unpaid common-expense assessment the lien secures. */
+  principalAmount: real("principal_amount").notNull(),
+  /** Per-month common-expense charge — input to the §47-258(b) super-priority calc. */
+  monthlyCommonExpense: real("monthly_common_expense").notNull().default(0),
+  /** Statute the lien is asserted under — portable: "47-258" (CT) | "81-316" (DE). */
+  statuteSection: text("statute_section").notNull().default("47-258"),
+  status: assessmentLienStatusEnum("status").notNull().default("active"),
+  /** §47-258(e): arose-date + 3 years. After this the lien is unenforceable. */
+  expiresAt: timestamp("expires_at").notNull(),
+  releasedAt: timestamp("released_at"),
+  releaseReason: text("release_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssociation: index("assessment_liens_association_idx").on(table.associationId),
+  byUnit: index("assessment_liens_unit_idx").on(table.associationId, table.unitId),
+}));
+export const insertAssessmentLienSchema = createInsertSchema(assessmentLiens).omit({ id: true, createdAt: true, updatedAt: true });
+export type AssessmentLien = typeof assessmentLiens.$inferSelect;
+export type InsertAssessmentLien = z.infer<typeof insertAssessmentLienSchema>;
+
+// §47-258(m) pre-foreclosure gate evaluation + 60-day notice record.
+export const assessmentLienPreforeclosureResultEnum = pgEnum("assessment_lien_preforeclosure_result", [
+  "allowed", "blocked",
+]);
+
+export const assessmentLienPreforeclosures = pgTable("assessment_lien_preforeclosures", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  lienId: varchar("lien_id").notNull().references(() => assessmentLiens.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  /** §47-258(m)(1) gate inputs. */
+  monthsOwed: integer("months_owed").notNull(),
+  boardVoteOrPolicyAttested: integer("board_vote_or_policy_attested").notNull().default(0),
+  writtenDemandSent: integer("written_demand_sent").notNull().default(0),
+  mortgageeCopySent: integer("mortgagee_copy_sent").notNull().default(0),
+  /** §47-258(m)(1) gate verdict + machine-readable block reasons. */
+  gateResult: assessmentLienPreforeclosureResultEnum("gate_result").notNull(),
+  gateBlockReasonsJson: jsonb("gate_block_reasons_json").notNull().default(sql`'[]'::jsonb`),
+  /** §47-258(m)(2) 60-day notice. */
+  noticeSendId: varchar("notice_send_id").references(() => noticeSends.id),
+  mortgageeNoticeSendId: varchar("mortgagee_notice_send_id").references(() => noticeSends.id),
+  noticeIssuedAt: timestamp("notice_issued_at"),
+  noticeDeadlineAt: timestamp("notice_deadline_at"),
+  noticeDays: integer("notice_days").notNull().default(60),
+  totalDue: real("total_due"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byLien: index("assessment_lien_preforeclosures_lien_idx").on(table.lienId),
+  byAssociation: index("assessment_lien_preforeclosures_association_idx").on(table.associationId),
+}));
+export const insertAssessmentLienPreforeclosureSchema = createInsertSchema(assessmentLienPreforeclosures).omit({ id: true, createdAt: true });
+export type AssessmentLienPreforeclosure = typeof assessmentLienPreforeclosures.$inferSelect;
+export type InsertAssessmentLienPreforeclosure = z.infer<typeof insertAssessmentLienPreforeclosureSchema>;
+
+// CT CGS §47-260 — Association records: statutory retention + owner
+// records-request workflow + mandatory/permissive withholding.
+// (founder-os#8017)
+//
+// Builds over the existing records substrate (documents / documentVersions /
+// meetingNotes / voteRecords / ownerships) — these tables add the statutory
+// retention metadata, the records-request lifecycle, and the per-record
+// withholding classification §47-260(c)/(d) requires. The statutory LOGIC
+// lives in pure functions in server/services/records-retention-service.ts.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Canonical record-type keys used by the §47-260 retention engine and the
+ * records-request workflow. Mirrors the §47-260(a) enumerated categories.
+ * The retention period for each is computed by `retentionPeriodYears()` in
+ * the service (§47-260(a)(5) = 3yr financials/tax; §47-260(a)(11) = 1yr
+ * ballots/proxies/voting; everything else = permanent / no statutory expiry).
+ */
+export const recordTypeEnum = pgEnum("records_record_type", [
+  "financial_statement", // §47-260(a)(5) — 3yr
+  "tax_return",          // §47-260(a)(5) — 3yr
+  "ballot",              // §47-260(a)(11) — 1yr
+  "proxy",               // §47-260(a)(11) — 1yr
+  "voting_record",       // §47-260(a)(11) — 1yr
+  "receipts_expenditures", // §47-260(a)(1)
+  "meeting_minutes",     // §47-260(a)(2)
+  "owner_roster",        // §47-260(a)(3)
+  "organizational_docs", // §47-260(a)(4)
+  "contract",            // §47-260(a) general
+  "other",
+]);
+export type RecordType = (typeof recordTypeEnum.enumValues)[number];
+
+/** §47-260(c)/(d) — how a record is classified for owner disclosure. */
+export const recordsWithholdingClassEnum = pgEnum("records_withholding_class", [
+  "none",       // disclosable
+  "mandatory",  // §47-260(c) — MUST be withheld (personnel/salary/medical, unredacted ballots/proxies)
+  "permissive", // §47-260(d) — MAY be withheld (active negotiation, litigation/mediation, attorney-client, exec session)
+]);
+export type RecordsWithholdingClass = (typeof recordsWithholdingClassEnum.enumValues)[number];
+
+/** §47-260(b) records-request lifecycle. */
+export const recordsRequestStatusEnum = pgEnum("records_request_status", [
+  "received",      // 30-day notice received from owner
+  "dates_offered", // two exam dates offered within 5 business days (§47-260(b))
+  "examined",      // owner inspected
+  "fulfilled",     // copies provided / request closed satisfied
+  "withheld",      // request fully withheld (§47-260(c)/(d))
+  "closed",        // closed (withdrawn / superseded)
+]);
+export type RecordsRequestStatus = (typeof recordsRequestStatusEnum.enumValues)[number];
+
+/**
+ * §47-260(b) — an owner's records-inspection request and its lifecycle.
+ * Multi-tenant: every row scoped by associationId.
+ */
+export const recordsRequests = pgTable("records_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The requesting unit owner. Nullable FK to ownerships so the request can be
+  // attributed to an authorized agent who is not in the roster.
+  ownershipId: varchar("ownership_id").references(() => ownerships.id),
+  requesterName: text("requester_name").notNull(),
+  requesterEmail: text("requester_email"),
+  // §47-260(b) — "a record reasonably identifying the specific records requested".
+  recordsRequested: text("records_requested").notNull(),
+  // When the association received the 30-day notice. Drives the response-due clock.
+  receivedAt: timestamp("received_at").notNull(),
+  // §47-260(b) — association must offer two exam dates "not later than five
+  // business days following the date of receiving such notice". Computed by
+  // computeResponseDueDate(receivedAt) at create time.
+  responseDueAt: timestamp("response_due_at").notNull(),
+  examDate1: timestamp("exam_date_1"),
+  examDate2: timestamp("exam_date_2"),
+  status: recordsRequestStatusEnum("status").notNull().default("received"),
+  // §47-260(e) — computed reasonable copy fee in cents (per-page + supervision).
+  copyFeeCents: integer("copy_fee_cents"),
+  pageCount: integer("page_count"),
+  fulfilledAt: timestamp("fulfilled_at"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssociation: index("records_requests_association_idx").on(table.associationId),
+  byStatus: index("records_requests_status_idx").on(table.associationId, table.status),
+}));
+
+/**
+ * A candidate record attached to a records-request, carrying its §47-260(c)/(d)
+ * withholding classification. `included` is computed at response time by
+ * filterDisclosableRecords(): mandatory → always excluded; permissive →
+ * excluded only when withheld; none → included.
+ */
+export const recordsRequestItems = pgTable("records_request_items", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  requestId: varchar("request_id").notNull().references(() => recordsRequests.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  recordType: recordTypeEnum("record_type").notNull(),
+  // Optional link to the underlying document (existing records substrate).
+  documentId: varchar("document_id").references(() => documents.id),
+  label: text("label").notNull(),
+  // §47-260(c)/(d) classification for THIS record in THIS request.
+  withholdingClass: recordsWithholdingClassEnum("withholding_class").notNull().default("none"),
+  withholdingReason: text("withholding_reason"),
+  // 1 = disclosed to owner in the response; 0 = withheld. Computed at response time.
+  included: integer("included").notNull().default(1),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byRequest: index("records_request_items_request_idx").on(table.requestId),
+}));
+
+export const insertRecordsRequestSchema = createInsertSchema(recordsRequests).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertRecordsRequestItemSchema = createInsertSchema(recordsRequestItems).omit({ id: true, createdAt: true });
+export type RecordsRequest = typeof recordsRequests.$inferSelect;
+export type InsertRecordsRequest = z.infer<typeof insertRecordsRequestSchema>;
+export type RecordsRequestItem = typeof recordsRequestItems.$inferSelect;
+export type InsertRecordsRequestItem = z.infer<typeof insertRecordsRequestItemSchema>;
