@@ -299,6 +299,7 @@ import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAgentActionRoutes } from "./routes/agent-actions";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
+import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import {
@@ -1507,6 +1508,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // action onto the queue routed to PM/board. Draft + route ONLY; issuing (send) is
   // a separate L3 action a human always approves + signs.
   registerViolationTriageRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    assertAssociationScope,
+  });
+
+  // Meeting-prep agent ability (founder-os#9478). Aggregates recent activity
+  // (open maintenance issues, open statutory records requests, open work
+  // orders, violation-notice actions in flight) + the prior meeting's minutes
+  // into a structured, fully-traceable draft agenda + packet, filed as a
+  // `suggest.meeting_prep` (L1) action onto the W1 queue for human review.
+  // NEVER distributes — distribution is a separate, never-auto-filed L2 action.
+  registerMeetingPrepRoutes(app, {
     requireAdmin,
     requireAdminRole,
     assertAssociationScope,

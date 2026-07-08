@@ -63,6 +63,11 @@ export const ACTION_TYPE_LEVELS: Record<string, AgentActionLevel> = {
   "reversible.draft_notice": "L2",
   "reversible.schedule_reminder": "L2",
   "reversible.assign_work_order": "L2",
+  // Meeting-prep packet distribution (founder-os#9478, W3) — sending the drafted
+  // agenda/packet to the board/owners. Reversible in the sense that a re-send /
+  // correction is always possible; still requires an approval unless the
+  // association's L2 autonomy toggle is on for this type.
+  "reversible.distribute_meeting_packet": "L2",
   // L3 — financial / irreversible. ALWAYS requires a human approval.
   "financial.approve_disbursement": "L3",
   "financial.post_ledger_entry": "L3",
