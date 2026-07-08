@@ -4857,3 +4857,52 @@ export type AgentActionAuditEntry = typeof agentActionAuditLog.$inferSelect;
 export type AgentActionToggle = typeof agentActionToggles.$inferSelect;
 export type AgentActionLevel = (typeof agentActionLevelEnum.enumValues)[number];
 export type AgentActionStatus = (typeof agentActionStatusEnum.enumValues)[number];
+
+// ───────────────────────────────────────────────────────────────────────────
+// Rule violations (founder-os#9487 — Board mode "log a violation" wizard).
+//
+// A volunteer HOA board's most common enforcement action is recording that a
+// unit broke a community rule (bins left out, unauthorized parking, noise,
+// pets, an architectural change without approval). The platform had no
+// first-class table for this before Board mode — enforcement lived in ad-hoc
+// notes. This lean table backs the "Log a violation" wizard: one row per
+// logged violation, association-scoped, optionally tied to a unit + owner, with
+// an optional fine amount (the wizard posts the fine as a separate owner-ledger
+// `charge` entry and links it back via `ledgerEntryId`). Deliberately minimal —
+// no notice-generation / escalation workflow here (that is a later dispatch).
+export const violationStatusEnum = pgEnum("violation_status", ["open", "notice-sent", "cured", "escalated", "closed"]);
+
+export const violations = pgTable("violations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  // Free-text category the board picks from a plain-English list in the wizard
+  // (Trash / bins, Parking, Noise, Pets, Architectural, Landscaping, Other).
+  violationType: text("violation_type").notNull(),
+  description: text("description").notNull(),
+  observedAt: timestamp("observed_at").defaultNow().notNull(),
+  status: violationStatusEnum("status").notNull().default("open"),
+  // Optional fine posted alongside the violation. `ledgerEntryId` links to the
+  // owner-ledger `charge` row created for the fine (set by the wizard flow).
+  fineAmount: real("fine_amount"),
+  ledgerEntryId: varchar("ledger_entry_id"),
+  loggedByEmail: text("logged_by_email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssociation: index("violations_association_idx").on(table.associationId),
+  byUnit: index("violations_unit_idx").on(table.unitId),
+}));
+
+// `ledgerEntryId` + `loggedByEmail` are server-managed (set from the fine flow /
+// the authenticated admin), so they are omitted from the client insert schema.
+export const insertViolationSchema = createInsertSchema(violations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  ledgerEntryId: true,
+  loggedByEmail: true,
+});
+export type Violation = typeof violations.$inferSelect;
+export type InsertViolation = z.infer<typeof insertViolationSchema>;
