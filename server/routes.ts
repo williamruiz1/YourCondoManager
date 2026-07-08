@@ -297,6 +297,7 @@ import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAgentActionRoutes } from "./routes/agent-actions";
+import { registerViolationTriageRoutes } from "./routes/violation-triage";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import {
@@ -1496,6 +1497,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdmin,
     requireAdminRole,
     getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // Violation-intake triage agent ability (founder-os#9479, W2). Intake an owner's
+  // violation report + photos → categorize against the applicable rule → draft the
+  // notice grounded in the rule + evidence → file a `reversible.draft_notice` (L2)
+  // action onto the queue routed to PM/board. Draft + route ONLY; issuing (send) is
+  // a separate L3 action a human always approves + signs.
+  registerViolationTriageRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
     assertAssociationScope,
   });
 
