@@ -6395,34 +6395,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(200).json({ received: true, handled: false });
       }
 
+      // #377 fail-closed: track whether a verification path actually validated.
+      // Previously, when a signature was present but no active signing secret
+      // existed for the association (or no associationId was present to resolve
+      // one), AND when NO signature header and no shared-secret env were present,
+      // execution fell THROUGH to the ledger-mutating processPaymentWebhookEvent()
+      // completely unauthenticated — a forged {associationId, provider, status,
+      // amount, ...} could mutate the owner ledger. Now every path that reaches
+      // the mutation below must have positively validated a credential; otherwise
+      // → 403 before any mutation. (The live per-HOA Stripe path is Branch A above,
+      // verified against each HOA's gateway.webhookSecret — untouched.)
+      let webhookVerified = false;
+
       if (stripeSignature || hmacSignature) {
         // HMAC-SHA256 verification — lookup signing secret for this association
         const associationIdForVerify = typeof req.body.associationId === "string" ? req.body.associationId : null;
-        if (associationIdForVerify) {
-          const [sigSecret] = await db.select().from(webhookSigningSecrets).where(
-            and(eq(webhookSigningSecrets.associationId, associationIdForVerify), eq(webhookSigningSecrets.isActive, 1))
-          ).limit(1);
-          if (sigSecret) {
-            const payload = JSON.stringify(req.body);
-            const expected = createHmac("sha256", sigSecret.secretHash).update(payload).digest("hex");
-            const provided = hmacSignature || (stripeSignature ? stripeSignature.split(",").find(p => p.startsWith("v1="))?.slice(3) : null);
-            if (!provided) return res.status(403).json({ message: "Missing webhook signature" });
-            try {
-              const expectedBuf = Buffer.from(expected, "utf8");
-              const providedBuf = Buffer.from(provided, "utf8");
-              if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
-                return res.status(403).json({ message: "Invalid webhook signature" });
-              }
-            } catch {
-              return res.status(403).json({ message: "Invalid webhook signature" });
-            }
-          }
+        if (!associationIdForVerify) {
+          // A signature was presented but there is no associationId to resolve a
+          // signing secret against — cannot verify → reject (was: silent skip).
+          return res.status(403).json({ message: "associationId required to verify webhook signature" });
         }
+        const [sigSecret] = await db.select().from(webhookSigningSecrets).where(
+          and(eq(webhookSigningSecrets.associationId, associationIdForVerify), eq(webhookSigningSecrets.isActive, 1))
+        ).limit(1);
+        if (!sigSecret) {
+          // A signature was presented but no active signing secret is configured
+          // for this association — cannot verify → reject (was: silent
+          // fall-through to the ledger mutation).
+          return res.status(403).json({ message: "Webhook signing secret is not configured for this association" });
+        }
+        const payload = JSON.stringify(req.body);
+        const expected = createHmac("sha256", sigSecret.secretHash).update(payload).digest("hex");
+        const provided = hmacSignature || (stripeSignature ? stripeSignature.split(",").find(p => p.startsWith("v1="))?.slice(3) : null);
+        if (!provided) return res.status(403).json({ message: "Missing webhook signature" });
+        try {
+          const expectedBuf = Buffer.from(expected, "utf8");
+          const providedBuf = Buffer.from(provided, "utf8");
+          if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
+            return res.status(403).json({ message: "Invalid webhook signature" });
+          }
+        } catch {
+          return res.status(403).json({ message: "Invalid webhook signature" });
+        }
+        webhookVerified = true;
       } else if (webhookSharedSecret) {
         const provided = req.header("x-payment-webhook-secret");
         if (!provided || provided !== webhookSharedSecret) {
           return res.status(403).json({ message: "Invalid webhook secret" });
         }
+        webhookVerified = true;
+      }
+
+      if (!webhookVerified) {
+        // No signature was presented and no shared-secret path validated → this
+        // is an unauthenticated (potentially forged) request. Reject BEFORE any
+        // ledger/billing mutation (#377 fail-closed).
+        return res.status(403).json({ message: "Webhook authentication required" });
       }
 
       const associationId = getParam(req.body.associationId);
@@ -17006,17 +17034,30 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const stripeSignature = req.header("stripe-signature");
       const webhookSecret = await getSecret("PLATFORM_STRIPE_WEBHOOK_SECRET", "platform_stripe_webhook_secret");
 
-      if (stripeSignature && webhookSecret) {
-        const rawBody = Buffer.isBuffer((req as any).rawBody) ? (req as any).rawBody.toString("utf8") : JSON.stringify(req.body);
-        const { timestamp, signature } = parseStripeSignature(stripeSignature);
-        if (timestamp && signature) {
-          const expected = createHmac("sha256", webhookSecret).update(`${timestamp}.${rawBody}`).digest("hex");
-          const expectedBuf = Buffer.from(expected, "utf8");
-          const providedBuf = Buffer.from(signature, "utf8");
-          if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
-            return res.status(403).json({ message: "Invalid webhook signature" });
-          }
-        }
+      // #377 fail-closed: a forged event with no/invalid signature must NOT reach
+      // the mutation path (provisionWorkspace / platform-subscription flips).
+      // Previously verification only ran INSIDE `if (stripeSignature && webhookSecret)`
+      // and even then was skipped on a signature parse-fail — so a missing header,
+      // an unset secret, or an unparseable signature all fell through to processing
+      // a forged event. Now: require the signing secret configured AND a valid
+      // signature before ANY processing. (PLATFORM_STRIPE_WEBHOOK_SECRET is
+      // configured in production, so live platform Stripe events keep verifying.)
+      if (!webhookSecret) {
+        return res.status(503).json({ message: "Platform Stripe webhook secret is not configured" });
+      }
+      if (!stripeSignature) {
+        return res.status(403).json({ message: "Missing Stripe signature" });
+      }
+      const rawBody = Buffer.isBuffer((req as any).rawBody) ? (req as any).rawBody.toString("utf8") : JSON.stringify(req.body);
+      const { timestamp, signature } = parseStripeSignature(stripeSignature);
+      if (!timestamp || !signature) {
+        return res.status(403).json({ message: "Invalid Stripe signature format" });
+      }
+      const expected = createHmac("sha256", webhookSecret).update(`${timestamp}.${rawBody}`).digest("hex");
+      const expectedBuf = Buffer.from(expected, "utf8");
+      const providedBuf = Buffer.from(signature, "utf8");
+      if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
+        return res.status(403).json({ message: "Invalid webhook signature" });
       }
 
       const event = req.body as Record<string, unknown>;
