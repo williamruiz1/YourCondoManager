@@ -36,11 +36,26 @@
 -- Forward-only: this migration does not re-introduce `'board-admin'`.
 
 -- 1. Defensive backfill (idempotent: zero rows expected per Wave 38 audit).
-UPDATE "admin_users" SET "role" = 'assisted-board' WHERE "role" = 'board-admin';
---> statement-breakpoint
-UPDATE "permission_change_logs" SET "old_role" = 'assisted-board' WHERE "old_role" = 'board-admin';
---> statement-breakpoint
-UPDATE "permission_change_logs" SET "new_role" = 'assisted-board' WHERE "new_role" = 'board-admin';
+--    Fresh-DB bootstrap safety (YCM #384/#385): `assisted-board` is added by
+--    migration 0006 via `ALTER TYPE … ADD VALUE`; on a clean DB the whole chain
+--    runs in ONE drizzle transaction, so the value isn't committed yet here and
+--    Postgres refuses to coerce it ("unsafe use of new value") even for a
+--    zero-row UPDATE. Guard so the literal is only coerced when there is a
+--    legacy `board-admin` row present. On a fresh (empty) DB this is a no-op;
+--    step 3 below then recreates the type with the canonical 6 values.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM admin_users WHERE role = 'board-admin') THEN
+    UPDATE "admin_users" SET "role" = 'assisted-board' WHERE "role" = 'board-admin';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM permission_change_logs
+    WHERE old_role = 'board-admin' OR new_role = 'board-admin'
+  ) THEN
+    UPDATE "permission_change_logs" SET "old_role" = 'assisted-board' WHERE "old_role" = 'board-admin';
+    UPDATE "permission_change_logs" SET "new_role" = 'assisted-board' WHERE "new_role" = 'board-admin';
+  END IF;
+END $$;
 --> statement-breakpoint
 
 -- 2. Drop the default that references the old enum type.
