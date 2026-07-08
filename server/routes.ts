@@ -291,6 +291,7 @@ import { registerAiAssistantRoutes } from "./routes/ai-assistant";
 import { registerPressingItemsRoutes } from "./routes/pressing-items";
 import { buildArAgingReport } from "./services/ar-aging";
 import { registerAutopayRoutes } from "./routes/autopay";
+import { registerAgentQueueRoutes } from "./routes/agent-queue";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
@@ -1400,6 +1401,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     getAssociationIdQuery,
     assertAssociationScope,
     assertAssociationInputScope,
+  });
+
+  // founder-os#9474 + #9476 — agent Chief-of-Staff queue + owner-FAQ triage.
+  registerAgentQueueRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    requirePortal,
+    getAssociationIdQuery,
+    assertAssociationScope,
   });
 
   // Phase 1A: Owner Payment Portal routes

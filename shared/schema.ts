@@ -1651,7 +1651,7 @@ export const pmToggles = pgTable("pm_toggles", {
   uniquePmToggleAssociationKey: uniqueIndex("pm_toggles_association_key_uq").on(table.associationId, table.toggleKey),
 }));
 
-export const PM_TOGGLE_KEYS = ["assessment_rules_write"] as const;
+export const PM_TOGGLE_KEYS = ["assessment_rules_write", "agent_owner_faq_autosend"] as const;
 export type PmToggleKey = (typeof PM_TOGGLE_KEYS)[number];
 
 export function isPmToggleKey(value: unknown): value is PmToggleKey {
@@ -4730,3 +4730,87 @@ export type RecordsRequest = typeof recordsRequests.$inferSelect;
 export type InsertRecordsRequest = z.infer<typeof insertRecordsRequestSchema>;
 export type RecordsRequestItem = typeof recordsRequestItems.$inferSelect;
 export type InsertRecordsRequestItem = z.infer<typeof insertRecordsRequestItemSchema>;
+
+// ============================================================================
+// Agent Chief-of-Staff queue — founder-os#9474 (W1 foundation)
+//
+// The single queue every AI agent ability (owner-FAQ triage #9476, AP
+// suggestions, meeting prep, …) files work into, plus the four-level
+// permission ladder + an immutable per-action audit log. The ladder logic
+// lives in server/services/agent-queue/permission-ladder.ts (pure); these
+// tables are its persistence. Tenant-isolated by associationId per YCM
+// convention (see server/services/ai-assistant/types.ts CallerContext).
+// ============================================================================
+
+export const agentActionLevelEnum = pgEnum("agent_action_level", ["L1", "L2", "L3", "L4"]);
+export const agentActionStatusEnum = pgEnum("agent_action_status", [
+  "draft", // filed by the agent, not yet surfaced for a human
+  "queued", // awaiting a human/board decision
+  "approved", // a human/board approved; ready to execute
+  "executed", // side-effect performed
+  "audited", // terminal — logged + closed
+]);
+
+export const agentActions = pgTable("agent_actions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // Stable action-type key (e.g. "owner-faq.send-reply") → maps to a level.
+  actionType: text("action_type").notNull(),
+  level: agentActionLevelEnum("level").notNull(),
+  status: agentActionStatusEnum("status").notNull().default("queued"),
+  // Optional pointer to the domain entity the action concerns (unit, person…).
+  targetEntity: text("target_entity"),
+  // The action's data (the draft reply, the suggested amount, …).
+  payload: jsonb("payload").notNull().default(sql`'{}'::jsonb`),
+  // Human-readable "why the agent did this" — surfaced inline in the queue.
+  reasoning: text("reasoning").notNull(),
+  // The exact source data the agent grounded in (explainability, one click away).
+  sourceData: jsonb("source_data").notNull().default(sql`'{}'::jsonb`),
+  // Which agent ability filed it.
+  createdByAgent: text("created_by_agent").notNull(),
+  // Statutory-deadline items pin to the top of the queue.
+  statutoryDeadline: integer("statutory_deadline").notNull().default(0),
+  // Approval trail.
+  approvedByUserId: varchar("approved_by_user_id"),
+  approvedAt: timestamp("approved_at"),
+  approvalKind: text("approval_kind"), // "human" | "board" | "auto-toggle"
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssociation: index("agent_actions_association_idx").on(table.associationId),
+  byStatus: index("agent_actions_status_idx").on(table.associationId, table.status),
+}));
+
+// Immutable append-only audit log — one row per lifecycle event on an action.
+export const agentActionAuditLog = pgTable("agent_action_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actionId: varchar("action_id").notNull().references(() => agentActions.id),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // "filed" | "queued" | "approved" | "executed" | "blocked" | "audited"
+  event: text("event").notNull(),
+  // Who/what caused the event ("agent:owner-faq" | a user id | "system").
+  actor: text("actor").notNull(),
+  detail: jsonb("detail").notNull().default(sql`'{}'::jsonb`),
+  at: timestamp("at").defaultNow().notNull(),
+}, (table) => ({
+  byAction: index("agent_action_audit_log_action_idx").on(table.actionId),
+}));
+
+export const insertAgentActionSchema = createInsertSchema(agentActions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  approvedByUserId: true,
+  approvedAt: true,
+  approvalKind: true,
+  executedAt: true,
+});
+export const insertAgentActionAuditLogSchema = createInsertSchema(agentActionAuditLog).omit({
+  id: true,
+  at: true,
+});
+export type AgentAction = typeof agentActions.$inferSelect;
+export type InsertAgentAction = z.infer<typeof insertAgentActionSchema>;
+export type AgentActionAuditEntry = typeof agentActionAuditLog.$inferSelect;
+export type InsertAgentActionAuditEntry = z.infer<typeof insertAgentActionAuditLogSchema>;
