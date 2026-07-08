@@ -83,7 +83,14 @@ async function assertBodyIsDark(page: import("@playwright/test").Page, surface: 
 // key was removed, so `bg-background` now resolves to `hsl(var(--background))` (dark
 // `220 13% 9%` under `.dark`). use-user-settings.ts default is back to "system". This
 // suite asserts the fixed behavior and is live again.
-test.describe("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
+// PARKED (founder-os#9256 / YCM#415): dark mode was deliberately SHELVED
+// app-wide — forced light per William — by #399 (`c90f471`), AFTER #390 had
+// fixed the token layer and re-enabled this suite. The suite asserts a mode
+// the product intentionally no longer offers, so it fails on every run and
+// has been reddening all of main's CI. UN-PARK when dark mode is un-shelved:
+// flip `.fixme` back to `test.describe` (the forceWorkspaceDarkMode seeding
+// below is still correct for that day).
+test.describe.fixme("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
   test("Home (/app) — axe in dark", async ({ page }) => {
     const store = createSeedStore();
     await forceWorkspaceDarkMode(page);
