@@ -79,6 +79,29 @@ export async function loginAsManager(
 ): Promise<ManagerSession> {
   const session: ManagerSession = { ...DEFAULT_MANAGER, ...overrides };
 
+  // founder-os#9487 — Board/Manager view-mode gate. WorkspaceShell now renders a
+  // first-run ModeSelectorGate until the user has explicitly chosen a mode
+  // (`modeChosen`). These E2E specs exercise post-onboarding workspace surfaces,
+  // so seed the view-mode store as already-chosen (mode derived from the session
+  // role) to reproduce the returning-user precondition and bypass the gate. The
+  // store (client/src/context/view-mode.ts) is localStorage-backed, keyed
+  // `board-view-mode-<adminId>` with a `board-view-mode-default` fallback read
+  // before auth resolves and calls setViewModeAdminId.
+  await page.addInitScript(
+    ({ adminId, role }) => {
+      const mode =
+        role === "board-officer" || role === "assisted-board" ? "board" : "manager";
+      const state = JSON.stringify({ mode, advancedView: false, modeChosen: true });
+      try {
+        window.localStorage.setItem(`board-view-mode-${adminId}`, state);
+        window.localStorage.setItem("board-view-mode-default", state);
+      } catch {
+        /* localStorage unavailable; gate assertions may differ */
+      }
+    },
+    { adminId: session.adminId, role: session.role },
+  );
+
   await page.route("**/api/auth/me", async (route: Route) => {
     await route.fulfill({
       status: 200,
