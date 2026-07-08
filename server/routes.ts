@@ -351,7 +351,18 @@ function readPolicyFile(filename: string): string | null {
   }
 }
 
-const uploadDir = path.resolve("uploads");
+// Uploads directory. Configurable via UPLOAD_DIR so it can point at a mounted
+// DURABLE Fly volume (fix #363/#379 — governing-doc uploads were written to the
+// machine's ephemeral root fs at /app/uploads and destroyed on every deploy /
+// machine replacement). In production UPLOAD_DIR="/data/uploads" resolves onto
+// the "ycm_uploads" Fly volume mounted at /data (see fly.toml [mounts]). When
+// UPLOAD_DIR is unset (local dev / tests) behavior is unchanged: repo-relative
+// "uploads". All upload writes (multer diskStorage + feedback screenshots) and
+// the /api/uploads/:filename serve route resolve through this single variable,
+// so pointing it at the volume makes every upload path durable.
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }

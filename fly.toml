@@ -66,3 +66,21 @@ primary_region = "ewr"
   NODE_ENV = "production"
   PORT = "5000"
   APP_BASE_URL = "https://app.yourcondomanager.org"
+  # Durable uploads (#363/#379). Governing-doc uploads previously wrote to the
+  # machine's ephemeral root fs (/app/uploads) and were destroyed on every
+  # deploy / machine replacement. UPLOAD_DIR points them at the "ycm_uploads"
+  # Fly volume mounted at /data (see [mounts]); server/routes.ts resolves the
+  # single `uploadDir` from this, so all upload writes + the serve route land
+  # on the persistent volume.
+  UPLOAD_DIR = "/data/uploads"
+
+# Persistent volume for uploaded governing documents (#363/#379). A Fly volume
+# binds to ONE machine and does NOT replicate across machines, so uploads must
+# be served from a single machine. This app is run single-machine (min=1,
+# auto_stop) — `fly scale count 1` pins it. For future multi-machine scale-out,
+# migrate to shared object storage (Tigris/S3) — the code path is env-driven so
+# only the storage adapter changes. Create the volume before first deploy:
+#   flyctl volumes create ycm_uploads --app yourcondomanager --region ewr --size 3
+[mounts]
+  source = "ycm_uploads"
+  destination = "/data"
