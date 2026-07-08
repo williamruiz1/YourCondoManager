@@ -1188,6 +1188,12 @@ function WebhookMonitorTab({
   });
   const [lastMessage, setLastMessage] = useState("");
 
+  // The simulator injects a ledger entry via the (now signature-gated) production
+  // webhook endpoint. It is a developer-only affordance and MUST NOT be reachable in
+  // production — an admin could otherwise inject a phantom payment into live books,
+  // re-opening exactly the hole #377 fail-closed. Render it only in dev builds.
+  const isProd = import.meta.env.PROD;
+
   const filteredUnits = units.filter(
     (u) => !associationId || u.associationId === associationId,
   );
@@ -1232,12 +1238,24 @@ function WebhookMonitorTab({
       <div className="rounded-lg border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 p-4 flex gap-3">
         <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
         <p className="text-sm text-amber-800 dark:text-amber-300">
-          This tab is for <strong>developer testing only</strong>. In production, payment webhooks are
-          delivered automatically by your gateway (e.g., Stripe) and do not need to be triggered here.
-          Use this to simulate a payment event and verify that ledger entries are created correctly.
+          {isProd ? (
+            <>
+              Payment webhooks are delivered automatically by your gateway (e.g., Stripe) and are
+              verified by signature. The manual <strong>simulator is disabled in production</strong> so
+              phantom payments can never be injected into live books — use the{" "}
+              <strong>Webhook Security</strong> settings below to manage signing secrets.
+            </>
+          ) : (
+            <>
+              This tab is for <strong>developer testing only</strong>. In production, payment webhooks are
+              delivered automatically by your gateway (e.g., Stripe) and do not need to be triggered here.
+              Use this to simulate a payment event and verify that ledger entries are created correctly.
+            </>
+          )}
         </p>
       </div>
 
+      {!isProd && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-sm">Simulate inbound payment webhook</CardTitle>
@@ -1331,6 +1349,7 @@ function WebhookMonitorTab({
           )}
         </CardContent>
       </Card>
+      )}
 
       <WebhookSecurityCard associationId={associationId} />
       <PaymentEventStateCard associationId={associationId} />
