@@ -296,6 +296,7 @@ import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
+import { registerAgentActionRoutes } from "./routes/agent-actions";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import {
@@ -1480,6 +1481,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // NET-NEW / ADDITIVE — touches no existing owner-ledger / GL / payout path.
   // Endpoints: /api/admin/disbursements[/:id/{submit,approve,reject,pay}].
   registerAdminDisbursementRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // YCM Chief-of-Staff agent queue + four-level permission ladder + audit log
+  // (founder-os#9474, W1 foundation). The queue IS the chief-of-staff surface;
+  // every agent-proposed action routes through it. Level is server-authoritative
+  // (assigned from the action-type); L3/L4 cannot execute without a recorded
+  // human approval (L4 → board-level approver).
+  registerAgentActionRoutes(app, {
     requireAdmin,
     requireAdminRole,
     getAssociationIdQuery,
