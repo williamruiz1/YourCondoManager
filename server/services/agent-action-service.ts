@@ -67,6 +67,10 @@ export const ACTION_TYPE_LEVELS: Record<string, AgentActionLevel> = {
   "financial.approve_disbursement": "L3",
   "financial.post_ledger_entry": "L3",
   "financial.issue_refund": "L3",
+  // AP / vendor-invoice suggestion (founder-os#9477, W2). The agent suggests a
+  // vendor match + GL coding for an inbound invoice; actuating that coding is a
+  // financial write, so it files at L3 — a human ALWAYS approves before it posts.
+  "financial.ap_invoice_coding": "L3",
   "irreversible.send_owner_notice": "L3",
   "irreversible.delete_record": "L3",
   // L4 — board / member-affecting. Requires a BOARD-level approval.

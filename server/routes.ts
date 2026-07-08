@@ -297,6 +297,7 @@ import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAgentActionRoutes } from "./routes/agent-actions";
+import { registerApSuggestionRoutes } from "./routes/ap-suggestion";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import {
@@ -1485,6 +1486,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdmin,
     requireAdminRole,
     getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // AP / vendor-invoice suggestion (founder-os#9477, W2). Ingest an invoice →
+  // suggest vendor match + GL coding (confidence band) → file as an L3 action a
+  // human must approve before the coding actuates. Composes with the W1 gate.
+  registerApSuggestionRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
     assertAssociationScope,
   });
 
