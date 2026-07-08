@@ -1,4 +1,9 @@
+// @vitest-environment jsdom
 // founder-os#9487 — Board/Manager view-mode store.
+// This is a .test.ts (not .test.tsx), so the default vitest.config.ts
+// environmentMatchGlobs (which only maps *.test.tsx -> jsdom) leaves it in the
+// "node" env where localStorage is undefined. The store is localStorage-backed,
+// so pin this file to jsdom explicitly.
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   chooseMode,
