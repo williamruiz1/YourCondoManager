@@ -83,7 +83,17 @@ async function assertBodyIsDark(page: import("@playwright/test").Page, surface: 
 // key was removed, so `bg-background` now resolves to `hsl(var(--background))` (dark
 // `220 13% 9%` under `.dark`). use-user-settings.ts default is back to "system". This
 // suite asserts the fixed behavior and is live again.
-test.describe("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
+//
+// SKIPPED 2026-07-07 (YCM#399 — "shelve dark mode, force light app-wide, per
+// William"): applyTheme() now unconditionally removes the `dark` class on every
+// route, so `forceWorkspaceDarkMode`'s seeded `.dark` is stripped on mount and
+// the workspace renders LIGHT — making every `assertBodyIsDark` assertion here
+// fail (it was the sole red on main + on PR #402, the Board-mode work). Dark-mode
+// CSS tokens/variants are shelved-but-preserved, so this suite is likewise
+// SHELVED, not deleted: to re-enable, un-shelve dark mode (restore applyTheme's
+// branching in use-user-settings.ts) AND flip `.skip` → `(` here in lockstep.
+// Reversible by design; mirrors #399's own reversible-shelve pattern.
+test.describe.skip("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
   test("Home (/app) — axe in dark", async ({ page }) => {
     const store = createSeedStore();
     await forceWorkspaceDarkMode(page);
