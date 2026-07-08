@@ -424,6 +424,39 @@ describe("Portal Finances — plan-aware Amount Due This Period (2026-05-25 live
   });
 });
 
+describe("Portal Finances — non-array API bodies must not crash the page (#380)", () => {
+  // Regression for #380: several portal cards call `.length` / `.map()` on a
+  // useQuery result whose endpoint can return a non-array body (error object,
+  // auth shell) with a 200. `x.length === 0` is `false` for `{}`, so the guard
+  // falls through to `x.map(...)` → "x.map is not a function" and crashes the
+  // whole subtree. The queryFns must normalize non-array bodies to `[]`.
+  //
+  // The budget-ratification card (the #380 report) is already covered by the
+  // per-unit / amount-due tests above — they leave `/api/portal/budget-ratifications`
+  // at the default `{}` body and wait for a post-dashboard-resolve signal, so a
+  // budget-card crash tears down the subtree and fails them (that WAS the #380
+  // symptom). These two add coverage for the sibling cards that share the bug.
+
+  it("payment-methods + autopay cards survive non-array bodies", async () => {
+    installFetchStub({
+      "/api/portal/payment-methods": {},
+      "/api/portal/autopay/enrollments": {},
+    });
+    renderAt("/portal/finances/payment-methods", <PortalFinancesPage subPath="payment-methods" />);
+    // Both cards' resolved empty states only render if the queries settled to
+    // `[]` — without the guard, `{}` would fall through to `.map()` and crash.
+    await screen.findByText(/No saved payment methods yet/i);
+    await screen.findByText(/not currently enrolled in autopay/i);
+  });
+
+  it("receipts card survives a non-array receipts body", async () => {
+    installFetchStub({ "/api/portal/receipts": {} });
+    renderAt("/portal/finances/receipts", <PortalFinancesPage subPath="receipts" />);
+    // The resolved empty state renders only if `receipts` normalized to `[]`.
+    await screen.findByText(/No receipts yet/i);
+  });
+});
+
 describe("Portal zones — session gate behavior (Q4 shell-owned)", () => {
   it("redirects to login container when portalAccessId is missing at any /portal/* route", async () => {
     window.localStorage.removeItem("portalAccessId");

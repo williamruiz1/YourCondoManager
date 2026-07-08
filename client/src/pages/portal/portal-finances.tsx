@@ -263,7 +263,10 @@ function PortalBudgetRatificationCard() {
   });
 
   if (isLoading) return null;
-  if (!data || data.length === 0) return null;
+  // Defense-in-depth (#380): guard the render site against a non-array `data`
+  // (e.g. `{}`), not just `undefined` — `({}).length === 0` is false and would
+  // otherwise fall through to `data.map(...)` and crash the finances page.
+  if (!Array.isArray(data) || data.length === 0) return null;
 
   return (
     <Card data-testid="portal-budget-ratification">
@@ -1068,7 +1071,9 @@ function PaymentMethodsContent() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/payment-methods");
       if (!res.ok) return [];
-      return res.json();
+      // A non-array body (error object, auth shell) must not crash the saved-methods list (#380).
+      const json = await res.json();
+      return Array.isArray(json) ? (json as PaymentMethod[]) : [];
     },
   });
 
@@ -1077,7 +1082,9 @@ function PaymentMethodsContent() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/autopay/enrollments");
       if (!res.ok) return [];
-      return res.json();
+      // A non-array body (error object, auth shell) must not crash the autopay list (#380).
+      const json = await res.json();
+      return Array.isArray(json) ? (json as AutopayEnrollment[]) : [];
     },
   });
 
@@ -1615,7 +1622,9 @@ function ReceiptsContent() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/receipts");
       if (!res.ok) return { receipts: [] };
-      return res.json() as Promise<{ receipts: ReceiptSummary[] }>;
+      // A non-array `receipts` (error object, auth shell) must not crash the receipts list (#380).
+      const json = (await res.json()) as { receipts?: ReceiptSummary[] };
+      return { receipts: Array.isArray(json?.receipts) ? json.receipts : [] };
     },
   });
 
@@ -1667,7 +1676,7 @@ function ReceiptsContent() {
         <p className="text-sm text-on-surface-variant">Loading receipts…</p>
       ) : isError ? (
         <p className="text-sm text-destructive">Failed to load receipts.</p>
-      ) : !data?.receipts.length ? (
+      ) : !data?.receipts?.length ? (
         <EmptyState
           icon={Receipt}
           title="No receipts yet"
