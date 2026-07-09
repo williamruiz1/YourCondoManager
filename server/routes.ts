@@ -1,3 +1,4 @@
+import { assertStripeKeySafe, appEnvironment } from "./staging-guard";
 import { z } from "zod";
 import type { Express, NextFunction, Request, Response } from "express";
 import { type Server } from "http";
@@ -6171,7 +6172,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ledgerEntryId: primaryEntry?.id ?? "",
         chargeType,
         period: periodFromDate(),
-        environment: process.env.NODE_ENV ?? "development",
+        environment: appEnvironment(),
         paymentLinkToken: link.token,
       });
 
@@ -16270,6 +16271,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     opts?: { idempotencyKey?: string },
   ): Promise<Record<string, unknown>> {
     const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+    assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
     if (!secretKey) throw new Error("Platform Stripe key not configured");
     return platformStripeRequest(secretKey, method, path, body, { idempotencyKey: opts?.idempotencyKey });
   }
@@ -16791,6 +16793,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       if (resolved.track === "enterprise") return res.json({ enterpriseContact: true });
 
       const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+      assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
       if (!secretKey) return res.status(503).json({ message: "Billing not configured" });
 
       // Resolve the plan_catalog row whose Stripe price the subscription uses.
@@ -17097,6 +17100,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         // internally; the explicit guard here surfaces a clean 503 instead of
         // a generic 500 when the platform isn't configured.
         const platformSecretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+        assertStripeKeySafe(platformSecretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
         if (!platformSecretKey) return res.status(503).json({ message: "Billing not configured" });
         // Resolve the Stripe price from plan_catalog by the entered unit count —
         // same canonical path as the public signup route (closes the stale
@@ -17385,6 +17389,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     async (_req, res) => {
       try {
         const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+        assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
         if (!secretKey) return res.status(503).json({ message: "Billing not configured" });
         const summary = await reconcileAllSubscriptionUsage(stripeMeterPost);
         return res.json(summary);

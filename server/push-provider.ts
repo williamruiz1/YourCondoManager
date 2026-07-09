@@ -11,6 +11,7 @@
 
 import crypto from "crypto";
 import { getSecret } from "./platform-secrets-store";
+import { outboundSideEffectsDisabled, logSuppressedOutbound } from "./staging-guard";
 
 export type PushPayload = {
   title: string;
@@ -190,6 +191,12 @@ export async function sendPushNotification(
   subscription: PushSubscriptionKeys,
   payload: PushPayload,
 ): Promise<SendPushResult> {
+  // founder-os#10193 F0 — staging kill-switch: never push to a real owner device.
+  if (outboundSideEffectsDisabled()) {
+    logSuppressedOutbound("push", { endpoint: subscription.endpoint.slice(0, 60), title: payload.title });
+    return { status: "simulated" };
+  }
+
   const cfg = await getVapidConfig();
 
   if (!(await isPushProviderConfigured())) {
