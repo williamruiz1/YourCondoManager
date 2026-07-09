@@ -118,6 +118,8 @@ import {
   governanceTemplateItems,
   insertGovernanceMeetingSchema,
   insertGovernanceTemplateItemSchema,
+  violations,
+  insertViolationSchema,
   insertMeetingAgendaItemSchema,
   insertMeetingNoteSchema,
   insertHoaFeeScheduleSchema,
@@ -7588,6 +7590,61 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createGovernanceMeeting(parsed);
       res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // founder-os#9487 — Board mode "log a violation" wizard. A lean rule-violation
+  // log for volunteer boards. GET lists violations for the active association;
+  // POST records a new one (association-scoped, optionally tied to a unit/owner).
+  // The optional fine is posted by the client as a separate owner-ledger `charge`
+  // and linked back via `ledgerEntryId` on a follow-up PATCH — this endpoint just
+  // records the violation itself.
+  app.get("/api/violations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req as AdminRequest);
+      if (!associationId) return res.json([]);
+      const result = await db
+        .select()
+        .from(violations)
+        .where(eq(violations.associationId, associationId))
+        .orderBy(desc(violations.observedAt));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/violations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const parsed = insertViolationSchema.parse({
+        ...req.body,
+        observedAt: req.body?.observedAt ? new Date(req.body.observedAt) : req.body?.observedAt,
+      });
+      assertAssociationScope(req as AdminRequest, parsed.associationId);
+      const [created] = await db
+        .insert(violations)
+        .values({ ...parsed, loggedByEmail: (req as AdminRequest).adminUserEmail ?? null })
+        .returning();
+      res.status(201).json(created);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Link a posted fine (owner-ledger entry) back to a violation, or update status.
+  app.patch("/api/violations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const id = getParam(req.params.id);
+      const [existing] = await db.select().from(violations).where(eq(violations.id, id));
+      if (!existing) return res.status(404).json({ message: "Violation not found" });
+      assertAssociationScope(req as AdminRequest, existing.associationId);
+      const updates: Partial<typeof violations.$inferInsert> = { updatedAt: new Date() };
+      if (typeof req.body?.ledgerEntryId === "string") updates.ledgerEntryId = req.body.ledgerEntryId;
+      if (typeof req.body?.status === "string") updates.status = req.body.status;
+      const [updated] = await db.update(violations).set(updates).where(eq(violations.id, id)).returning();
+      res.json(updated);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
