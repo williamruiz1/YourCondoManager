@@ -1,0 +1,843 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+<title>YCM Redesign Prototype — Round 1 (Wireframes)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --teal:#014D4A; --accent:#15A39C; --light:#BFE8E4; --gray:#E5E7EB; --off:#F5F7F9;
+  --ink:#0f2e2c; --sub:#4a6b68; --sub2:#6db3ac; --gold:#f0b400; --goldsoft:#fff4d6; --goldtext:#8a6d00;
+  --good:#0f7a4c; --goodsoft:#e0f5e9; --bad:#c0392b; --badsoft:#fbe9e7; --warn:#8a6d00; --warnsoft:#fff4d6;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:'Inter Tight',system-ui,sans-serif;color:var(--ink);background:var(--off);font-size:14px;line-height:1.5}
+h1,h2,h3,h4{font-family:'Inter Tight',system-ui,sans-serif;margin:0;color:var(--teal)}
+a{color:var(--accent)}
+.shell{display:flex;min-height:100vh}
+
+/* ---- fixed left TOC ---- */
+.toc{width:252px;flex-shrink:0;background:var(--teal);color:#cfeae7;position:sticky;top:0;height:100vh;overflow-y:auto;padding:20px 0 30px}
+.toc .brand{display:flex;align-items:center;gap:10px;font-weight:800;color:#fff;font-size:15px;margin:0 18px 18px;padding-bottom:14px;border-bottom:1px solid rgba(255,255,255,.14)}
+.toc .brand .mk{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#0c7e77);display:inline-block;flex-shrink:0}
+.toc .grp{font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:#7fc4bd;margin:18px 18px 6px;font-weight:700}
+.toc a.item{display:flex;align-items:center;gap:8px;padding:7px 18px;color:#d7efed;text-decoration:none;font-size:12.8px;font-weight:500;border-left:3px solid transparent}
+.toc a.item:hover{background:rgba(255,255,255,.08);color:#fff}
+.toc a.item .n{width:16px;height:16px;border-radius:4px;background:rgba(255,255,255,.14);color:#fff;font-size:9.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.toc .foot{margin:20px 18px 0;padding-top:14px;border-top:1px solid rgba(255,255,255,.14);font-size:10.5px;color:#6db3ac;line-height:1.6}
+
+/* ---- main column ---- */
+.main{flex:1;min-width:0;max-width:1240px;padding:30px 40px 90px}
+.banner{background:var(--goldsoft);border:1px solid #e9c96a;color:var(--goldtext);border-radius:12px;padding:16px 20px;margin:0 0 26px;display:flex;align-items:center;gap:14px}
+.banner .tag{font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;background:var(--gold);color:#3a2e00;padding:4px 10px;border-radius:999px;flex-shrink:0}
+.banner p{margin:0;font-size:13px;color:var(--goldtext);line-height:1.5}
+.banner b{color:#5c4700}
+
+.cover{background:#fff;border:1px solid var(--gray);border-radius:16px;padding:30px 32px;margin-bottom:34px}
+.cover .eyebrow{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px}
+.cover h1{font-size:27px;margin-bottom:8px}
+.cover .lede{color:var(--sub);font-size:14.5px;max-width:760px;margin-bottom:20px}
+.cover .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:900px){.cover .grid3{grid-template-columns:1fr}}
+.cover .box{background:var(--off);border:1px solid var(--gray);border-radius:12px;padding:16px 18px}
+.cover .box h4{font-size:12.5px;font-weight:800;letter-spacing:.02em;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.cover .box ul{margin:0;padding-left:18px;font-size:12.8px;color:#375653;line-height:1.65}
+.cover .box li{margin-bottom:3px}
+
+section.frame-sec{margin-bottom:46px;scroll-margin-top:20px}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid var(--gray)}
+.sec-head h2{font-size:19px}
+.sec-head .cnt{font-size:11.5px;color:var(--sub);font-weight:600}
+
+.frame-card{background:#fff;border:1px solid var(--gray);border-radius:14px;overflow:hidden;margin-bottom:24px;box-shadow:0 1px 3px rgba(1,77,74,.04)}
+.frame-label{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;background:#fbfcfe;border-bottom:1px solid var(--gray)}
+.frame-label .t{display:flex;align-items:center;gap:9px}
+.frame-label .num{width:22px;height:22px;border-radius:6px;background:var(--light);color:var(--teal);font-size:11px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.frame-label h3{font-size:14.5px;color:var(--teal)}
+.frame-label .route{font-size:11px;color:var(--sub);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.frame-label .persona{font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent);background:var(--light);padding:2px 8px;border-radius:999px}
+
+/* ---- browser chrome ---- */
+.browser{border-top:1px solid var(--gray)}
+.win-bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:#eceff3;border-bottom:1px solid var(--gray)}
+.win-bar .dots span{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px}
+.win-bar .dots span:nth-child(1){background:#ed6a5e}.win-bar .dots span:nth-child(2){background:#f4bf4f}.win-bar .dots span:nth-child(3){background:#61c454}
+.win-bar .urlbar{flex:1;background:#fff;border:1px solid var(--gray);border-radius:7px;padding:4px 12px;font-size:11.5px;color:#6b8481;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+.frame-body{display:flex;min-height:420px}
+
+/* manager operator chrome */
+.op-side{width:216px;flex-shrink:0;background:var(--teal);color:#cfeae7;padding:16px 10px}
+.op-side .abrand{display:flex;align-items:center;gap:8px;padding:0 8px 14px;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,.14)}
+.op-side .abrand .mk2{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,var(--accent),#0c7e77);flex-shrink:0}
+.op-side .abrand .tt{font-weight:800;font-size:12.5px;color:#fff;line-height:1.2}
+.op-side .abrand .st{font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:#7fc4bd}
+.op-side .assoc{display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.08);border-radius:8px;padding:7px 9px;margin-bottom:12px}
+.op-side .assoc .aa{font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;color:#7fc4bd;display:block}
+.op-side .assoc .an{font-size:11.5px;font-weight:700;color:#fff}
+.op-side .zg{font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:#7fc4bd;margin:12px 8px 4px}
+.op-side .zone{display:flex;align-items:center;justify-content:space-between;gap:7px;padding:7px 9px;border-radius:7px;color:#e3f4f1;text-decoration:none;font-size:12.5px;font-weight:600}
+.op-side .zone.active{background:rgba(255,255,255,.15);color:#fff;box-shadow:inset 3px 0 0 var(--accent)}
+.op-side .sub{display:block;margin:1px 0 1px 22px;padding:5px 9px;font-size:11.8px;color:#bfe3df;border-left:1px solid rgba(255,255,255,.16);padding-left:11px}
+.op-side .sub.active{color:#fff;font-weight:700;border-left-color:var(--accent)}
+.op-side .sub .grouptag{display:block;font-size:8.5px;letter-spacing:.07em;text-transform:uppercase;color:#5c9d97;margin:8px 0 2px 11px}
+.op-side .foot2{margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.14);display:flex;gap:12px;font-size:11px;color:#a6d6d0}
+
+.op-main{flex:1;min-width:0;background:var(--off);padding:20px 24px}
+.op-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.op-topbar h2{font-size:19px;color:var(--teal)}
+.op-topbar .who{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub)}
+.op-topbar .avatar{width:26px;height:26px;border-radius:50%;background:var(--light);color:var(--teal);font-weight:800;font-size:11px;display:flex;align-items:center;justify-content:center}
+
+/* portal chrome (owner-facing, warmer/lighter) */
+.pt-side{width:200px;flex-shrink:0;background:#fff;border-right:1px solid var(--gray);padding:18px 12px}
+.pt-side .abrand{display:flex;align-items:center;gap:8px;margin-bottom:18px;padding:0 6px}
+.pt-side .abrand .mk2{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),#0c7e77);flex-shrink:0}
+.pt-side .abrand .tt{font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--sub)}
+.pt-side .abrand .tt2{font-style:italic;font-weight:700;color:var(--teal);font-size:14.5px}
+.pt-side .item{display:flex;align-items:center;gap:9px;padding:9px 10px;border-radius:9px;color:var(--sub);text-decoration:none;font-size:12.8px;font-weight:700;margin-bottom:2px}
+.pt-side .item.active{background:var(--light);color:var(--teal)}
+.pt-side .badge{margin-left:auto;background:var(--goldsoft);color:var(--goldtext);border-radius:999px;font-size:10px;font-weight:800;padding:1px 7px}
+
+.pt-main{flex:1;min-width:0;background:#fafcfc;padding:20px 26px}
+.pt-topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.pt-topbar h2{font-size:18px;color:var(--teal)}
+.pt-topbar .who{font-size:11.5px;color:var(--sub);text-align:right}
+.pt-topbar .who b{display:block;color:var(--teal);font-size:12.5px}
+.pt-topbar .board-chip{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+
+/* content primitives shared across manager + portal */
+.kpirow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+@media(max-width:760px){.kpirow{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:#fff;border:1px solid var(--gray);border-radius:11px;padding:13px 15px}
+.kpi .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--sub);margin-bottom:5px;font-weight:700}
+.kpi .v{font-size:19px;font-weight:800;color:var(--teal)}
+.kpi .d{font-size:11px;margin-top:3px;font-weight:600}
+.kpi .d.good{color:var(--good)}.kpi .d.bad{color:var(--bad)}.kpi .d.warn{color:var(--warn)}
+
+.card{background:#fff;border:1px solid var(--gray);border-radius:12px;padding:16px 18px;margin-bottom:14px}
+.card h3{font-size:13.5px;color:var(--teal);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+.card h3 .more{font-size:11px;font-weight:600;color:var(--accent)}
+.cols2{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
+@media(max-width:900px){.cols2{grid-template-columns:1fr}}
+
+table.dt{width:100%;border-collapse:collapse;font-size:12.3px}
+table.dt th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--sub);font-weight:700;padding:6px 8px;border-bottom:1px solid var(--gray)}
+table.dt td{padding:8px 8px;border-bottom:1px solid #f0f2f2;color:#2c4442}
+table.dt tr:last-child td{border-bottom:none}
+.pill{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.03em;padding:2px 8px;border-radius:999px}
+.pill.good{background:var(--goodsoft);color:var(--good)}.pill.bad{background:var(--badsoft);color:var(--bad)}.pill.warn{background:var(--warnsoft);color:var(--warn)}.pill.info{background:var(--light);color:var(--teal)}
+
+.rowlist .rl{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #f0f2f2}
+.rowlist .rl:last-child{border-bottom:none}
+.rowlist .rl .ic{width:30px;height:30px;border-radius:8px;background:var(--light);color:var(--teal);display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0}
+.rowlist .rl .tt{font-weight:700;font-size:12.5px;color:var(--teal)}
+.rowlist .rl .ss{font-size:11px;color:var(--sub)}
+.rowlist .rl .meta{margin-left:auto;text-align:right}
+
+.btn{display:inline-block;background:var(--teal);color:#fff;border:0;border-radius:8px;padding:8px 16px;font-size:12.5px;font-weight:700;text-decoration:none}
+.btn.acc{background:var(--accent)}
+.btn.ghost{background:#fff;border:1px solid var(--gray);color:var(--teal)}
+
+.grid-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.tile{background:#fff;border:1px solid var(--gray);border-radius:12px;padding:16px;text-align:center}
+.tile .ic{font-size:22px;margin-bottom:8px}
+.tile .tt{font-weight:800;color:var(--teal);font-size:13px;margin-bottom:2px}
+.tile .ss{font-size:11px;color:var(--sub)}
+
+/* ---- phone frame for mobile section ---- */
+.phone-wrap{display:flex;justify-content:center;padding:26px 10px 30px;background:#eef2f2}
+.phone{width:375px;background:#fff;border-radius:34px;border:8px solid #111;box-shadow:0 12px 30px rgba(1,77,74,.18);overflow:hidden;position:relative}
+.phone .notch{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:110px;height:20px;background:#111;border-radius:0 0 14px 14px;z-index:2}
+.phone .pscreen{padding-top:34px;min-height:640px;display:flex;flex-direction:column;background:#fafcfc}
+.phone .phead{padding:6px 16px 12px;display:flex;align-items:center;justify-content:space-between}
+.phone .phead h2{font-size:16px;color:var(--teal)}
+.phone .phead .who{font-size:10px;color:var(--sub)}
+.phone .pbody{flex:1;padding:0 14px 12px;overflow:hidden}
+.phone .ptabs{display:flex;border-top:1px solid var(--gray);background:rgba(250,252,252,.96)}
+.phone .ptabs .tb{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:9px 0 12px;font-size:9.5px;font-weight:700;color:var(--sub)}
+.phone .ptabs .tb.active{color:var(--accent)}
+.phone .ptabs .tb .ic{font-size:16px}
+.phone .ptabs .tb .bd{position:relative}
+.phone .ptabs .tb .bd .n{position:absolute;top:-4px;right:-8px;background:var(--gold);color:#3a2e00;font-size:8px;font-weight:800;border-radius:999px;min-width:13px;height:13px;display:flex;align-items:center;justify-content:center;padding:0 2px}
+
+.qa{margin-top:20px;padding-top:16px;border-top:1px solid var(--gray)}
+.qa h4{font-size:12.5px;color:var(--teal);margin-bottom:8px}
+.qa ul{margin:0;padding-left:18px;font-size:12.3px;color:#375653;line-height:1.7}
+
+.decision-note{background:#fff;border:1px solid var(--gray);border-left:4px solid var(--gold);border-radius:10px;padding:14px 16px;margin:14px 0 24px}
+.decision-note .k{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--goldtext);margin-bottom:4px}
+.decision-note p{margin:0;font-size:12.6px;color:#375653;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  <nav class="toc">
+    <div class="brand"><span class="mk"></span>YCM Redesign R1</div>
+
+    <div class="grp">Overview</div>
+    <a class="item" href="#cover"><span class="n">•</span>Cover &amp; rationale</a>
+
+    <div class="grp">Web — Manager App (6 zones)</div>
+    <a class="item" href="#w1"><span class="n">1</span>Home / Portfolio</a>
+    <a class="item" href="#w2"><span class="n">2</span>Financials Hub</a>
+    <a class="item" href="#w3"><span class="n">3</span>Operations Hub</a>
+    <a class="item" href="#w4"><span class="n">4</span>Governance Hub</a>
+    <a class="item" href="#w5"><span class="n">5</span>Communications Hub</a>
+    <a class="item" href="#w6"><span class="n">6</span>Platform Controls</a>
+
+    <div class="grp">Portal — Residents &amp; Board (4 zones)</div>
+    <a class="item" href="#p1"><span class="n">7</span>Portal Home</a>
+    <a class="item" href="#p2"><span class="n">8</span>My Finances</a>
+    <a class="item" href="#p3"><span class="n">9</span>My Requests</a>
+    <a class="item" href="#p4"><span class="n">10</span>My Community</a>
+
+    <div class="grp">Mobile — Portal at phone width</div>
+    <a class="item" href="#m1"><span class="n">11</span>Home</a>
+    <a class="item" href="#m2"><span class="n">12</span>My Finances</a>
+    <a class="item" href="#m3"><span class="n">13</span>My Requests</a>
+    <a class="item" href="#m4"><span class="n">14</span>My Community</a>
+
+    <div class="foot">Dispatch #9299 · Round 1<br>founder-os · not crawlable<br>Cherry Hill Court data is fictional</div>
+  </nav>
+
+  <main class="main">
+
+    <div class="banner">
+      <span class="tag">Round 1 — Wireframes</span>
+      <p><b>This is a picture of the redesign, not the build.</b> No code has changed. Your signoff on this round starts the build rounds (per the wireframe-before-implementing discipline). Dated 2026-07-08.</p>
+    </div>
+
+    <section id="cover" class="cover">
+      <div class="eyebrow">YourCondoManager · Product Redesign · Private gated review</div>
+      <h1>Round 1 — full-surface wireframe set</h1>
+      <p class="lede">Fourteen frames covering all six zones of the manager web app, all four zones of the owner/board portal, and the portal at phone width — every frame on the real YCM brand (deep teal <code>#014D4A</code>, accent teal <code>#15A39C</code>, gold <code>#f0b400</code>, Inter&nbsp;Tight) and built against the actual product IA (the six-zone sidebar + four-zone portal shipped in Phase&nbsp;11 / 3.5), not an invented one. Content uses a fictional but realistic Cherry Hill Court dataset — no real tenant data.</p>
+      <div class="grid3">
+        <div class="box">
+          <h4>How the brand translates</h4>
+          <ul>
+            <li>Operator surfaces (manager app) get the deep-teal chrome — dense, high-trust, built for daily ops.</li>
+            <li>Owner-facing surfaces (portal) get a lighter, warmer shell — same palette, more air, first-person labels ("My Finances", "My Requests").</li>
+            <li>Gold is reserved for attention — balances due, flagged items, notifications — never decorative.</li>
+            <li>Inter&nbsp;Tight throughout; card radius + spacing rhythm held constant across every frame.</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h4>Frame inventory</h4>
+          <ul>
+            <li><b>Web (manager):</b> 6 frames — one per sidebar zone (Home, Financials, Operations, Governance, Communications, Platform).</li>
+            <li><b>Portal (residents &amp; board):</b> 4 frames — one per portal zone (Home, My Finances, My Requests, My Community).</li>
+            <li><b>Mobile:</b> 4 frames — the portal's real bottom-tab pattern at phone width.</li>
+          </ul>
+        </div>
+        <div class="box">
+          <h4>What feedback is most useful now</h4>
+          <ul>
+            <li>Does the deep-teal operator chrome vs. the lighter portal shell read as one product, or too different?</li>
+            <li>Is the Financials Hub's Setup / Operations / Insight grouping clear at a glance?</li>
+            <li>Should Round 2 wireframe the remaining sub-pages (e.g. Billing detail, Work Order detail) at this same fidelity, or move straight to build on what's here?</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- WEB — MANAGER APP                                              -->
+    <!-- ============================================================ -->
+    <section class="frame-sec">
+      <div class="sec-head"><h2>Web — Manager App</h2><span class="cnt">6 frames · the operator-facing app at /app/*</span></div>
+
+      <!-- FRAME 1 — HOME -->
+      <div class="frame-card" id="w1">
+        <div class="frame-label">
+          <div class="t"><span class="num">1</span><h3>Home — Portfolio Dashboard</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/app</span><span class="persona">Manager</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/app</div></div>
+          <div class="frame-body">
+            <aside class="op-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YourCondoManager</div><div class="st">Property Operations</div></div></div>
+              <div class="assoc"><span>🏢</span><div><span class="aa">Association</span><span class="an">Cherry Hill Court</span></div></div>
+              <div class="zg">—</div>
+              <a class="zone active">🏠 Home</a>
+              <a class="sub active">Portfolio Health</a>
+              <a class="sub">Associations</a>
+              <a class="zone">💰 Financials</a>
+              <a class="zone">🧰 Operations</a>
+              <a class="zone">⚖️ Governance</a>
+              <a class="zone">💬 Communications</a>
+              <div class="foot2"><span>⚙ Settings</span><span>❓ Help</span></div>
+            </aside>
+            <div class="op-main">
+              <div class="op-topbar"><h2>Portfolio Health — Cherry Hill Court</h2><div class="who"><div class="avatar">WR</div>William R. · Manager</div></div>
+              <div class="kpirow">
+                <div class="kpi"><div class="l">Units</div><div class="v">18</div><div class="d good">100% occupied</div></div>
+                <div class="kpi"><div class="l">Operating balance</div><div class="v">$38,240</div><div class="d good">Chase ···4471</div></div>
+                <div class="kpi"><div class="l">Reserve fund</div><div class="v">$142,850</div><div class="d good">Chase ···9902</div></div>
+                <div class="kpi"><div class="l">Delinquent</div><div class="v">2 units</div><div class="d warn">$1,940 total, 30+ days</div></div>
+              </div>
+              <div class="cols2">
+                <div class="card">
+                  <h3>Open work orders <span class="more">View all →</span></h3>
+                  <div class="rowlist">
+                    <div class="rl"><span class="ic">🔧</span><div><div class="tt">Unit 107 — kitchen faucet leak</div><div class="ss">Nutmeg Plumbing · assigned</div></div><div class="meta"><span class="pill warn">In progress</span></div></div>
+                    <div class="rl"><span class="ic">💡</span><div><div class="tt">Lobby light fixture — flickering</div><div class="ss">Building A common area</div></div><div class="meta"><span class="pill bad">Open</span></div></div>
+                    <div class="rl"><span class="ic">🛗</span><div><div class="tt">Elevator — quarterly inspection</div><div class="ss">Summit Elevator Service</div></div><div class="meta"><span class="pill info">Scheduled 7/22</span></div></div>
+                  </div>
+                </div>
+                <div class="card">
+                  <h3>Upcoming</h3>
+                  <div class="rowlist">
+                    <div class="rl"><span class="ic">📅</span><div><div class="tt">Board meeting</div><div class="ss">Tue Jul 15 · 7:00 PM · Community Room</div></div></div>
+                    <div class="rl"><span class="ic">📄</span><div><div class="tt">Certificate of Insurance</div><div class="ss">Expires Mar 2027</div></div></div>
+                    <div class="rl"><span class="ic">💵</span><div><div class="tt">Monthly assessment run</div><div class="ss">Next: Aug 1 · $485/unit</div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FRAME 2 — FINANCIALS -->
+      <div class="frame-card" id="w2">
+        <div class="frame-label">
+          <div class="t"><span class="num">2</span><h3>Financials Hub</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/app/financials</span><span class="persona">Manager · Board · Platform Admin</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/app/financials</div></div>
+          <div class="frame-body">
+            <aside class="op-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YourCondoManager</div><div class="st">Property Operations</div></div></div>
+              <div class="assoc"><span>🏢</span><div><span class="aa">Association</span><span class="an">Cherry Hill Court</span></div></div>
+              <a class="zone">🏠 Home</a>
+              <a class="zone active">💰 Financials</a>
+              <span class="sub grouptag">Setup</span>
+              <a class="sub">Chart of Accounts</a>
+              <a class="sub">Bank Accounts</a>
+              <a class="sub">Assessment Rules</a>
+              <span class="sub grouptag">Operations</span>
+              <a class="sub active">Billing</a>
+              <a class="sub">Payments</a>
+              <a class="sub">Expenses</a>
+              <span class="sub grouptag">Insight</span>
+              <a class="sub">Reports</a>
+              <a class="sub">AR Aging</a>
+              <a class="sub">Owner Statement</a>
+              <a class="zone">🧰 Operations</a>
+              <a class="zone">⚖️ Governance</a>
+              <a class="zone">💬 Communications</a>
+              <div class="foot2"><span>⚙ Settings</span><span>❓ Help</span></div>
+            </aside>
+            <div class="op-main">
+              <div class="op-topbar"><h2>Financials — Billing</h2><div class="who"><div class="avatar">WR</div>William R. · Manager</div></div>
+              <div class="kpirow">
+                <div class="kpi"><div class="l">Billed this cycle</div><div class="v">$8,730</div><div class="d">18 units · $485 ea.</div></div>
+                <div class="kpi"><div class="l">Collected</div><div class="v">$6,790</div><div class="d good">78% of cycle</div></div>
+                <div class="kpi"><div class="l">AR 30+ days</div><div class="v">$1,940</div><div class="d bad">2 units</div></div>
+                <div class="kpi"><div class="l">Autopay enrolled</div><div class="v">13 units</div><div class="d good">72%</div></div>
+              </div>
+              <div class="card">
+                <h3>Recent payments <span class="more">Payments →</span></h3>
+                <table class="dt">
+                  <tr><th>Unit</th><th>Owner</th><th>Amount</th><th>Method</th><th>Status</th></tr>
+                  <tr><td>107</td><td>M. Alvarez</td><td>$485.00</td><td>ACH</td><td><span class="pill good">Posted</span></td></tr>
+                  <tr><td>203</td><td>J. Chen</td><td>$485.00</td><td>Card</td><td><span class="pill good">Posted</span></td></tr>
+                  <tr><td>109</td><td>S. Novak</td><td>$485.00</td><td>ACH</td><td><span class="pill warn">Pending</span></td></tr>
+                  <tr><td>105</td><td>D. Kim</td><td>$970.00</td><td>Check</td><td><span class="pill good">Posted — 2 mo.</span></td></tr>
+                  <tr><td>201</td><td>T. Brooks</td><td>$485.00</td><td>—</td><td><span class="pill bad">45 days past due</span></td></tr>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="decision-note"><div class="k">IA decision — carried over from the approved 2026-06-24 restructure</div><p>The Setup / Operations / Insight grouping inside Financials is already locked product IA — I translated it onto brand rather than re-deciding it. Flagging so you know it wasn't reinvented here.</p></div>
+      </div>
+
+      <!-- FRAME 3 — OPERATIONS -->
+      <div class="frame-card" id="w3">
+        <div class="frame-label">
+          <div class="t"><span class="num">3</span><h3>Operations Hub</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/app/operations</span><span class="persona">5-persona operator</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/app/operations</div></div>
+          <div class="frame-body">
+            <aside class="op-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YourCondoManager</div><div class="st">Property Operations</div></div></div>
+              <div class="assoc"><span>🏢</span><div><span class="aa">Association</span><span class="an">Cherry Hill Court</span></div></div>
+              <a class="zone">🏠 Home</a>
+              <a class="zone">💰 Financials</a>
+              <a class="zone active">🧰 Operations</a>
+              <a class="sub active">Buildings &amp; Units</a>
+              <a class="sub">People</a>
+              <a class="sub">Work Orders</a>
+              <a class="sub">Maintenance</a>
+              <a class="sub">Inspections</a>
+              <a class="sub">Vendors</a>
+              <a class="sub">Insurance</a>
+              <a class="sub">Feedback</a>
+              <a class="zone">⚖️ Governance</a>
+              <a class="zone">💬 Communications</a>
+              <div class="foot2"><span>⚙ Settings</span><span>❓ Help</span></div>
+            </aside>
+            <div class="op-main">
+              <div class="op-topbar"><h2>Buildings &amp; Units</h2><div class="who"><div class="avatar">WR</div>William R. · Manager</div></div>
+              <div class="kpirow">
+                <div class="kpi"><div class="l">Buildings</div><div class="v">2</div><div class="d">A (101–109) · B (201–209)</div></div>
+                <div class="kpi"><div class="l">Open work orders</div><div class="v">3</div><div class="d warn">1 unassigned</div></div>
+                <div class="kpi"><div class="l">Active vendors</div><div class="v">4</div><div class="d">Landscaping, elevator, snow, plumbing</div></div>
+                <div class="kpi"><div class="l">Next inspection</div><div class="v">Jul 22</div><div class="d">Elevator — Summit</div></div>
+              </div>
+              <div class="cols2">
+                <div class="card">
+                  <h3>Units <span class="more">All 18 →</span></h3>
+                  <table class="dt">
+                    <tr><th>Unit</th><th>Owner</th><th>Building</th><th>Status</th></tr>
+                    <tr><td>102</td><td>P. Patel</td><td>A</td><td><span class="pill good">Current</span></td></tr>
+                    <tr><td>107</td><td>M. Alvarez</td><td>A</td><td><span class="pill good">Current</span></td></tr>
+                    <tr><td>204</td><td>K. Whitfield</td><td>B</td><td><span class="pill good">Current</span></td></tr>
+                    <tr><td>201</td><td>T. Brooks</td><td>B</td><td><span class="pill bad">Delinquent</span></td></tr>
+                  </table>
+                </div>
+                <div class="card">
+                  <h3>Active vendors</h3>
+                  <div class="rowlist">
+                    <div class="rl"><span class="ic">🌿</span><div><div class="tt">BrightPath Landscaping</div><div class="ss">$1,200/mo</div></div></div>
+                    <div class="rl"><span class="ic">🛗</span><div><div class="tt">Summit Elevator Service</div><div class="ss">Quarterly · $850</div></div></div>
+                    <div class="rl"><span class="ic">❄️</span><div><div class="tt">CT Snow &amp; Ice Co</div><div class="ss">Seasonal</div></div></div>
+                    <div class="rl"><span class="ic">🔧</span><div><div class="tt">Nutmeg Plumbing</div><div class="ss">On-call</div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FRAME 4 — GOVERNANCE -->
+      <div class="frame-card" id="w4">
+        <div class="frame-label">
+          <div class="t"><span class="num">4</span><h3>Governance Hub</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/app/governance</span><span class="persona">5-persona operator</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/app/governance</div></div>
+          <div class="frame-body">
+            <aside class="op-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YourCondoManager</div><div class="st">Property Operations</div></div></div>
+              <div class="assoc"><span>🏢</span><div><span class="aa">Association</span><span class="an">Cherry Hill Court</span></div></div>
+              <a class="zone">🏠 Home</a>
+              <a class="zone">💰 Financials</a>
+              <a class="zone">🧰 Operations</a>
+              <a class="zone active">⚖️ Governance</a>
+              <a class="sub active">Board</a>
+              <a class="sub">Documents</a>
+              <a class="zone">💬 Communications</a>
+              <div class="foot2"><span>⚙ Settings</span><span>❓ Help</span></div>
+            </aside>
+            <div class="op-main">
+              <div class="op-topbar"><h2>Board</h2><div class="who"><div class="avatar">WR</div>William R. · Manager</div></div>
+              <div class="cols2">
+                <div class="card">
+                  <h3>Board roster</h3>
+                  <div class="rowlist">
+                    <div class="rl"><span class="ic">👤</span><div><div class="tt">Karen Whitfield</div><div class="ss">President · Unit 204</div></div></div>
+                    <div class="rl"><span class="ic">👤</span><div><div class="tt">Marcus Alvarez</div><div class="ss">Treasurer · Unit 107</div></div></div>
+                    <div class="rl"><span class="ic">👤</span><div><div class="tt">Priya Patel</div><div class="ss">Secretary · Unit 102</div></div></div>
+                  </div>
+                  <div style="margin-top:12px"><span class="pill info">Next meeting: Tue Jul 15, 7:00 PM · Community Room</span></div>
+                </div>
+                <div class="card">
+                  <h3>Documents <span class="more">Documents →</span></h3>
+                  <div class="rowlist">
+                    <div class="rl"><span class="ic">📄</span><div><div class="tt">Bylaws</div><div class="ss">Amended 2019</div></div></div>
+                    <div class="rl"><span class="ic">📄</span><div><div class="tt">2026 Reserve Study</div><div class="ss">Uploaded Mar 2026</div></div></div>
+                    <div class="rl"><span class="ic">📄</span><div><div class="tt">Certificate of Insurance</div><div class="ss">Expires Mar 2027</div></div></div>
+                    <div class="rl"><span class="ic">📄</span><div><div class="tt">June Board Minutes</div><div class="ss">Approved</div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FRAME 5 — COMMUNICATIONS -->
+      <div class="frame-card" id="w5">
+        <div class="frame-label">
+          <div class="t"><span class="num">5</span><h3>Communications Hub</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/app/communications</span><span class="persona">5-persona operator</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/app/communications</div></div>
+          <div class="frame-body">
+            <aside class="op-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YourCondoManager</div><div class="st">Property Operations</div></div></div>
+              <div class="assoc"><span>🏢</span><div><span class="aa">Association</span><span class="an">Cherry Hill Court</span></div></div>
+              <a class="zone">🏠 Home</a>
+              <a class="zone">💰 Financials</a>
+              <a class="zone">🧰 Operations</a>
+              <a class="zone">⚖️ Governance</a>
+              <a class="zone active">💬 Communications</a>
+              <a class="sub active">Inbox</a>
+              <a class="sub">Announcements</a>
+              <a class="sub">Amenity Booking</a>
+              <a class="sub">Community Hub</a>
+              <div class="foot2"><span>⚙ Settings</span><span>❓ Help</span></div>
+            </aside>
+            <div class="op-main">
+              <div class="op-topbar"><h2>Inbox</h2><div class="who"><div class="avatar">WR</div>William R. · Manager</div></div>
+              <div class="cols2">
+                <div class="card">
+                  <h3>Threads <span class="more">3 open</span></h3>
+                  <div class="rowlist">
+                    <div class="rl"><span class="ic">💬</span><div><div class="tt">Unit 203 — noise complaint follow-up</div><div class="ss">J. Chen · 2h ago</div></div><div class="meta"><span class="pill warn">Open</span></div></div>
+                    <div class="rl"><span class="ic">💬</span><div><div class="tt">Unit 105 — parking permit request</div><div class="ss">D. Kim · yesterday</div></div><div class="meta"><span class="pill info">Replied</span></div></div>
+                    <div class="rl"><span class="ic">💬</span><div><div class="tt">BrightPath — July invoice attached</div><div class="ss">Vendor · 2 days ago</div></div><div class="meta"><span class="pill good">Closed</span></div></div>
+                  </div>
+                </div>
+                <div class="card">
+                  <h3>Announcements <span class="more">New →</span></h3>
+                  <div class="rowlist">
+                    <div class="rl"><span class="ic">📣</span><div><div class="tt">Pool opens Memorial Day weekend</div><div class="ss">Sent to all 18 units</div></div></div>
+                    <div class="rl"><span class="ic">📣</span><div><div class="tt">Elevator maintenance Tue 7/22, 9am–12pm</div><div class="ss">Draft — not yet sent</div></div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FRAME 6 — PLATFORM -->
+      <div class="frame-card" id="w6">
+        <div class="frame-label">
+          <div class="t"><span class="num">6</span><h3>Platform Controls</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/app/platform/controls</span><span class="persona">Platform Admin only</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/app/platform/controls</div></div>
+          <div class="frame-body">
+            <aside class="op-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YourCondoManager</div><div class="st">Property Operations</div></div></div>
+              <div class="assoc"><span>🏢</span><div><span class="aa">Association</span><span class="an">Cherry Hill Court</span></div></div>
+              <a class="zone">🏠 Home</a>
+              <a class="zone">💰 Financials</a>
+              <a class="zone">🧰 Operations</a>
+              <a class="zone">⚖️ Governance</a>
+              <a class="zone">💬 Communications</a>
+              <a class="zone active">⚙️ Platform</a>
+              <a class="sub active">Platform Controls</a>
+              <a class="sub">Admin Roadmap</a>
+              <a class="sub">Admin Users</a>
+              <a class="sub">Executive</a>
+              <a class="sub">AI Ingestion</a>
+              <div class="foot2"><span>⚙ Settings</span><span>❓ Help</span></div>
+            </aside>
+            <div class="op-main">
+              <div class="op-topbar"><h2>Platform Controls</h2><div class="who"><div class="avatar">WR</div>William R. · Platform Admin</div></div>
+              <div class="kpirow">
+                <div class="kpi"><div class="l">Associations</div><div class="v">1</div><div class="d">Cherry Hill Court (pilot)</div></div>
+                <div class="kpi"><div class="l">Plan</div><div class="v">Pilot</div><div class="d good">Active</div></div>
+                <div class="kpi"><div class="l">Admin users</div><div class="v">3</div><div class="d">Manager + 2 board</div></div>
+                <div class="kpi"><div class="l">AI ingestion</div><div class="v">Off</div><div class="d">Not yet enabled</div></div>
+              </div>
+              <div class="card">
+                <h3>Admin roadmap <span class="more">Roadmap →</span></h3>
+                <div class="rowlist">
+                  <div class="rl"><span class="ic">🗺️</span><div><div class="tt">Second HOA onboarding — Wawaset</div><div class="ss">Pipeline</div></div><div class="meta"><span class="pill info">Planned</span></div></div>
+                  <div class="rl"><span class="ic">🗺️</span><div><div class="tt">Reserve-study auto-refresh</div><div class="ss">Roadmap item</div></div><div class="meta"><span class="pill warn">Q3</span></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="decision-note"><div class="k">IA decision — flag for you</div><p>Platform Controls is gated platform-admin-only and Cherry Hill's board/manager won't ever see it — I still wireframed it since it's part of the real 6-zone tree. If Round 2 should skip admin-only screens to focus review time on what Cherry Hill actually sees, say the word.</p></div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- PORTAL — RESIDENTS & BOARD                                     -->
+    <!-- ============================================================ -->
+    <section class="frame-sec">
+      <div class="sec-head"><h2>Portal — Residents &amp; Board</h2><span class="cnt">4 frames · the owner-facing app at /portal/*</span></div>
+
+      <!-- FRAME 7 — PORTAL HOME -->
+      <div class="frame-card" id="p1">
+        <div class="frame-label">
+          <div class="t"><span class="num">7</span><h3>Portal Home</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/portal</span><span class="persona">Owner</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/portal</div></div>
+          <div class="frame-body">
+            <aside class="pt-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YCM</div><div class="tt2">Owner Portal</div></div></div>
+              <a class="item active">🏠 Home</a>
+              <a class="item">💵 My Finances</a>
+              <a class="item">🔧 My Requests</a>
+              <a class="item">🏘️ My Community<span class="badge">2</span></a>
+            </aside>
+            <div class="pt-main">
+              <div class="pt-topbar"><h2>Welcome back, Marcus</h2><div class="who"><b>Unit 107</b>Cherry Hill Court</div></div>
+              <div class="kpirow">
+                <div class="kpi"><div class="l">Balance due</div><div class="v">$0.00</div><div class="d good">Autopay active</div></div>
+                <div class="kpi"><div class="l">Open requests</div><div class="v">1</div><div class="d warn">Kitchen faucet — in progress</div></div>
+                <div class="kpi"><div class="l">Unread notices</div><div class="v">2</div><div class="d">Pool + elevator</div></div>
+                <div class="kpi"><div class="l">Board role</div><div class="v">Treasurer</div><div class="d good">Board access</div></div>
+              </div>
+              <div class="card">
+                <h3>Latest from the board</h3>
+                <div class="rowlist">
+                  <div class="rl"><span class="ic">📣</span><div><div class="tt">Pool opens Memorial Day weekend</div><div class="ss">Cherry Hill Court board</div></div></div>
+                  <div class="rl"><span class="ic">📣</span><div><div class="tt">Elevator maintenance Tue 7/22, 9am–12pm</div><div class="ss">Cherry Hill Court board</div></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FRAME 8 — MY FINANCES -->
+      <div class="frame-card" id="p2">
+        <div class="frame-label">
+          <div class="t"><span class="num">8</span><h3>My Finances</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/portal/finances</span><span class="persona">Owner</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/portal/finances</div></div>
+          <div class="frame-body">
+            <aside class="pt-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YCM</div><div class="tt2">Owner Portal</div></div></div>
+              <a class="item">🏠 Home</a>
+              <a class="item active">💵 My Finances</a>
+              <a class="item">🔧 My Requests</a>
+              <a class="item">🏘️ My Community<span class="badge">2</span></a>
+            </aside>
+            <div class="pt-main">
+              <div class="pt-topbar"><h2>My Finances</h2><div class="who"><b>Unit 107</b>Cherry Hill Court</div></div>
+              <div class="cols2">
+                <div class="card">
+                  <h3>Payment history</h3>
+                  <table class="dt">
+                    <tr><th>Date</th><th>Amount</th><th>Method</th><th>Status</th></tr>
+                    <tr><td>Jul 1</td><td>$485.00</td><td>ACH — autopay</td><td><span class="pill good">Posted</span></td></tr>
+                    <tr><td>Jun 1</td><td>$485.00</td><td>ACH — autopay</td><td><span class="pill good">Posted</span></td></tr>
+                    <tr><td>May 1</td><td>$485.00</td><td>ACH — autopay</td><td><span class="pill good">Posted</span></td></tr>
+                  </table>
+                </div>
+                <div class="card">
+                  <h3>Autopay</h3>
+                  <div class="rowlist">
+                    <div class="rl"><span class="ic">🏦</span><div><div class="tt">Chase ···3392</div><div class="ss">Enrolled · charges the 1st</div></div><div class="meta"><span class="pill good">Active</span></div></div>
+                  </div>
+                  <div style="margin-top:12px"><a class="btn acc">Make a one-time payment</a></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FRAME 9 — MY REQUESTS -->
+      <div class="frame-card" id="p3">
+        <div class="frame-label">
+          <div class="t"><span class="num">9</span><h3>My Requests</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/portal/requests</span><span class="persona">Owner</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/portal/requests</div></div>
+          <div class="frame-body">
+            <aside class="pt-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YCM</div><div class="tt2">Owner Portal</div></div></div>
+              <a class="item">🏠 Home</a>
+              <a class="item">💵 My Finances</a>
+              <a class="item active">🔧 My Requests<span class="badge">1</span></a>
+              <a class="item">🏘️ My Community<span class="badge">2</span></a>
+            </aside>
+            <div class="pt-main">
+              <div class="pt-topbar"><h2>My Requests</h2><div class="who"><b>Unit 107</b>Cherry Hill Court</div></div>
+              <div class="card">
+                <h3>Open &amp; recent</h3>
+                <div class="rowlist">
+                  <div class="rl"><span class="ic">🔧</span><div><div class="tt">Kitchen faucet — leaking</div><div class="ss">Submitted Jul 3 · Nutmeg Plumbing assigned</div></div><div class="meta"><span class="pill warn">In progress</span></div></div>
+                  <div class="rl"><span class="ic">✅</span><div><div class="tt">Hallway smoke detector — battery</div><div class="ss">Resolved Jun 18</div></div><div class="meta"><span class="pill good">Closed</span></div></div>
+                </div>
+                <div style="margin-top:12px"><a class="btn">+ New request</a></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FRAME 10 — MY COMMUNITY -->
+      <div class="frame-card" id="p4">
+        <div class="frame-label">
+          <div class="t"><span class="num">10</span><h3>My Community</h3></div>
+          <div style="display:flex;gap:10px;align-items:center"><span class="route">/portal/community</span><span class="persona">Owner</span></div>
+        </div>
+        <div class="browser">
+          <div class="win-bar"><div class="dots"><span></span><span></span><span></span></div><div class="urlbar">app.yourcondomanager.com/portal/community</div></div>
+          <div class="frame-body">
+            <aside class="pt-side">
+              <div class="abrand"><span class="mk2"></span><div><div class="tt">YCM</div><div class="tt2">Owner Portal</div></div></div>
+              <a class="item">🏠 Home</a>
+              <a class="item">💵 My Finances</a>
+              <a class="item">🔧 My Requests</a>
+              <a class="item active">🏘️ My Community<span class="badge">2</span></a>
+            </aside>
+            <div class="pt-main">
+              <div class="pt-topbar"><h2>My Community</h2><div class="who"><b>Unit 107</b>Cherry Hill Court</div></div>
+              <div class="grid-tiles">
+                <div class="tile"><div class="ic">📅</div><div class="tt">Amenities</div><div class="ss">Book the Community Room or rooftop deck</div></div>
+                <div class="tile"><div class="ic">🔔</div><div class="tt">Notices <span class="pill bad" style="margin-left:5px">2 new</span></div><div class="ss">Board announcements</div></div>
+                <div class="tile"><div class="ic">📄</div><div class="tt">Documents</div><div class="ss">Bylaws, minutes, insurance</div></div>
+                <div class="tile"><div class="ic">🌐</div><div class="tt">Public community hub</div><div class="ss">Opens in a new tab</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- MOBILE — PORTAL AT PHONE WIDTH                                 -->
+    <!-- ============================================================ -->
+    <section class="frame-sec">
+      <div class="sec-head"><h2>Mobile — Portal at phone width</h2><span class="cnt">4 frames · same routes as Portal above, rendered with the real bottom tab-bar pattern</span></div>
+      <div class="decision-note"><div class="k">IA decision — flag for you</div><p>The codebase has no separate native-mobile manager IA — the Manager app is responsive, and Owners/board already get a purpose-built phone experience (the portal's real bottom-tab-bar shell). I wireframed "Mobile" as the portal at phone width, since that's the actual mobile-first surface owners use. If you want the Manager web app itself wireframed at phone width too, tell me and I'll add it in Round 2.</p></div>
+
+      <div style="display:flex;gap:22px;flex-wrap:wrap;justify-content:center">
+        <!-- PHONE 1 — HOME -->
+        <div class="frame-card" id="m1" style="width:410px">
+          <div class="frame-label"><div class="t"><span class="num">11</span><h3>Home</h3></div><span class="route">/portal</span></div>
+          <div class="phone-wrap">
+            <div class="phone"><div class="notch"></div>
+              <div class="pscreen">
+                <div class="phead"><h2>Hi, Marcus</h2><div class="who">Unit 107</div></div>
+                <div class="pbody">
+                  <div class="kpi" style="margin-bottom:8px"><div class="l">Balance due</div><div class="v">$0.00</div><div class="d good">Autopay active</div></div>
+                  <div class="card" style="padding:12px 13px">
+                    <h3 style="font-size:12px">Latest from the board</h3>
+                    <div class="rowlist">
+                      <div class="rl"><span class="ic" style="width:24px;height:24px;font-size:11px">📣</span><div><div class="tt" style="font-size:11.5px">Pool opens Memorial Day</div></div></div>
+                      <div class="rl"><span class="ic" style="width:24px;height:24px;font-size:11px">📣</span><div><div class="tt" style="font-size:11.5px">Elevator maint. Tue 7/22</div></div></div>
+                    </div>
+                  </div>
+                </div>
+                <nav class="ptabs">
+                  <div class="tb active"><span class="ic">🏠</span>Home</div>
+                  <div class="tb"><span class="ic">💵</span>Finances</div>
+                  <div class="tb"><span class="bd"><span class="ic">🔧</span><span class="n">1</span></span>Requests</div>
+                  <div class="tb"><span class="bd"><span class="ic">🏘️</span><span class="n">2</span></span>Community</div>
+                </nav>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PHONE 2 — MY FINANCES -->
+        <div class="frame-card" id="m2" style="width:410px">
+          <div class="frame-label"><div class="t"><span class="num">12</span><h3>My Finances</h3></div><span class="route">/portal/finances</span></div>
+          <div class="phone-wrap">
+            <div class="phone"><div class="notch"></div>
+              <div class="pscreen">
+                <div class="phead"><h2>My Finances</h2><div class="who">Unit 107</div></div>
+                <div class="pbody">
+                  <div class="card" style="padding:12px 13px">
+                    <h3 style="font-size:12px">Payment history</h3>
+                    <table class="dt" style="font-size:11px">
+                      <tr><th>Date</th><th>Amt</th><th>Status</th></tr>
+                      <tr><td>Jul 1</td><td>$485</td><td><span class="pill good">Posted</span></td></tr>
+                      <tr><td>Jun 1</td><td>$485</td><td><span class="pill good">Posted</span></td></tr>
+                    </table>
+                  </div>
+                  <a class="btn acc" style="display:block;text-align:center;margin-top:10px">Make a payment</a>
+                </div>
+                <nav class="ptabs">
+                  <div class="tb"><span class="ic">🏠</span>Home</div>
+                  <div class="tb active"><span class="ic">💵</span>Finances</div>
+                  <div class="tb"><span class="bd"><span class="ic">🔧</span><span class="n">1</span></span>Requests</div>
+                  <div class="tb"><span class="bd"><span class="ic">🏘️</span><span class="n">2</span></span>Community</div>
+                </nav>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PHONE 3 — MY REQUESTS -->
+        <div class="frame-card" id="m3" style="width:410px">
+          <div class="frame-label"><div class="t"><span class="num">13</span><h3>My Requests</h3></div><span class="route">/portal/requests</span></div>
+          <div class="phone-wrap">
+            <div class="phone"><div class="notch"></div>
+              <div class="pscreen">
+                <div class="phead"><h2>My Requests</h2><div class="who">Unit 107</div></div>
+                <div class="pbody">
+                  <div class="card" style="padding:12px 13px">
+                    <div class="rowlist">
+                      <div class="rl"><span class="ic" style="width:24px;height:24px;font-size:11px">🔧</span><div><div class="tt" style="font-size:11.5px">Kitchen faucet leak</div><div class="ss">Jul 3</div></div><div class="meta"><span class="pill warn">Active</span></div></div>
+                      <div class="rl"><span class="ic" style="width:24px;height:24px;font-size:11px">✅</span><div><div class="tt" style="font-size:11.5px">Smoke detector battery</div><div class="ss">Jun 18</div></div><div class="meta"><span class="pill good">Closed</span></div></div>
+                    </div>
+                  </div>
+                  <a class="btn" style="display:block;text-align:center;margin-top:10px">+ New request</a>
+                </div>
+                <nav class="ptabs">
+                  <div class="tb"><span class="ic">🏠</span>Home</div>
+                  <div class="tb"><span class="ic">💵</span>Finances</div>
+                  <div class="tb active"><span class="bd"><span class="ic">🔧</span><span class="n">1</span></span>Requests</div>
+                  <div class="tb"><span class="bd"><span class="ic">🏘️</span><span class="n">2</span></span>Community</div>
+                </nav>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PHONE 4 — MY COMMUNITY -->
+        <div class="frame-card" id="m4" style="width:410px">
+          <div class="frame-label"><div class="t"><span class="num">14</span><h3>My Community</h3></div><span class="route">/portal/community</span></div>
+          <div class="phone-wrap">
+            <div class="phone"><div class="notch"></div>
+              <div class="pscreen">
+                <div class="phead"><h2>My Community</h2><div class="who">Unit 107</div></div>
+                <div class="pbody">
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                    <div class="tile" style="padding:11px"><div class="ic" style="font-size:16px">📅</div><div class="tt" style="font-size:11.5px">Amenities</div></div>
+                    <div class="tile" style="padding:11px"><div class="ic" style="font-size:16px">🔔</div><div class="tt" style="font-size:11.5px">Notices <span class="pill bad">2</span></div></div>
+                    <div class="tile" style="padding:11px"><div class="ic" style="font-size:16px">📄</div><div class="tt" style="font-size:11.5px">Documents</div></div>
+                    <div class="tile" style="padding:11px"><div class="ic" style="font-size:16px">🌐</div><div class="tt" style="font-size:11.5px">Public hub</div></div>
+                  </div>
+                </div>
+                <nav class="ptabs">
+                  <div class="tb"><span class="ic">🏠</span>Home</div>
+                  <div class="tb"><span class="ic">💵</span>Finances</div>
+                  <div class="tb"><span class="bd"><span class="ic">🔧</span><span class="n">1</span></span>Requests</div>
+                  <div class="tb active"><span class="bd"><span class="ic">🏘️</span><span class="n">2</span></span>Community</div>
+                </nav>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="qa">
+      <h4>Recap — what this round is and isn't</h4>
+      <ul>
+        <li><b>Is:</b> a picture, on-brand, of the real product IA — every zone, every route, real Cherry Hill Court data shapes.</li>
+        <li><b>Isn't:</b> built. No code changed. Nothing here is live in the app.</li>
+        <li><b>Next:</b> your signoff on this round is the gate that starts Round 2 (build).</li>
+      </ul>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>
