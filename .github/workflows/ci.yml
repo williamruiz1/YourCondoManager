@@ -103,7 +103,37 @@ jobs:
       - run: npm ci --legacy-peer-deps
       # `--with-deps` is Debian/Ubuntu only (uses apt-get). macOS has the
       # system libs already; install browsers only.
-      - run: npx playwright install chromium firefox webkit
+      #
+      # founder-os#10095 — bounded retry with exponential backoff. The browser
+      # download from Google's Chrome-for-Testing CDN (storage.googleapis.com)
+      # intermittently times out (ETIMEDOUT / socket hang up) from the
+      # self-hosted runner, which never reaches a test and BLOCKED every YCM PR
+      # merge (proven on PR #423, 3× on this same step). A transient CDN blip now
+      # self-heals instead of failing the required check. `playwright install` is
+      # idempotent — a retry re-uses already-downloaded browsers and only
+      # re-fetches the ones still missing. All 3 browsers stay (chromium/firefox/
+      # webkit are intentional cross-browser projects, playwright.config Wave 45).
+      - name: Install Playwright browsers (retry on CDN flake)
+        run: |
+          set -o pipefail
+          attempts=5
+          delay=10
+          for i in $(seq 1 "$attempts"); do
+            echo "::group::playwright install (attempt $i/$attempts)"
+            if npx playwright install chromium firefox webkit; then
+              echo "::endgroup::"
+              echo "Playwright browsers installed on attempt $i."
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$i" -lt "$attempts" ]; then
+              echo "Install failed (likely CDN timeout) — retrying in ${delay}s…"
+              sleep "$delay"
+              delay=$(( delay * 2 ))
+            fi
+          done
+          echo "Playwright browser install failed after ${attempts} attempts." >&2
+          exit 1
       # Self-hosted-runner hygiene: the Playwright webServer binds
       # PLAYWRIGHT_PORT (5013 — see the job env above for why NOT 5000), and
       # `reuseExistingServer` is FALSE in CI — so a stale webServer left by a
