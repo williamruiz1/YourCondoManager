@@ -30,52 +30,62 @@ key, or unset → "not configured"); **noindex** (`X-Robots-Tag: noindex` + disa
 
 ---
 
-## One-time setup (provision the staging app)
+## Provisioned resources (as built — 2026-07-09)
+
+Prod runs on **Neon** (`yourcondomanager-prod`, project `lucky-scene-78941627`,
+branch `main`), so staging data is a **Neon branch** — an instant copy-on-write
+clone of real prod data, same PG version + extensions (incl. `pgvector`),
+isolated by construction. (A fresh Fly Postgres cluster was ruled out: it lacked
+`pgvector`, so migration 0034 could not run there.)
+
+| Resource | Value |
+|---|---|
+| Fly app | `yourcondomanager-staging` |
+| URL | https://yourcondomanager-staging.fly.dev |
+| DB (Neon staging branch) | `staging-review` (`br-autumn-voice-aqi2xdyc`), endpoint `ep-restless-hill-aq1le0mx` |
+| `DATABASE_URL` (Fly secret) | → the Neon `staging-review` branch |
+| Kill-switch env | `APP_ENV=staging`, `OUTBOUND_SIDE_EFFECTS_DISABLED=1`, `YCM_STAGING=1` (in `fly.staging.toml`) |
+| Stripe | test key or unset; live keys refused at use |
+
+## Re-provisioning from scratch (if ever needed)
 
 ```bash
-# 1. Create the staging app (no deploy yet).
+# 1. App:
 flyctl apps create yourcondomanager-staging --org personal
-
-# 2. Provision the staging database.
-#    Option A (separate cluster — strongest isolation):
-flyctl postgres create --name yourcondomanager-staging-db --org personal --region ewr \
-  --vm-size shared-cpu-1x --volume-size 1 --initial-cluster-size 1
-flyctl postgres attach yourcondomanager-staging-db -a yourcondomanager-staging
-#    Option B (separate DATABASE on the existing prod cluster — cheaper, still isolated):
-#      create a `*_staging` database on yourcondomanager-db and set DATABASE_URL to it.
-
-# 3. Set the staging secrets. The staging DB URL is set by `postgres attach` (option A).
-#    Stripe: a TEST key, or leave unset. All other real creds are omitted on purpose.
+# 2. DB = Neon branch off prod main (needs Neon API key in keychain 'neon-api-key'):
+#    POST /projects/lucky-scene-78941627/branches  {branch:{name:"staging-review",parent_id:"<main>"}, endpoints:[{type:"read_write"}]}
+#    → take the branch's connection_uri.
+# 3. Secrets:
 flyctl secrets set -a yourcondomanager-staging \
-  SESSION_SECRET="$(openssl rand -hex 32)" \
-  PLATFORM_STRIPE_SECRET_KEY="sk_test_...redacted..."     # or skip this line entirely
-#    (Do NOT copy prod's live Stripe/Twilio/Gmail/VAPID secrets to staging.)
-
-# 4. Clone real CHC data into staging + scrub creds (see next section).
-
-# 5. Deploy the redesign branch to staging.
-git checkout design/9299-redesign-prototype-r1   # or the current redesign integration branch
+  DATABASE_URL="<neon staging-review connection uri>" \
+  SESSION_SECRET="$(openssl rand -hex 32)"
+#    Stripe test key optional; do NOT copy prod's live Stripe/Twilio/Gmail/VAPID secrets.
+# 4. Deploy the redesign branch (must contain the kill-switch — merge main first):
 flyctl deploy -c fly.staging.toml -a yourcondomanager-staging
-
-# 6. Hand William the gated URL: https://yourcondomanager-staging.fly.dev
+# 5. Hand William the gated URL: https://yourcondomanager-staging.fly.dev
 ```
 
 ---
 
-## Refresh staging from prod (re-clone on demand)
+## Refresh staging data on demand
 
-Run any time to reset staging to the latest real data:
-
+**Primary (Neon branch reset — our setup):**
 ```bash
-# Expose both DBs (or build the two URLs from the cluster creds), then:
+scripts/refresh-staging-neon-branch.sh   # resets the staging-review branch to prod main head
+```
+
+**Generic fallback (pg_dump, for a non-Neon staging DB):**
+```bash
 PROD_DATABASE_URL="postgres://.../<proddb>" \
 STAGING_DATABASE_URL="postgres://.../<...staging...>" \
   scripts/refresh-staging-from-prod.sh
 ```
-
-The script dumps prod (read-only), restores into the staging DB (`--clean --if-exists`),
-and scrubs Twilio/VAPID/live-Stripe rows from the cloned `platform_secrets`. It refuses
-to run if the staging URL doesn't contain `staging`, or if the two URLs are identical.
+The pg_dump script dumps prod read-only, restores into the staging DB
+(`--clean --if-exists`), and scrubs Twilio/VAPID/live-Stripe rows from the cloned
+`platform_secrets`. It refuses to run if the staging URL doesn't contain
+`staging`, or if the two URLs are identical. (Note: prod stores creds in Fly/env,
+not the DB — `platform_secrets` is empty — so the scrub is a no-op backstop; the
+code kill-switch is the real guarantee.)
 
 ---
 
