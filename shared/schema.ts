@@ -636,6 +636,8 @@ export const vendors = pgTable("vendors", {
   primaryPhone: text("primary_phone"),
   licenseNumber: text("license_number"),
   insuranceExpiresAt: timestamp("insurance_expires_at"),
+  // W-9 on file, tracked as a received-date (null = not on file). Founder-os#9482.
+  w9ReceivedAt: timestamp("w9_received_at"),
   status: vendorStatusEnum("status").notNull().default("active"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

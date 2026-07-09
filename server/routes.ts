@@ -23,6 +23,7 @@ import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
 import { buildPerUnitBreakdown } from "@shared/portal-per-unit";
 import { invalidateAlertCache } from "./alerts";
 import { getMigrationHealth } from "./migration-health";
+import { vendorComplianceStatus } from "./services/vendor-compliance";
 
 /**
  * 4.1 Wave 15a — real-time alert cache invalidation wiring.
@@ -5732,6 +5733,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/vendors/renewal-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const result = await storage.getVendorRenewalAlerts(getAssociationIdQuery(req));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // Vendor compliance status (W-9 / COI / insurance-expiry) — founder-os#9482.
+  // Additive alongside /api/vendors and /api/vendors/renewal-alerts; does not
+  // change either existing response shape.
+  app.get("/api/vendors/compliance", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      const vendorRows = (await storage.getVendors(associationId)).filter((v) => v.status !== "inactive");
+      const coiMap = await storage.getVendorCoiOnFileMap(vendorRows.map((v) => v.id));
+      const result = vendorRows.map((vendor) => {
+        const hasCurrentCoi = Boolean(coiMap[vendor.id]);
+        const insuranceExpiresAt = vendor.insuranceExpiresAt ? new Date(vendor.insuranceExpiresAt) : null;
+        const w9ReceivedAt = vendor.w9ReceivedAt ? new Date(vendor.w9ReceivedAt) : null;
+        const { status, daysUntilExpiry, missing } = vendorComplianceStatus({
+          w9ReceivedAt,
+          hasCurrentCoi,
+          insuranceExpiresAt,
+        });
+        return {
+          vendorId: vendor.id,
+          vendorName: vendor.name,
+          associationId: vendor.associationId,
+          w9ReceivedAt,
+          hasCurrentCoi,
+          insuranceExpiresAt,
+          complianceStatus: status,
+          daysUntilExpiry,
+          missing,
+        };
+      });
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
