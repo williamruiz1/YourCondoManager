@@ -101,6 +101,25 @@ jobs:
         with:
           node-version: "24"
       - run: npm ci --legacy-peer-deps
+      # founder-os#10172 — cache the Playwright browsers so the Chrome-for-Testing
+      # CDN (storage.googleapis.com) is hit ONCE per Playwright version, then never
+      # again. This COMPLEMENTS #10095's retry-wrapper: the retry self-heals a
+      # transient CDN blip; this cache means a CDN HARD-down can't block CI at all
+      # after the first successful install for a given version (the install step
+      # below becomes a fast no-op on a cache hit). Keyed on the RESOLVED
+      # @playwright/test version so a version bump correctly re-fetches. The macOS
+      # browser cache lives at ~/Library/Caches/ms-playwright (NOT ~/.cache/ms-playwright
+      # — that's the Linux default). Reversible (git-revert), no new secrets.
+      - name: Resolve Playwright version (cache key)
+        id: pw-version
+        run: echo "version=$(npx playwright --version | sed 's/^Version //')" >> "$GITHUB_OUTPUT"
+      - name: Cache Playwright browsers
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: ms-playwright-${{ runner.os }}-${{ steps.pw-version.outputs.version }}
+          restore-keys: |
+            ms-playwright-${{ runner.os }}-
       # `--with-deps` is Debian/Ubuntu only (uses apt-get). macOS has the
       # system libs already; install browsers only.
       #
