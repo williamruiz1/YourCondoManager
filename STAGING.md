@@ -89,6 +89,33 @@ code kill-switch is the real guarantee.)
 
 ---
 
+## How William logs in to review (one setup step needs the Google console)
+
+The app gate is Google OAuth (admin accounts `yourcondomanagement@gmail.com`,
+`chcmgmt18@gmail.com` — both exist in the cloned data). Email magic-links are
+**sinked by the kill-switch**, so Google OAuth is the login path. To enable it:
+
+1. Set the OAuth secrets on staging (copy the app creds from prod — these are the
+   login mechanism, not side-effect creds):
+   ```bash
+   flyctl secrets import -a yourcondomanager-staging <<'EOF'
+   GOOGLE_CLIENT_ID=<prod GOOGLE_CLIENT_ID>
+   GOOGLE_CLIENT_SECRET=<prod GOOGLE_CLIENT_SECRET>
+   GOOGLE_CALLBACK_URL=https://yourcondomanager-staging.fly.dev/api/auth/google/callback
+   GOOGLE_CALLBACK_PATH=/api/auth/google/callback
+   EOF
+   ```
+2. **In Google Cloud Console → the YCM OAuth client → Authorized redirect URIs,
+   add:** `https://yourcondomanager-staging.fly.dev/api/auth/google/callback`
+   *(this is the only step that needs the Google console — William's action).*
+3. Visit `https://yourcondomanager-staging.fly.dev` and sign in with a Google
+   admin account. It reads the real cloned CHC data.
+
+(A quicker alternative if console access is inconvenient: put a basic-auth edge
+gate in front of staging — but per-owner views still require an app login.)
+
+---
+
 ## Verify the kill-switch (do this after every deploy)
 
 ```bash
