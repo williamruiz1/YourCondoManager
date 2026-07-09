@@ -169,3 +169,49 @@ describe("Webhook: Sentry capture on failure (founder-os#1147, per #1030)", () =
     expect(r).toContain("errorMessage");
   });
 });
+
+describe("Webhook: trial-ending email — customer.subscription.trial_will_end (founder-os#1147, #9260)", () => {
+  // Acceptance criterion #8: transactional emails include trial-ending. Stripe
+  // fires `customer.subscription.trial_will_end` ~3 days before the trial ends —
+  // the canonical Stripe reminder pattern (no custom scheduler for the D-3 touch).
+  it("handles the customer.subscription.trial_will_end event", () => {
+    expect(routesSource).toContain('eventType === "customer.subscription.trial_will_end"');
+  });
+
+  it("sends a trial-ending email in that branch", () => {
+    const idx = routesSource.indexOf('eventType === "customer.subscription.trial_will_end"');
+    expect(idx).toBeGreaterThan(-1);
+    const region = routesSource.substring(idx, idx + 2400);
+    expect(region).toContain("sendPlatformEmail");
+    expect(region).toMatch(/trial is ending/i);
+    // Best-effort + non-crashing, mirroring the other platform emails.
+    expect(region).toContain(".catch(() => {})");
+  });
+});
+
+describe("Webhook: plan-changed email — customer.subscription.updated (founder-os#1147, #9260)", () => {
+  // Acceptance criterion #8: transactional emails include plan-changed. Fired only
+  // on a genuine plan move, detected via Stripe's `previous_attributes` (items/plan).
+  it("captures previous_attributes on the event", () => {
+    expect(routesSource).toContain("previous_attributes");
+    expect(routesSource).toMatch(/const previousAttributes/);
+  });
+
+  it("gates the plan-changed email on a real plan change (previous_attributes items/plan)", () => {
+    const idx = routesSource.indexOf('eventType === "customer.subscription.updated" || eventType === "customer.subscription.deleted"');
+    expect(idx).toBeGreaterThan(-1);
+    const region = routesSource.substring(idx, idx + 2600);
+    expect(region).toMatch(/planChanged/);
+    expect(region).toMatch(/previousAttributes, "items"/);
+    expect(region).toContain("sendPlatformEmail");
+    expect(region).toMatch(/plan was updated/i);
+  });
+});
+
+describe("Webhook: Sentry capture on failure (founder-os#1147, #9260 regression guard)", () => {
+  // Acceptance criterion #7: Sentry error capture on every Stripe Billing webhook
+  // failure. Present in main; guarded here so it can't silently regress.
+  it("calls captureServerError in the webhook catch with scope metadata", () => {
+    expect(routesSource).toMatch(/captureServerError\([\s\S]*?scope:\s*"platform-stripe-webhook"/);
+  });
+});
