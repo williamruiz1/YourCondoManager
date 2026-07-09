@@ -305,6 +305,7 @@ import { registerViolationTriageRoutes } from "./routes/violation-triage";
 import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
+import { registerStatutoryRecordsRoutes } from "./routes/statutory-records";
 import {
   getEffectivePortalRole,
   requireBoardAccess,
@@ -1545,6 +1546,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerResaleCertificateRoutes(app, {
     requireAdmin,
     requireAdminRole,
+    assertAssociationScope,
+  });
+
+  // founder-os#9483 — Statutory records production. Intake resale-cert / estoppel /
+  // records-request → generate the packet (reusing #8013 §47-270, the estoppel
+  // account-status subset, and the §47-260 response engines) → PIN the statutory
+  // deadline into the chief-of-staff queue (always visible) → gate issuance at L3
+  // (the PM sign) via the same permission ladder. Issuance is impossible without it.
+  registerStatutoryRecordsRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
     assertAssociationScope,
   });
 

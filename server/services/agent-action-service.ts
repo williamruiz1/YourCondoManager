@@ -77,6 +77,10 @@ export const ACTION_TYPE_LEVELS: Record<string, AgentActionLevel> = {
   "financial.issue_refund": "L3",
   "irreversible.send_owner_notice": "L3",
   "irreversible.delete_record": "L3",
+  // Issuance of a statutory record (resale certificate / estoppel / records
+  // response — founder-os#9483). Irreversible + legally-binding on the
+  // association; ALWAYS requires the PM's recorded sign before it is issued.
+  "irreversible.issue_statutory_record": "L3",
   // L4 — board / member-affecting. Requires a BOARD-level approval.
   "board.publish_meeting_minutes": "L4",
   "board.record_vote": "L4",
