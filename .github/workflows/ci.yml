@@ -101,6 +101,23 @@ jobs:
         with:
           node-version: "24"
       - run: npm ci --legacy-peer-deps
+      # founder-os#10172 — cache the Playwright browser binaries so the
+      # Chrome-for-Testing CDN (storage.googleapis.com) is not hit at all after
+      # the first successful install (CDN-independent hardening on top of the
+      # #10095 retry: retry self-heals a transient blip, cache survives a CDN
+      # HARD-down). This runner is self-hosted macOS, where Playwright caches
+      # browsers under ~/Library/Caches/ms-playwright (NOT the Linux
+      # ~/.cache/ms-playwright). Key on the lockfile hash so a Playwright version
+      # bump (which changes package-lock.json) invalidates the cache; restore-keys
+      # gives a partial-match fallback so the retry-install below only fetches
+      # what's actually missing. On a hit, the install step no-ops.
+      - name: Cache Playwright browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
       # `--with-deps` is Debian/Ubuntu only (uses apt-get). macOS has the
       # system libs already; install browsers only.
       #
