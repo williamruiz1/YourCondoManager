@@ -57,6 +57,9 @@ export const ACTION_TYPE_LEVELS: Record<string, AgentActionLevel> = {
   "suggest.summary": "L1",
   "suggest.ap_categorization": "L1",
   "suggest.flag_anomaly": "L1",
+  // Vendor compliance renewal reminder (founder-os#9482, W-9/COI/insurance
+  // expiry sweep) — informational only; never auto-terminates a vendor.
+  "suggest.vendor_compliance_renewal": "L1",
   // L2 — reversible. Honors the per-association per-type autonomy toggle.
   "reversible.snooze_pressing_item": "L2",
   "reversible.tag_record": "L2",

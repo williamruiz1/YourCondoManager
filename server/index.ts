@@ -27,6 +27,7 @@ import { log } from "./logger";
 import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
+import { startVendorComplianceScheduler } from "./vendor-compliance-scheduler";
 import { createRateLimiter, createPgRateLimiter, onWriteOnly, type RateLimitQuery } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
@@ -625,6 +626,7 @@ app.use((req, res, next) => {
     startAutomationJobs();
     startElectionScheduler();
     startDeprovisioningScheduler();
+    startVendorComplianceScheduler();
     // Wave 33 (5.4-F3): re-enqueue any background_jobs rows still in
     // queued/running state from a prior process. Best-effort; failures are
     // logged but never crash the server.
