@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1300 260" role="img" aria-label="Your Condo Manager — Community Operations Platform (reverse / knockout for dark backgrounds)">
+  <title>Your Condo Manager — horizontal lockup, reverse (knockout for dark surfaces)</title>
+  <!-- Transparent background by design — place on any dark surface. Mark geometry unchanged from canonical. -->
+  <g transform="translate(40,30) scale(1.6667)" fill="#FFFFFF">
+    <polygon points="10,88 34,70 34,112 10,112"/>
+    <polygon points="46,58 70,40 70,112 46,112"/>
+    <polygon points="82,26 106,8 106,112 82,112"/>
+  </g>
+  <line x1="280" y1="30" x2="280" y2="230" stroke="#2DBDB0" stroke-width="4"/>
+  <text x="320" y="160" font-family="-apple-system, system-ui, 'Inter Tight', sans-serif" font-size="72" font-weight="800" fill="#FFFFFF">YourCondoManager<tspan fill="#2DBDB0">.org</tspan></text>
+  <text x="320" y="205" font-family="-apple-system, system-ui, 'Inter Tight', sans-serif" font-size="24" font-weight="600" letter-spacing="4" fill="#BFE8E4">COMMUNITY OPERATIONS PLATFORM</text>
+</svg>

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Your Condo Manager — maskable app icon">
+  <title>Your Condo Manager — maskable icon (Android adaptive-icon safe zone)</title>
+  <!-- Full-bleed background (required for maskable icons — the OS applies its own mask shape).
+       Mark is scaled to sit well within Android's ~66% safe-zone circle so it survives any mask crop. -->
+  <rect x="0" y="0" width="512" height="512" fill="#014D4A"/>
+  <g transform="translate(150,150) scale(2.283)" fill="#FFFFFF">
+    <polygon points="10,88 34,70 34,112 10,112"/>
+    <polygon points="46,58 70,40 70,112 46,112"/>
+    <polygon points="82,26 106,8 106,112 82,112"/>
+  </g>
+</svg>
