@@ -18,7 +18,8 @@
     "types": ["node", "vite/client", "google.maps"],
     "paths": {
       "@/*": ["./client/src/*"],
-      "@shared/*": ["./shared/*"]
+      "@shared/*": ["./shared/*"],
+      "@ycm/design-system": ["./client/src/components/redesign"]
     }
   }
 }
