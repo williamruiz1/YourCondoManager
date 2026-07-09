@@ -27,6 +27,7 @@
  * runs exactly as before.
  */
 
+import { assertStripeKeySafe } from "../staging-guard";
 import { findConnectConnection, readConnectStateFromConnection } from "./stripe-connect-storage";
 import { getSecret } from "../platform-secrets-store";
 
@@ -69,6 +70,7 @@ export async function resolveConnectChargeRouting(
     "platform_stripe_secret_key",
   );
   if (!platformSecretKey) return null;
+  assertStripeKeySafe(platformSecretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
 
   return {
     stripeAccountHeader: connection.providerAccountId,
