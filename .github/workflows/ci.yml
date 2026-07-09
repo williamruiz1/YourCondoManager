@@ -103,7 +103,35 @@ jobs:
       - run: npm ci --legacy-peer-deps
       # `--with-deps` is Debian/Ubuntu only (uses apt-get). macOS has the
       # system libs already; install browsers only.
-      - run: npx playwright install chromium firefox webkit
+      #
+      # founder-os#10095 — CDN-flake resilience. The Chrome-for-Testing CDN
+      # (storage.googleapis.com) intermittently ETIMEDOUTs / socket-hang-ups
+      # mid-download, which failed this REQUIRED check and blocked EVERY YCM PR
+      # (proven 3×+ on PR #423). This runner is self-hosted + persistent, so
+      # after one successful install the browsers stay on disk
+      # (~/Library/Caches/ms-playwright) and `playwright install` no-ops without
+      # touching the CDN — the runner's own filesystem IS the browser cache
+      # (option 1 of the dispatch, provided for free here; actions/cache is NOT
+      # added because it's redundant on a persistent runner and would depend on
+      # the currently billing-blocked GitHub cache API). The ONLY time the CDN
+      # is hit is a genuine download (version bump / cold runner), so we wrap
+      # the install in a bounded retry with backoff so a transient blip
+      # self-heals instead of failing the required check. Reversible: revert
+      # this step to the one-line `npx playwright install …`.
+      - name: Install Playwright browsers (retry — CDN-flake resilience, founder-os#10095)
+        run: |
+          set -u
+          for attempt in 1 2 3; do
+            if npx playwright install chromium firefox webkit; then
+              echo "playwright install succeeded on attempt $attempt"
+              exit 0
+            fi
+            backoff=$((attempt * 15))
+            echo "::warning::playwright install attempt $attempt failed (likely a Chrome-for-Testing CDN timeout); retrying in ${backoff}s (founder-os#10095)" >&2
+            sleep "$backoff"
+          done
+          echo "::error::playwright install failed after 3 attempts — CDN unreachable (founder-os#10095)" >&2
+          exit 1
       # Self-hosted-runner hygiene: the Playwright webServer binds
       # PLAYWRIGHT_PORT (5013 — see the job env above for why NOT 5000), and
       # `reuseExistingServer` is FALSE in CI — so a stale webServer left by a
