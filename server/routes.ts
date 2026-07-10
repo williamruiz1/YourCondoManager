@@ -57,6 +57,7 @@ import { enqueueAssessmentRuleRun, getJobStatus as getBackgroundJobStatus } from
 import {
   buildAssessmentDetailForOwnerUnit,
   getUpcomingInstallmentsForOwnerUnit,
+  getAssessmentPlansForOwnerUnit,
 } from "./portal-assessment-detail";
 // Wave 33 (5.4 Part B): `./ftph-feature-tree` and `@shared/ftph-feature-tree`
 // together account for ~50 KB of feature-metadata wiring that is only
@@ -14518,7 +14519,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         return res.status(403).json({ message: "Not authorized" });
       }
       const ownerUnitId = req.portalUnitId ?? null;
-      const [allEntries, activeSchedules, paymentPlansAll, specialAssessmentUpcomingInstallments] = await Promise.all([
+      const [allEntries, activeSchedules, paymentPlansAll, specialAssessmentUpcomingInstallments, assessmentPlans] = await Promise.all([
         storage.getOwnerLedgerEntries(req.portalAssociationId),
         // Recurring charge schedules scoped to this owner's unit (or association-wide schedules)
         db.select().from(recurringChargeSchedules).where(
@@ -14537,6 +14538,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         // 4.3 Q5 — upcoming special-assessment installments for this owner's unit.
         // Each entry links to GET /api/portal/assessments/:assessmentId/detail.
         getUpcomingInstallmentsForOwnerUnit({
+          associationId: req.portalAssociationId,
+          unitId: ownerUnitId,
+          personId: req.portalPersonId,
+        }),
+        // 2026-07-09 (owner-finances redesign) — special-assessment PLAN
+        // progress (total · paid-to-date · remaining · installments paid/total ·
+        // next installment) so the portal shows the assessment as a payment
+        // plan paid over time, not an alarming lump balance due now.
+        getAssessmentPlansForOwnerUnit({
           associationId: req.portalAssociationId,
           unitId: ownerUnitId,
           personId: req.portalPersonId,
@@ -14689,6 +14699,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         } : null,
         recentEntries: myEntries.slice(-10),
         specialAssessmentUpcomingInstallments,
+        // 2026-07-09 — special-assessment payment-PLAN progress (additive,
+        // display-only). Drives the owner-portal "payment plan" card.
+        assessmentPlans,
         // 2026-05-25 — per-unit hierarchical breakdown (additive).
         byUnit,
         // 2026-07-03 — per-unit dues-vs-assessment breakdown (additive, read-only).
