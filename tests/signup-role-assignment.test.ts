@@ -21,13 +21,16 @@ describe("Signup role assignment (source-scan)", () => {
   });
 
   it('signup INSERT uses role: "manager"', () => {
-    const signupIdx = routesSource.indexOf("/api/public/signup/start");
+    // Anchor on the actual route handler, not the first textual hit (a comment
+    // sits above the handler), so intervening comment/handler code growth can't
+    // push the INSERT past the scan window.
+    const signupIdx = routesSource.indexOf('app.post("/api/public/signup/start"');
     const region = routesSource.substring(signupIdx, signupIdx + 5000);
     expect(region).toContain('role: "manager"');
   });
 
   it('signup INSERT does NOT use role: "platform-admin"', () => {
-    const signupIdx = routesSource.indexOf("/api/public/signup/start");
+    const signupIdx = routesSource.indexOf('app.post("/api/public/signup/start"');
     const region = routesSource.substring(signupIdx, signupIdx + 5000);
     expect(region).not.toMatch(/role:\s*["']platform-admin["']/);
   });

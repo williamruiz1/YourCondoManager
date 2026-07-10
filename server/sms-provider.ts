@@ -8,6 +8,7 @@
  */
 
 import { getSecret } from "./platform-secrets-store";
+import { outboundSideEffectsDisabled, logSuppressedOutbound } from "./staging-guard";
 
 export type SendSmsPayload = {
   to: string;            // E.164 recipient number
@@ -92,6 +93,13 @@ export async function sendSms(payload: SendSmsPayload): Promise<SendSmsResult> {
     return { status: "failed", messageSid: null, provider: "twilio", errorMessage: `Invalid phone number: ${payload.to}` };
   }
   payload = { ...payload, to: normalizedTo };
+
+  // founder-os#10193 F0 — staging kill-switch: never text a real Cherry Hill owner
+  // from the cloned-real-data review environment.
+  if (outboundSideEffectsDisabled()) {
+    logSuppressedOutbound("sms", { to: payload.to, body: payload.body.slice(0, 80), associationId: payload.associationId });
+    return { status: "simulated", messageSid: null, provider: "staging-sink" };
+  }
 
   const cfg = await getSmsConfig();
   const fromNumber = payload.from ? (normalizePhoneNumber(payload.from) || payload.from) : cfg.fromNumber;
