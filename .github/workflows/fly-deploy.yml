@@ -6,8 +6,16 @@
 # revision (last deploy 22h+ before this commit, with 25 PRs merged in
 # window). Founder directive 2026-05-20 04:44.
 #
-# REQUIRES: repo secret `FLY_API_TOKEN` — deploy-scoped token, generated via
-# `fly tokens create deploy -a yourcondomanager`.
+# REQUIRES:
+#   - repo secret `FLY_API_TOKEN` — deploy-scoped token, generated via
+#     `fly tokens create deploy -a yourcondomanager`.
+#   - repo secret `VITE_GOOGLE_MAPS_API_KEY` — the (rotated, HTTP-referrer +
+#     API restricted) Google Maps JS key (A-SEC-002 / COST-B-004 / CQ-012).
+#     Injected as a build-arg at deploy time so it is NOT committed to fly.toml.
+#     Maps JS keys are client-visible by design; this is git-hygiene + rotation,
+#     not server-secrecy. If the secret is unset the build passes with an empty
+#     key (Maps just won't render) — it never fails the deploy.
+#     Set it once: `gh secret set VITE_GOOGLE_MAPS_API_KEY -R williamruiz1/YourCondoManager`.
 
 name: Deploy (Fly)
 
@@ -40,6 +48,8 @@ jobs:
           version: latest
 
       - name: Deploy to Fly
-        run: flyctl deploy --remote-only --strategy immediate
+        # --build-arg injects the Maps JS key from the CI secret (overrides the
+        # empty fly.toml [build.args] default) so the value is never committed.
+        run: flyctl deploy --remote-only --strategy immediate --build-arg VITE_GOOGLE_MAPS_API_KEY="${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

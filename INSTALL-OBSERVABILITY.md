@@ -92,11 +92,24 @@ Edit `fly.toml` under `[build.args]`:
 
 ```toml
 [build.args]
-    VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"
+    # Injected at deploy time from the CI secret VITE_GOOGLE_MAPS_API_KEY —
+    # do NOT hardcode the Maps key here (A-SEC-002 / COST-B-004 / CQ-012).
+    VITE_GOOGLE_MAPS_API_KEY = ""
     VITE_SENTRY_DSN = "<paste-from-step-1-ycm-client-DSN>"
     VITE_GA_MEASUREMENT_ID = "G-XXXXXXXXXX"  # from step 2
     VITE_APP_ENV = "production"
 ```
+
+> **Google Maps key (A-SEC-002 / COST-B-004 / CQ-012):** the Maps JS key is
+> NEVER committed to `fly.toml`. It is a GitHub Actions secret injected at
+> deploy time via `flyctl deploy --build-arg` (see `.github/workflows/fly-deploy.yml`).
+> Maps JS keys are client-visible by design, so this is git-hygiene + rotation,
+> not server-secrecy. Set the secret once with:
+> ```bash
+> gh secret set VITE_GOOGLE_MAPS_API_KEY -R williamruiz1/YourCondoManager
+> ```
+> and paste the **rotated, HTTP-referrer + API restricted** key value. Rotating
+> the key later is just a `gh secret set` + redeploy — no commit.
 
 Commit the `fly.toml` change as a separate small PR if you prefer audit
 clarity, OR roll it into the `chore(deps)` PR from Step 3.

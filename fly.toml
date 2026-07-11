@@ -29,7 +29,17 @@ primary_region = "ewr"
 
 [build]
   [build.args]
-    VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"
+    # Google Maps JS key (A-SEC-002 / COST-B-004 / CQ-012). Maps JS keys are
+    # client-visible BY DESIGN (inlined into the browser bundle), but the value
+    # is NO LONGER committed here: it is injected at deploy time from the CI
+    # secret `VITE_GOOGLE_MAPS_API_KEY` (see .github/workflows/fly-deploy.yml,
+    # `flyctl deploy --build-arg`). Keeping it out of committed config means
+    # rotation is a secret change, not a commit, and the value stops
+    # accumulating in git history. The rotated key MUST be HTTP-referrer +
+    # API restricted in the Google Cloud Console (git-hygiene + restriction,
+    # not server-secrecy). Empty default here so a local/manual `flyctl deploy`
+    # without the build-arg still builds (Maps simply won't render).
+    VITE_GOOGLE_MAPS_API_KEY = ""
     # Observability (Issue founder-os#1030) — set both values when the YCM
     # Sentry org + GA4 property are provisioned. Build-time inlines them
     # into the client bundle. Server-side `SENTRY_DSN` lives in Fly secrets
