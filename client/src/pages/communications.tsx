@@ -25,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { Progress } from "@/components/ui/progress";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
@@ -40,6 +40,14 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnnouncementsContent } from "./announcements";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
+
+function deliveryStatusPillTone(status: string): PillTone {
+  if (["delivered", "sent", "simulated"].includes(status)) return "ok";
+  if (["failed", "undelivered"].includes(status)) return "bad";
+  return "muted";
+}
 
 const standardTemplateDefinitions = [
   // Payments & Finance
@@ -988,13 +996,13 @@ export function CommunicationsContent() {
               <TableBody>
                 {deliveryDetailRecords.map((r) => (
                   <TableRow key={r.id}>
-                    <TableCell><Badge variant="outline">{r.channel}</Badge></TableCell>
+                    <TableCell><Pill tone="muted">{r.channel}</Pill></TableCell>
                     <TableCell className="text-sm">{r.recipientEmail || "-"}</TableCell>
                     <TableCell>
                       {r.deliveryStatus ? (
-                        <Badge variant={["delivered", "sent", "simulated"].includes(r.deliveryStatus) ? "default" : ["failed", "undelivered"].includes(r.deliveryStatus) ? "destructive" : "outline"}>
+                        <Pill tone={deliveryStatusPillTone(r.deliveryStatus)}>
                           {r.deliveryStatus}
-                        </Badge>
+                        </Pill>
                       ) : <span className="text-muted-foreground text-xs">pending</span>}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">{fmtDate(r.createdAt)}</TableCell>
@@ -1142,9 +1150,9 @@ export function CommunicationsContent() {
         <CardContent className="p-6 space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-semibold">Association Readiness</h2>
-            <Badge variant={readiness?.canSendNotices ? "secondary" : "destructive"}>
+            <Pill tone={readiness?.canSendNotices ? "ok" : "bad"}>
               {readiness?.canSendNotices ? "Ready to Send" : "Gate Blocking"}
-            </Badge>
+            </Pill>
           </div>
           <div className="text-sm text-muted-foreground">
             Select an association in Send or Targeted Delivery to evaluate readiness and onboarding completeness.
@@ -1173,7 +1181,7 @@ export function CommunicationsContent() {
                 Generate owner or tenant intake links bound to the current association and unit.
               </div>
             </div>
-            <Badge variant="secondary">Invites: {(onboardingInvites ?? []).length}</Badge>
+            <Pill tone="muted">Invites: {(onboardingInvites ?? []).length}</Pill>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="rounded-md border bg-muted/20 px-3 py-2 text-sm">Sent: <span className="font-medium">{onboardingMetrics.sentInvites}</span></div>
@@ -1242,7 +1250,7 @@ export function CommunicationsContent() {
                   <TableRow key={invite.id}>
                     <TableCell>{invite.unitLabel ? `Unit ${invite.unitLabel}` : invite.unitId}</TableCell>
                     <TableCell className="capitalize">{invite.residentType}</TableCell>
-                    <TableCell><Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge></TableCell>
+                    <TableCell><Pill tone={invite.status === "active" ? "ok" : "muted"}>{invite.status}</Pill></TableCell>
                     <TableCell>{invite.email || invite.phone || "-"}</TableCell>
                     <TableCell>{invite.lastSentAt ? fmtDate(invite.lastSentAt) : "-"}</TableCell>
                     <TableCell className="max-w-[360px] truncate">
@@ -1299,7 +1307,7 @@ export function CommunicationsContent() {
                       <div className="font-medium">{invite.unitLabel ? `Unit ${invite.unitLabel}` : invite.unitId}</div>
                       <div className="mt-1 text-xs text-muted-foreground capitalize">{invite.residentType}</div>
                     </div>
-                    <Badge variant={invite.status === "active" ? "secondary" : "outline"}>{invite.status}</Badge>
+                    <Pill tone={invite.status === "active" ? "ok" : "muted"}>{invite.status}</Pill>
                   </div>
                   <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                     <div>Contact: {invite.email || invite.phone || "-"}</div>
@@ -1331,7 +1339,7 @@ export function CommunicationsContent() {
                 Review owner and tenant submissions before they create live records.
               </div>
             </div>
-            <Badge variant="secondary">Pending: {(onboardingSubmissions ?? []).filter((row) => row.status === "pending").length}</Badge>
+            <Pill tone="muted">Pending: {(onboardingSubmissions ?? []).filter((row) => row.status === "pending").length}</Pill>
           </div>
           <div className="hidden md:block">
           <Table>
@@ -1352,7 +1360,7 @@ export function CommunicationsContent() {
                   <TableCell>{row.unitLabel ? `Unit ${row.unitLabel}` : row.unitId}</TableCell>
                   <TableCell>{row.firstName} {row.lastName} · <span className="capitalize">{row.residentType}</span></TableCell>
                   <TableCell>{row.email || row.phone || row.inviteEmail || "-"}</TableCell>
-                  <TableCell><Badge variant={row.status === "pending" ? "secondary" : "outline"}>{row.status}</Badge></TableCell>
+                  <TableCell><Pill tone={row.status === "pending" ? "warn" : "muted"}>{row.status}</Pill></TableCell>
                   <TableCell className="space-x-2">
                     <Button
                       size="sm"
@@ -1388,7 +1396,7 @@ export function CommunicationsContent() {
                       {row.unitLabel ? `Unit ${row.unitLabel}` : row.unitId} · <span className="capitalize">{row.residentType}</span>
                     </div>
                   </div>
-                  <Badge variant={row.status === "pending" ? "secondary" : "outline"}>{row.status}</Badge>
+                  <Pill tone={row.status === "pending" ? "warn" : "muted"}>{row.status}</Pill>
                 </div>
                 <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                   <div>Submitted: {fmtDate(row.submittedAt)}</div>
@@ -1820,7 +1828,7 @@ export function CommunicationsContent() {
               {(contactUpdates ?? []).filter((row) => row.reviewStatus === "pending").map((row) => (
                 <TableRow key={row.id}>
                   <TableCell>{fmtDate(row.createdAt)}</TableCell>
-                  <TableCell><Badge variant="secondary">{row.reviewStatus}</Badge></TableCell>
+                  <TableCell><Pill tone="info">{row.reviewStatus}</Pill></TableCell>
                   <TableCell className="max-w-[520px] truncate">{JSON.stringify(row.requestJson)}</TableCell>
                   <TableCell className="space-x-2">
                     <Button
@@ -1852,7 +1860,7 @@ export function CommunicationsContent() {
               <div key={row.id} className="rounded-xl border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="text-sm font-medium">Contact update request</div>
-                  <Badge variant="secondary">{row.reviewStatus}</Badge>
+                  <Pill tone="info">{row.reviewStatus}</Pill>
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground">Created: {fmtDate(row.createdAt)}</div>
                 <div className="mt-2 rounded-lg bg-muted/30 p-3 text-xs text-muted-foreground break-words">
@@ -1901,7 +1909,7 @@ export function CommunicationsContent() {
                 <TableRow key={row.id}>
                   <TableCell>{fmtDate(row.createdAt)}</TableCell>
                   <TableCell>{row.title}</TableCell>
-                  <TableCell><Badge variant="secondary">{row.status}</Badge></TableCell>
+                  <TableCell><Pill tone="info">{row.status}</Pill></TableCell>
                   <TableCell>{row.priority}</TableCell>
                   <TableCell>{row.responseDueAt ? fmtDate(row.responseDueAt) : "-"}</TableCell>
                   <TableCell>{row.escalationStage}</TableCell>
@@ -1927,11 +1935,11 @@ export function CommunicationsContent() {
                     <div className="font-medium">{row.title}</div>
                     <div className="mt-1 text-xs text-muted-foreground">Created {fmtDate(row.createdAt)}</div>
                   </div>
-                  <Badge variant="secondary">{row.status}</Badge>
+                  <Pill tone="info">{row.status}</Pill>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-                  <Badge variant="outline">{row.priority}</Badge>
-                  <Badge variant="outline">{row.escalationStage}</Badge>
+                  <Pill tone="muted">{row.priority}</Pill>
+                  <Pill tone="muted">{row.escalationStage}</Pill>
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground">
                   SLA due: {row.responseDueAt ? fmtDate(row.responseDueAt) : "-"}
@@ -1976,7 +1984,7 @@ export function CommunicationsContent() {
             <TableBody>
               {(pendingSends ?? []).map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell><Badge variant="secondary">{row.status}</Badge></TableCell>
+                  <TableCell><Pill tone="info">{row.status}</Pill></TableCell>
                   <TableCell>{row.recipientEmail}</TableCell>
                   <TableCell>{row.subjectRendered}</TableCell>
                   <TableCell>{fmtDate(row.sentAt)}</TableCell>
@@ -2001,7 +2009,7 @@ export function CommunicationsContent() {
               ))}
               {(scheduledSends ?? []).slice(0, 20).map((row) => (
                 <TableRow key={row.id}>
-                  <TableCell><Badge variant="outline">{row.status}</Badge></TableCell>
+                  <TableCell><Pill tone="muted">{row.status}</Pill></TableCell>
                   <TableCell>{row.recipientEmail}</TableCell>
                   <TableCell>{row.subjectRendered}</TableCell>
                   <TableCell>{fmtDate(row.sentAt)}</TableCell>
@@ -2022,7 +2030,7 @@ export function CommunicationsContent() {
                     <div className="font-medium">{row.subjectRendered}</div>
                     <div className="mt-1 text-xs text-muted-foreground">{row.recipientEmail}</div>
                   </div>
-                  <Badge variant="secondary">{row.status}</Badge>
+                  <Pill tone="info">{row.status}</Pill>
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground">Dispatch at: {fmtDate(row.sentAt)}</div>
                 <div className="mt-4 flex gap-2">
@@ -2042,7 +2050,7 @@ export function CommunicationsContent() {
                     <div className="font-medium">{row.subjectRendered}</div>
                     <div className="mt-1 text-xs text-muted-foreground">{row.recipientEmail}</div>
                   </div>
-                  <Badge variant="outline">{row.status}</Badge>
+                  <Pill tone="muted">{row.status}</Pill>
                 </div>
                 <div className="mt-3 text-xs text-muted-foreground">Dispatch at: {fmtDate(row.sentAt)}</div>
               </div>
@@ -2069,13 +2077,13 @@ export function CommunicationsContent() {
                   <TableRow key={h.id}>
                     <TableCell>{fmtDate(h.createdAt)}</TableCell>
                     <TableCell>
-                      <Badge variant={h.channel === "email" ? "secondary" : "outline"}>{h.channel}</Badge>
+                      <Pill tone={h.channel === "email" ? "info" : "muted"}>{h.channel}</Pill>
                     </TableCell>
                     <TableCell>
                       {h.deliveryStatus ? (
-                        <Badge variant={["delivered", "sent", "simulated"].includes(h.deliveryStatus) ? "default" : ["failed", "undelivered"].includes(h.deliveryStatus) ? "destructive" : "outline"}>
+                        <Pill tone={deliveryStatusPillTone(h.deliveryStatus)}>
                           {h.deliveryStatus}
-                        </Badge>
+                        </Pill>
                       ) : <span className="text-muted-foreground text-xs">-</span>}
                     </TableCell>
                     <TableCell>{h.recipientEmail || "-"}</TableCell>
@@ -2102,11 +2110,11 @@ export function CommunicationsContent() {
                     <div className="mt-1 text-xs text-muted-foreground">{h.recipientEmail || "No recipient"}</div>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <Badge variant={h.channel === "email" ? "secondary" : "outline"}>{h.channel}</Badge>
+                    <Pill tone={h.channel === "email" ? "info" : "muted"}>{h.channel}</Pill>
                     {h.deliveryStatus && (
-                      <Badge variant={["delivered", "sent", "simulated"].includes(h.deliveryStatus) ? "default" : ["failed", "undelivered"].includes(h.deliveryStatus) ? "destructive" : "outline"} className="text-xs">
-                        {h.deliveryStatus}
-                      </Badge>
+                      <Pill tone={deliveryStatusPillTone(h.deliveryStatus)}>
+                        <span className="text-xs">{h.deliveryStatus}</span>
+                      </Pill>
                     )}
                   </div>
                 </div>
@@ -2192,7 +2200,7 @@ export function CommunicationsContent() {
                       <TableCell>{rule.daysRelativeToDue > 0 ? `+${rule.daysRelativeToDue}` : rule.daysRelativeToDue}</TableCell>
                       <TableCell>${(rule.minBalanceThreshold ?? 0).toFixed(2)}</TableCell>
                       <TableCell>{rule.lastRunAt ? fmtDate(rule.lastRunAt) : "Never"}</TableCell>
-                      <TableCell><Badge variant={rule.isActive ? "secondary" : "outline"}>{rule.isActive ? "active" : "paused"}</Badge></TableCell>
+                      <TableCell><Pill tone={rule.isActive ? "ok" : "muted"}>{rule.isActive ? "active" : "paused"}</Pill></TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
                           <Button size="sm" variant="outline" onClick={() => runReminderRule.mutate(rule.id)} disabled={runReminderRule.isPending || !rule.isActive}>Run Now</Button>
@@ -2221,7 +2229,7 @@ export function CommunicationsContent() {
                         ).toFixed(2)}
                       </div>
                     </div>
-                    <Badge variant={rule.isActive ? "secondary" : "outline"}>{rule.isActive ? "active" : "paused"}</Badge>
+                    <Pill tone={rule.isActive ? "ok" : "muted"}>{rule.isActive ? "active" : "paused"}</Pill>
                   </div>
                   <div className="text-xs text-muted-foreground">Last run: {rule.lastRunAt ? fmtDate(rule.lastRunAt) : "Never"}</div>
                   <div className="flex gap-2">
@@ -2266,7 +2274,7 @@ export function CommunicationsContent() {
               </div>
               {deliveryStats.bouncedEmails.length > 0 ? (
                 <div className="space-y-2">
-                  <div className="text-sm font-medium">Bounced Addresses <Badge variant="destructive">{deliveryStats.bounced}</Badge></div>
+                  <div className="text-sm font-medium">Bounced Addresses <Pill tone="bad">{deliveryStats.bounced}</Pill></div>
                   <div className="hidden md:block">
                     <Table>
                       <TableHeader>
@@ -2283,7 +2291,7 @@ export function CommunicationsContent() {
                         {deliveryStats.bouncedEmails.map((b) => (
                           <TableRow key={b.id}>
                             <TableCell className="font-mono text-sm">{b.email}</TableCell>
-                            <TableCell><Badge variant={b.type === "hard" ? "destructive" : "secondary"}>{b.type || "unknown"}</Badge></TableCell>
+                            <TableCell><Pill tone={b.type === "hard" ? "bad" : "warn"}>{b.type || "unknown"}</Pill></TableCell>
                             <TableCell className="text-sm text-muted-foreground">{b.reason || "—"}</TableCell>
                             <TableCell className="text-sm">{b.bouncedAt ? fmtDate(b.bouncedAt) : "—"}</TableCell>
                             <TableCell>{b.retryCount}</TableCell>
@@ -2307,7 +2315,7 @@ export function CommunicationsContent() {
                             <div className="break-all font-mono text-sm">{b.email}</div>
                             <div className="mt-1 text-xs text-muted-foreground">{b.reason || "No bounce reason provided"}</div>
                           </div>
-                          <Badge variant={b.type === "hard" ? "destructive" : "secondary"}>{b.type || "unknown"}</Badge>
+                          <Pill tone={b.type === "hard" ? "bad" : "warn"}>{b.type || "unknown"}</Pill>
                         </div>
                         <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
                           <span>{b.bouncedAt ? fmtDate(b.bouncedAt) : "No date"}</span>
@@ -2339,7 +2347,7 @@ export function CommunicationsContent() {
 export default function CommunicationsPage() {
   useDocumentTitle("Communications Overview");
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 ds-scope fin-ds">
       <WorkspacePageHeader
         title="Communications"
         summary="Send notices and publish community announcements."
