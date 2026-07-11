@@ -92,11 +92,22 @@ Edit `fly.toml` under `[build.args]`:
 
 ```toml
 [build.args]
-    VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"
+    # Do NOT paste the Maps key here — it is injected at build time by CI from
+    # the repo secret VITE_GOOGLE_MAPS_API_KEY (see .github/workflows/fly-deploy.yml).
+    # Keep this empty so no key lands in git history (A-SEC-002/#10743).
+    VITE_GOOGLE_MAPS_API_KEY = ""
     VITE_SENTRY_DSN = "<paste-from-step-1-ycm-client-DSN>"
     VITE_GA_MEASUREMENT_ID = "G-XXXXXXXXXX"  # from step 2
     VITE_APP_ENV = "production"
 ```
+
+> **Google Maps key (A-SEC-002 / COST-B-004 / CQ-012):** the key is a
+> CI-injected build secret, never committed. To set/rotate it:
+> `gh secret set VITE_GOOGLE_MAPS_API_KEY -R williamruiz1/YourCondoManager`
+> (or the repo Settings → Secrets → Actions). Rotate the value in the Google
+> Cloud Console and apply an HTTP-referrer restriction (`app.yourcondomanager.org`
+> + any dev/preview origins) and an API restriction (Maps JS / Places only)
+> before use. A local build with no secret renders without a map (graceful).
 
 Commit the `fly.toml` change as a separate small PR if you prefer audit
 clarity, OR roll it into the `chore(deps)` PR from Step 3.

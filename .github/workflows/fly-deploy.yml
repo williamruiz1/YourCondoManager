@@ -40,6 +40,12 @@ jobs:
           version: latest
 
       - name: Deploy to Fly
-        run: flyctl deploy --remote-only --strategy immediate
+        # VITE_GOOGLE_MAPS_API_KEY is injected here from the repo secret rather
+        # than committed in fly.toml (A-SEC-002/COST-B-004/CQ-012, #10743) so the
+        # key never lands in git history and rotation is a secret update, not a
+        # commit. The `--build-arg` overrides the empty default in fly.toml.
+        run: >
+          flyctl deploy --remote-only --strategy immediate
+          --build-arg VITE_GOOGLE_MAPS_API_KEY="${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

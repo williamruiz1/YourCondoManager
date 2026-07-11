@@ -29,7 +29,15 @@ primary_region = "ewr"
 
 [build]
   [build.args]
-    VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"
+    # Google Maps JS key (A-SEC-002/COST-B-004/CQ-012, founder-os#10743).
+    # NOT committed here — injected at build time by CI via
+    # `flyctl deploy --build-arg VITE_GOOGLE_MAPS_API_KEY=...` from the repo
+    # secret `VITE_GOOGLE_MAPS_API_KEY`. Empty here so a local/no-secret build
+    # renders without a key (maps-loader.ts returns null gracefully) and no key
+    # ever accumulates in git history. Rotating the key = updating the secret,
+    # not a commit. (Maps JS keys are client-visible by design — the fix is
+    # git-hygiene + GCP referrer/API restriction, not making it a server secret.)
+    VITE_GOOGLE_MAPS_API_KEY = ""
     # Observability (Issue founder-os#1030) — set both values when the YCM
     # Sentry org + GA4 property are provisioned. Build-time inlines them
     # into the client bundle. Server-side `SENTRY_DSN` lives in Fly secrets
