@@ -58,6 +58,14 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm run check
       - run: npm run lint
+      # CQ-001 (founder-os#10740): lint the server/shared trees (money/tenant/
+      # webhook logic) that the client-only `lint` never touched. ADVISORY
+      # (continue-on-error) for now — the initial finding count on 38.5k
+      # untriaged lines is large; surface it without blocking merges, then
+      # promote to a blocking gate once the backlog is triaged (do NOT
+      # bulk-suppress). Type-aware rules: no-floating-promises + no-misused-promises.
+      - run: npm run lint:server
+        continue-on-error: true
 
   test:
     name: vitest
