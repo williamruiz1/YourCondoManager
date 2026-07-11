@@ -26,13 +26,27 @@
 --   6. Drop the old type.
 
 -- 1. Defensive backfill (idempotent: zero rows expected per the audit).
-UPDATE "hub_map_issues" SET "visibility_level" = 'residents' WHERE "visibility_level" = 'resident';
---> statement-breakpoint
-UPDATE "hub_map_issues" SET "visibility_level" = 'unit-owners' WHERE "visibility_level" = 'owner';
---> statement-breakpoint
-UPDATE "hub_map_issues" SET "visibility_level" = 'board-only' WHERE "visibility_level" = 'board';
---> statement-breakpoint
-UPDATE "hub_map_issues" SET "visibility_level" = 'operator-only' WHERE "visibility_level" = 'admin';
+--    Fresh-DB bootstrap safety (YCM #384/#385): the new `hub_visibility_level`
+--    values (`residents` / `unit-owners` / `board-only` / `operator-only`) are
+--    added by migration 0012 via `ALTER TYPE … ADD VALUE`. On a clean DB the
+--    whole chain runs in ONE drizzle transaction, so those values are not yet
+--    committed here and Postgres refuses to coerce them ("unsafe use of new
+--    value") even for a zero-row UPDATE on the enum column `hub_map_issues`.
+--    Guard so the new-value literals are only coerced when a legacy row exists;
+--    on a fresh (empty) DB this is a no-op and step 3 recreates the type with
+--    only the new vocab.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM hub_map_issues
+    WHERE visibility_level IN ('resident', 'owner', 'board', 'admin')
+  ) THEN
+    UPDATE "hub_map_issues" SET "visibility_level" = 'residents'     WHERE "visibility_level" = 'resident';
+    UPDATE "hub_map_issues" SET "visibility_level" = 'unit-owners'   WHERE "visibility_level" = 'owner';
+    UPDATE "hub_map_issues" SET "visibility_level" = 'board-only'    WHERE "visibility_level" = 'board';
+    UPDATE "hub_map_issues" SET "visibility_level" = 'operator-only' WHERE "visibility_level" = 'admin';
+  END IF;
+END $$;
 --> statement-breakpoint
 
 UPDATE "community_announcements" SET "visibility_level" = 'residents' WHERE "visibility_level" = 'resident';

@@ -15,6 +15,10 @@ import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, Receipt } from "lucide-react";
 import type { OwnerLedgerEntry } from "@shared/schema";
+import {
+  deriveAssessmentPlanView,
+  type AssessmentPlanProgress,
+} from "@shared/portal-assessment-plan";
 import type { PerUnitBreakdown } from "@shared/portal-per-unit";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
@@ -162,6 +166,10 @@ type FinancialDashboard = {
   // 2026-07-03 — additive, per-unit dues-vs-assessment breakdown. Sums
   // reconcile exactly to the owner-wide "due now" + balance totals.
   perUnit?: PerUnitBreakdown[];
+  // 2026-07-09 — special-assessment payment-PLAN progress (additive,
+  // display-only). Drives the owner-portal "payment plan" card so the
+  // assessment reads as paid-over-time, not an alarming lump balance.
+  assessmentPlans?: AssessmentPlanProgress[];
   grandTotal?: number;
   // 2026-05-25 (live session) — plan-aware "Amount due this period".
   // null when no active payment plan, or when on a quarterly plan and
@@ -256,12 +264,17 @@ function PortalBudgetRatificationCard() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/budget-ratifications");
       if (!res.ok) return [];
-      return (await res.json()) as PortalBudgetRatification[];
+      const json = await res.json();
+      // A non-array body (error object, auth shell) must not crash the whole finances page.
+      return Array.isArray(json) ? (json as PortalBudgetRatification[]) : [];
     },
   });
 
   if (isLoading) return null;
-  if (!data || data.length === 0) return null;
+  // Defense-in-depth (#380): guard the render site against a non-array `data`
+  // (e.g. `{}`), not just `undefined` — `({}).length === 0` is false and would
+  // otherwise fall through to `data.map(...)` and crash the finances page.
+  if (!Array.isArray(data) || data.length === 0) return null;
 
   return (
     <Card data-testid="portal-budget-ratification">
@@ -570,7 +583,6 @@ function FinancesHubContent() {
     () => computeDueNow(byUnit, upcoming),
     [byUnit, upcoming],
   );
-  const hasDueNowBreakdown = byUnit.length > 0 || upcoming.length > 0;
   // 2026-05-25 (live session) — server-resolved "Amount due this period".
   // null when no active plan OR mid-quarter on a quarterly plan.
   const amountDueThisPeriod = dashboard?.amountDueThisPeriod ?? null;
@@ -584,6 +596,25 @@ function FinancesHubContent() {
   // balance + lastPaymentDate; no money logic, no ledger write.
   const paidInFull = balance <= 0 && !hasAmountDue && totalDueNow <= 0;
   const lastPaymentDate = dashboard?.lastPaymentDate ?? null;
+
+  // 2026-07-09 (owner-finances redesign) — special-assessment payment PLANS.
+  // Shown as progress plans (total · paid · remaining "over time" · installments
+  // · next installment), NEVER a big red balance. Red is reserved for a
+  // genuinely PAST-DUE installment (deriveAssessmentPlanView.isPastDue).
+  const assessmentPlans = dashboard?.assessmentPlans ?? [];
+  const planViews = useMemo(
+    () => assessmentPlans.map((plan) => ({ plan, view: deriveAssessmentPlanView(plan) })),
+    [assessmentPlans],
+  );
+  // Red is reserved for genuinely past-due only (William requirement #3).
+  const hasPastDue = planViews.some((pv) => pv.view.isPastDue);
+  // Total remaining special-assessment obligation across all plans — CONTEXT
+  // only ("paid over time — not due now"), never framed as an amount due today.
+  const totalRemainingOverTime = assessmentPlans.reduce((s, p) => s + p.remaining, 0);
+  const thisPeriodLabel = new Date().toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6" data-testid="portal-finances">
@@ -599,17 +630,23 @@ function FinancesHubContent() {
       {/* 2026-07-01 (display-only) — "Paid in full" state. When the owner owes
           nothing right now, show a clear positive confirmation (with the last
           payment date when available) instead of a $0.00 balance framing. */}
+      {/* ============ HERO: PAY THIS PERIOD (2026-07-09 redesign) ============
+          William, repeatedly: LEAD with what's actually due THIS period — this
+          month's dues + this month's assessment INSTALLMENT — in a calm BRAND
+          treatment (deep teal), never a big red "balance". The full special
+          assessment is shown as a payment PLAN below, not lumped into this
+          figure. Red is reserved for a genuinely PAST-DUE installment. */}
       {paidInFull ? (
         <section data-testid="portal-finances-paid-in-full">
           <Card className="border-primary/30 bg-primary/[0.06]">
-            <CardContent className="flex items-start gap-3 py-5">
+            <CardContent className="flex items-start gap-3 py-6">
               <CheckCircle2
                 className="mt-0.5 h-6 w-6 shrink-0 text-primary"
                 aria-hidden="true"
               />
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">
-                  Account status
+                  You&rsquo;re all caught up
                 </p>
                 <p
                   className="mt-1 font-headline text-2xl md:text-3xl text-on-surface"
@@ -622,195 +659,303 @@ function FinancesHubContent() {
                 <p className="mt-1 text-sm text-on-surface-variant">
                   {balance < 0
                     ? `You have a credit of $${formatCurrency(balance)} on your account. Nothing is due right now.`
-                    : "You have no outstanding balance. Nothing is due right now."}
+                    : "Nothing is due this period. Thanks for staying on top of it."}
                 </p>
               </div>
             </CardContent>
           </Card>
         </section>
-      ) : null}
+      ) : (
+        <section data-testid="portal-finances-pay-this-period">
+          <Card
+            className={`overflow-hidden ${
+              hasPastDue ? "border-destructive/40 bg-destructive/[0.04]" : "border-primary/25 bg-primary/[0.04]"
+            }`}
+          >
+            <CardContent className="py-6">
+              {/* status row — reassuring by default; red only when past due */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                {hasPastDue ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive"
+                    data-testid="portal-finances-status-chip"
+                  >
+                    <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
+                    Past due — please pay
+                  </span>
+                ) : (
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800"
+                    data-testid="portal-finances-status-chip"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                    You&rsquo;re on track
+                  </span>
+                )}
+                <span className="text-sm text-on-surface-variant">
+                  {hasPastDue
+                    ? "An amount is past due — here's what's outstanding."
+                    : "Nothing is overdue. Here's what's due this month."}
+                </span>
+              </div>
 
-      {/* 2026-06-30 — "What's due now" breakdown (William finding #3). Separate
-          HOA dues from special-assessment installments, and show the installment
-          due — NOT the full assessment lump. Total = dues + installment. The
-          lifetime balance is shown alongside as a reference, never as "what's
-          due". Suppressed when nothing is actually due (paid-in-full) so the
-          owner never sees a "$0.00 What's due now" alarm. */}
-      {hasDueNowBreakdown && !paidInFull ? (
-        <section data-testid="portal-finances-due-now">
-          <Card className="border-destructive/30 bg-destructive/[0.04]">
-            <CardContent className="py-5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-destructive">
-                What&rsquo;s due now
+              <p className="mt-4 text-[11px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                Pay this period · {thisPeriodLabel}
               </p>
               <p
-                className="mt-1 font-headline text-4xl md:text-5xl tabular-nums text-destructive"
+                className={`mt-1 font-headline text-4xl md:text-5xl tabular-nums ${
+                  hasPastDue ? "text-destructive" : "text-primary"
+                }`}
                 data-testid="portal-finances-due-now-total"
               >
                 ${formatCurrency(totalDueNow)}
               </p>
-              <div className="mt-4 grid grid-cols-1 gap-x-8 gap-y-2 sm:grid-cols-2">
-                <div className="flex items-center justify-between gap-3 border-t border-destructive/10 pt-2">
-                  <span className="text-sm text-on-surface">HOA Dues</span>
-                  <span
-                    className="font-medium tabular-nums text-on-surface"
-                    data-testid="portal-finances-due-now-dues"
-                  >
+
+              {/* breakdown: this month's dues + this month's installment */}
+              <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-on-surface-variant">
+                <span className="inline-flex items-center gap-2">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-primary" aria-hidden="true" />
+                  Monthly dues{" "}
+                  <b className="tabular-nums text-on-surface" data-testid="portal-finances-due-now-dues">
                     ${formatCurrency(duesDue)}
+                  </b>
+                </span>
+                {assessmentInstallmentDue > 0 ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-primary/50" aria-hidden="true" />
+                    Assessment installment{" "}
+                    <b className="tabular-nums text-on-surface" data-testid="portal-finances-due-now-assessment">
+                      ${formatCurrency(assessmentInstallmentDue)}
+                    </b>
                   </span>
-                </div>
-                <div className="flex items-center justify-between gap-3 border-t border-destructive/10 pt-2">
-                  <span className="text-sm text-on-surface">
-                    Special Assessment{upcoming.length > 1 ? " installments" : " installment"}
-                  </span>
-                  <span
-                    className="font-medium tabular-nums text-on-surface"
-                    data-testid="portal-finances-due-now-assessment"
-                  >
-                    ${formatCurrency(assessmentInstallmentDue)}
-                  </span>
-                </div>
+                ) : null}
               </div>
-              {assessmentInstallmentDue > 0 ? (
-                <p
-                  className="mt-3 text-xs text-on-surface-variant"
-                  data-testid="portal-finances-due-now-note"
+
+              {/* CTA — primary pays THIS period; secondary jumps to the amount box */}
+              <div className="mt-5 flex flex-wrap items-center gap-3">
+                {totalDueNow > 0 ? (
+                  <Button
+                    onClick={() => {
+                      setPayError(null);
+                      startCheckout.mutate(Number(totalDueNow.toFixed(2)));
+                    }}
+                    disabled={startCheckout.isPending}
+                    className="min-h-11"
+                    data-testid="portal-finances-pay-this-period-cta"
+                  >
+                    {startCheckout.isPending
+                      ? t("portal.finances.makePayment.redirecting")
+                      : `Pay $${formatCurrency(totalDueNow)}`}
+                  </Button>
+                ) : null}
+                <a
+                  href="#make-payment"
+                  className="text-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                  data-testid="portal-finances-pay-different"
                 >
-                  Special assessments are billed in installments — only the amount
-                  due now is shown here, not the full assessment.
+                  Pay a different amount &rarr;
+                </a>
+                {byUnit.length > 1 ? (
+                  <span className="text-xs text-on-surface-variant">All {byUnit.length} units</span>
+                ) : null}
+              </div>
+              {payError ? (
+                <p className="mt-3 text-xs text-destructive" role="alert" data-testid="portal-finances-pay-error-hero">
+                  {payError}
                 </p>
               ) : null}
             </CardContent>
           </Card>
         </section>
+      )}
+
+      {/* ============ SPECIAL ASSESSMENT = PAYMENT PLAN (2026-07-09) ============
+          A special assessment is paid over time in installments, so it is shown
+          as a PLAN — total · paid so far · remaining "over time" · installments
+          paid/total · progress · next installment — NEVER a red lump balance.
+          Red appears only when an installment is genuinely past due. Driven by
+          the server-computed `assessmentPlans` (reconciles: paid + remaining =
+          total). */}
+      {planViews.length > 0 ? (
+        <section
+          data-testid="portal-finances-assessment-plans"
+          aria-label="Special assessment payment plans"
+          className="grid gap-4"
+        >
+          {planViews.map(({ plan, view }) => (
+            <Card
+              key={plan.assessmentId}
+              className={view.isPastDue ? "border-destructive/40" : "border-outline-variant/15"}
+              data-testid={`portal-finances-assessment-plan-${plan.assessmentId}`}
+            >
+              <CardContent className="py-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                      Payment plan
+                    </p>
+                    <h2 className="font-headline text-lg text-on-surface">{plan.assessmentName}</h2>
+                  </div>
+                  {view.isPaidOff ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                      Paid off
+                    </span>
+                  ) : view.isPastDue ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
+                      <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
+                      Past due
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
+                      On track
+                    </span>
+                  )}
+                </div>
+
+                <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary/[0.06] px-3 py-1.5 text-xs font-medium text-primary">
+                  Paid over time in installments — not due all at once
+                </p>
+
+                {/* stat tiles: total · paid · remaining (over time) */}
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                      Assessment total
+                    </p>
+                    <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">
+                      ${formatCurrency(plan.total)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                      Paid so far
+                    </p>
+                    <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">
+                      ${formatCurrency(plan.paidToDate)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                      Remaining (over time)
+                    </p>
+                    <p
+                      className="mt-1 font-headline text-xl tabular-nums text-primary"
+                      data-testid={`portal-finances-assessment-plan-${plan.assessmentId}-remaining`}
+                    >
+                      ${formatCurrency(plan.remaining)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* progress bar */}
+                <div className="mt-4">
+                  <div className="mb-2 flex items-baseline justify-between text-sm">
+                    <span className="font-semibold text-primary">{view.pctPaid}% paid</span>
+                    <span className="text-on-surface-variant">{view.installmentsLabel}</span>
+                  </div>
+                  <div
+                    className="h-2.5 w-full overflow-hidden rounded-full bg-surface-container"
+                    role="img"
+                    aria-label={`${view.pctPaid}% of ${plan.assessmentName} paid`}
+                  >
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${view.pctPaid}%` }} />
+                  </div>
+                </div>
+
+                {/* next installment + detail link */}
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                  {plan.nextInstallmentAmount != null ? (
+                    <p className="text-sm text-on-surface-variant">
+                      Next installment:{" "}
+                      <b className="tabular-nums text-on-surface">
+                        ${formatCurrency(plan.nextInstallmentAmount)}
+                      </b>
+                      {plan.nextInstallmentDueDate ? (
+                        <>
+                          {" "}due{" "}
+                          <b className="text-on-surface">
+                            {new Date(plan.nextInstallmentDueDate).toLocaleDateString()}
+                          </b>
+                        </>
+                      ) : null}
+                      {assessmentInstallmentDue > 0 ? (
+                        <span className="text-on-surface-variant"> · included in &ldquo;Pay this period&rdquo; above</span>
+                      ) : null}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-on-surface-variant">This assessment is fully paid.</p>
+                  )}
+                  <Link
+                    href={`/portal/finances/assessments/${plan.assessmentId}`}
+                    className="text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    data-testid={`portal-finances-assessment-plan-${plan.assessmentId}-detail`}
+                  >
+                    View details &rarr;
+                  </Link>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </section>
       ) : null}
 
-      {/* 2026-05-25 (live session) — Balance vs Amount-due distinction.
-          William verbatim: the $5,618.61 figure is the TOTAL balance (lifetime),
-          NOT what's due right now if the owner is on a payment plan. The
-          primary CTA below is "Pay $X due this period"; the total balance
-          is shown alongside as a reference. When no plan is active, only
-          the total balance is rendered (legacy behavior preserved). When the
-          owner is paid in full, this balance-vs-amount-due block is suppressed
-          — the "Paid in full" card above already conveys the $0 state without
-          a redundant "$0.00 balance". */}
-      {!paidInFull ? (
+      {/* ============ CONTEXT: this year + total remaining (2026-07-09) ============
+          Muted, secondary context. The "Total remaining" is the full remaining
+          special-assessment obligation — explicitly labeled "paid over time —
+          not due now" so it can never read as an amount due today. */}
       <section className="grid gap-4 md:grid-cols-2">
-        {/* Card 1 — Amount Due This Period (PRIMARY when a plan exists) */}
-        {hasAmountDue ? (
-          <Card
-            className="border-destructive/30 bg-destructive/[0.04]"
-            data-testid="portal-finances-amount-due-hero"
-          >
+        <Card className="border-outline-variant/15 bg-surface">
+          <CardContent className="py-5">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">This year</p>
+            <div className="mt-3 flex flex-wrap gap-x-8 gap-y-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalPaidYtd")}</p>
+                <p className="mt-1 font-headline text-2xl tabular-nums text-on-surface">${formatCurrency(dashboard?.totalPayments ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalChargesYtd")}</p>
+                <p className="mt-1 font-headline text-2xl tabular-nums text-on-surface">${formatCurrency(dashboard?.totalCharges ?? 0)}</p>
+              </div>
+            </div>
+            <Link
+              href="/portal/finances/ledger"
+              className="mt-4 inline-flex items-center rounded text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              data-testid="portal-finances-hero-ledger-link"
+            >
+              <Receipt className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              View your full ledger
+            </Link>
+          </CardContent>
+        </Card>
+
+        {totalRemainingOverTime > 0 ? (
+          <Card className="border-outline-variant/15 bg-surface" data-testid="portal-finances-total-remaining">
             <CardContent className="py-5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-destructive">
-                Amount due this period
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+                Total remaining — for reference
               </p>
-              <p
-                className="mt-1 font-headline text-4xl md:text-5xl tabular-nums text-destructive"
-                data-testid="portal-finances-amount-due"
-              >
-                ${formatCurrency(amountDueThisPeriod!.amount)}
-              </p>
-              <p className="mt-2 text-xs text-on-surface-variant" data-testid="portal-finances-amount-due-context">
-                Installment for {amountDueThisPeriod!.periodLabel}
-                {amountDueThisPeriod!.periodEnd ? (
-                  <>
-                    {" · due by "}
-                    {new Date(amountDueThisPeriod!.periodEnd).toLocaleDateString()}
-                  </>
-                ) : null}
-                {amountDueThisPeriod!.frequency ? (
-                  <> · {String(amountDueThisPeriod!.frequency)} plan</>
-                ) : null}
+              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+                <p
+                  className="font-headline text-2xl tabular-nums text-on-surface-variant"
+                  data-testid="portal-finances-total-remaining-amount"
+                >
+                  ${formatCurrency(totalRemainingOverTime)}
+                </p>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                  <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+                  Not due now
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-on-surface-variant">
+                This is your remaining special-assessment balance across all units. It is{" "}
+                <b className="text-on-surface">paid over time in installments</b>, not a payment due today —
+                your actual amount due this period is shown at the top.
               </p>
             </CardContent>
           </Card>
         ) : null}
-
-        {/* Card 2 — Total Balance (reference; primary when no plan).
-            When a plan IS active, this is secondary — the cream tone
-            (vs the destructive tone above) communicates "reference". */}
-        <Card
-          className={
-            hasAmountDue
-              ? "border-outline-variant/15 bg-surface"
-              : "border-primary/15 bg-primary/[0.06]"
-          }
-          data-testid="portal-finances-balance-hero"
-        >
-          <CardContent className="py-5">
-            <p
-              className={`text-[10px] font-semibold uppercase tracking-widest ${
-                hasAmountDue ? "text-on-surface-variant" : "text-primary"
-              }`}
-            >
-              {byUnit.length > 1 ? "Total balance" : t("portal.finances.cards.balanceDue")}
-            </p>
-            {/* Wave 25 — `text-secondary` resolves to a near-white tone in
-                light mode and fails WCAG AA color contrast (axe). When a
-                plan is active, this card is secondary; use neutral tone.
-                Without a plan, fall back to destructive for non-zero
-                balance to keep "you owe money" visible. */}
-            <p
-              className={`mt-1 font-headline text-4xl md:text-5xl tabular-nums ${
-                hasAmountDue
-                  ? "text-on-surface"
-                  : balance > 0
-                    ? "text-destructive"
-                    : "text-on-surface"
-              }`}
-              data-testid="portal-finances-balance"
-            >
-              ${formatCurrency(balance)}
-            </p>
-            <p className="mt-2 text-xs text-on-surface-variant">
-              {byUnit.length > 0
-                ? `Across ${byUnit.length} ${byUnit.length === 1 ? "unit" : "units"}`
-                : null}
-              {dashboard?.nextDueDate ? (
-                <>
-                  {byUnit.length > 0 ? " · " : null}
-                  Next due {new Date(dashboard.nextDueDate).toLocaleDateString()}
-                </>
-              ) : null}
-              {hasAmountDue ? (
-                <>
-                  {(byUnit.length > 0 || dashboard?.nextDueDate) ? " · " : null}
-                  Lifetime total across all open charges
-                </>
-              ) : null}
-            </p>
-          </CardContent>
-        </Card>
-      </section>
-      ) : null}
-
-      <section className="grid gap-4 md:grid-cols-3">
-        <Card>
-          <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalPaidYtd")}</p>
-            <p className="mt-1 font-headline text-3xl tabular-nums">${formatCurrency(dashboard?.totalPayments ?? 0)}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalChargesYtd")}</p>
-            <p className="mt-1 font-headline text-3xl tabular-nums">${formatCurrency(dashboard?.totalCharges ?? 0)}</p>
-          </CardContent>
-        </Card>
-        {/* 2026-05-25 (live session) — surface a visible link to the full
-            ledger so the owner doesn't have to scroll past the bank-payment
-            card to find it. Mirrors the existing quick-link in the section
-            below; this is the eye-level version. */}
-        <Link
-          href="/portal/finances/ledger"
-          className="flex items-center justify-center rounded-xl border border-dashed border-outline-variant/30 px-4 py-5 text-sm font-semibold text-primary hover:border-primary/40 hover:bg-primary/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-          data-testid="portal-finances-hero-ledger-link"
-        >
-          <Receipt className="mr-2 h-4 w-4" aria-hidden="true" />
-          View full ledger
-        </Link>
       </section>
 
       {/* 2026-06-30 — Owner PAY flow is Stripe (William finding #1). The Plaid
@@ -820,7 +965,7 @@ function FinancesHubContent() {
           bank-FEED/reconciliation tool only; it is not an owner payment path. */}
       <PortalBudgetRatificationCard />
       <section className="grid gap-4 md:grid-cols-2">
-        <Card data-testid="portal-finances-pay-card">
+        <Card data-testid="portal-finances-pay-card" id="make-payment" className="scroll-mt-24">
           <CardContent className="space-y-3 py-5">
             <h2 className="font-headline text-lg" id="portal-finances-make-payment-heading">{t("portal.finances.makePayment.title")}</h2>
             {/* Quick-fill chips: pay what's due now, or the full balance. The
@@ -966,34 +1111,10 @@ function FinancesHubContent() {
         </section>
       ) : null}
 
-      {upcoming.length > 0 ? (
-        <section data-testid="portal-finances-upcoming-assessments" aria-labelledby="portal-finances-upcoming-heading">
-          <h2 id="portal-finances-upcoming-heading" className="mb-3 font-headline text-lg">{t("portal.finances.upcoming.title")}</h2>
-          <div className="grid gap-3">
-            {upcoming.map((item) => (
-              <Link
-                key={`${item.assessmentId}-${item.installmentNumber}`}
-                href={`/portal/finances/assessments/${item.assessmentId}`}
-                className="flex items-center justify-between rounded-xl border border-outline-variant/10 bg-surface p-4 hover:border-primary/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                data-testid={`portal-finances-assessment-${item.assessmentId}`}
-                aria-label={`${item.assessmentName} — installment ${item.installmentNumber}`}
-              >
-                <div>
-                  <p className="font-semibold">{item.assessmentName}</p>
-                  <p className="text-xs text-on-surface-variant">
-                    Installment {item.installmentNumber} · due {new Date(item.dueDate).toLocaleDateString()} ·{" "}
-                    {item.remainingInstallments} remaining
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">${item.installmentAmount.toFixed(2)}</p>
-                  <p className="text-[10px] uppercase text-on-surface-variant">Details →</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {/* 2026-07-09 — the standalone "Upcoming installments" link list was
+          folded INTO the per-assessment payment-plan cards above (each plan
+          card shows its next installment + a "View details" link), so this
+          redundant section was removed to keep the page calm and scannable. */}
 
       <section data-testid="portal-finances-recent-ledger" aria-labelledby="portal-finances-recent-heading">
         <div className="mb-3 flex items-center justify-between">
@@ -1066,7 +1187,9 @@ function PaymentMethodsContent() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/payment-methods");
       if (!res.ok) return [];
-      return res.json();
+      // A non-array body (error object, auth shell) must not crash the saved-methods list (#380).
+      const json = await res.json();
+      return Array.isArray(json) ? (json as PaymentMethod[]) : [];
     },
   });
 
@@ -1075,7 +1198,9 @@ function PaymentMethodsContent() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/autopay/enrollments");
       if (!res.ok) return [];
-      return res.json();
+      // A non-array body (error object, auth shell) must not crash the autopay list (#380).
+      const json = await res.json();
+      return Array.isArray(json) ? (json as AutopayEnrollment[]) : [];
     },
   });
 
@@ -1613,7 +1738,9 @@ function ReceiptsContent() {
     queryFn: async () => {
       const res = await portalFetch("/api/portal/receipts");
       if (!res.ok) return { receipts: [] };
-      return res.json() as Promise<{ receipts: ReceiptSummary[] }>;
+      // A non-array `receipts` (error object, auth shell) must not crash the receipts list (#380).
+      const json = (await res.json()) as { receipts?: ReceiptSummary[] };
+      return { receipts: Array.isArray(json?.receipts) ? json.receipts : [] };
     },
   });
 
@@ -1665,7 +1792,7 @@ function ReceiptsContent() {
         <p className="text-sm text-on-surface-variant">Loading receipts…</p>
       ) : isError ? (
         <p className="text-sm text-destructive">Failed to load receipts.</p>
-      ) : !data?.receipts.length ? (
+      ) : !data?.receipts?.length ? (
         <EmptyState
           icon={Receipt}
           title="No receipts yet"

@@ -636,6 +636,8 @@ export const vendors = pgTable("vendors", {
   primaryPhone: text("primary_phone"),
   licenseNumber: text("license_number"),
   insuranceExpiresAt: timestamp("insurance_expires_at"),
+  // W-9 on file, tracked as a received-date (null = not on file). Founder-os#9482.
+  w9ReceivedAt: timestamp("w9_received_at"),
   status: vendorStatusEnum("status").notNull().default("active"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -4730,3 +4732,179 @@ export type RecordsRequest = typeof recordsRequests.$inferSelect;
 export type InsertRecordsRequest = z.infer<typeof insertRecordsRequestSchema>;
 export type RecordsRequestItem = typeof recordsRequestItems.$inferSelect;
 export type InsertRecordsRequestItem = z.infer<typeof insertRecordsRequestItemSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// YCM Chief-of-Staff agent queue + four-level permission ladder + audit log
+// (founder-os#9474 / W1 foundation; ratified 2026-07-04; research #833 §5.1/§7.2/§9)
+//
+// The queue IS the chief-of-staff surface — every agent-proposed action routes
+// through it. The permission LADDER is server-authoritative: the level is
+// assigned from the action-TYPE (never trusted from the agent), and the gate
+// refuses to execute an L3/L4 action without a recorded human approval.
+//
+//   L1 suggest            — always allowed; surfaces with no approval.
+//   L2 reversible          — per-toggle default (association agent-autonomy toggle
+//                            per action-type; queues for approval unless enabled).
+//   L3 financial/irreversible — ALWAYS requires a recorded human approval.
+//   L4 board/member-affecting — requires BOARD-level approval (board-officer role).
+//
+// Tenant-isolated per YCM convention: associationId derived from the session,
+// never from the request body. Additive / net-new: touches no existing table.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const agentActionLevelEnum = pgEnum("agent_action_level", ["L1", "L2", "L3", "L4"]);
+export const agentActionStatusEnum = pgEnum("agent_action_status", [
+  "draft",     // being assembled by the agent
+  "queued",    // on the queue, awaiting a human (L2-off / L3 / L4) or ready to execute (L1 / L2-on)
+  "approved",  // a human recorded approval (L3/L4, or L2 when a toggle required it)
+  "rejected",  // a human declined
+  "executed",  // actuated — has an immutable audit-log entry
+  "failed",    // execution attempted and errored
+]);
+
+// agent_actions — the chief-of-staff queue. One row per proposed/executed action.
+export const agentActions = pgTable("agent_actions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // action-TYPE is the key the ladder maps to a level (server-authoritative).
+  actionType: text("action_type").notNull(),
+  // level is assigned by the ladder from actionType; stored for audit + queue sort.
+  level: agentActionLevelEnum("level").notNull(),
+  status: agentActionStatusEnum("status").notNull().default("queued"),
+  // Where the action lands + what it does.
+  targetEntityType: text("target_entity_type"),
+  targetEntityId: varchar("target_entity_id"),
+  payload: jsonb("payload"),
+  // Human-readable "why" — every queue item shows the agent's reasoning inline.
+  reasoning: text("reasoning").notNull(),
+  // Queue ranking. severity ∈ {low,medium,high,critical}; a statutory deadline
+  // pins the item to the top of the stack (sorted by deadline asc).
+  severity: text("severity").notNull().default("medium"),
+  statutoryDeadline: timestamp("statutory_deadline"),
+  // Provenance of the proposing agent (name/persona/run id — free-form).
+  createdByAgent: text("created_by_agent").notNull(),
+  // The human who decided. Null until an approve/reject is recorded.
+  approvedByUserId: varchar("approved_by_user_id").references(() => adminUsers.id),
+  approvedByEmail: text("approved_by_email"),
+  approvedAt: timestamp("approved_at"),
+  rejectedByUserId: varchar("rejected_by_user_id").references(() => adminUsers.id),
+  rejectedByEmail: text("rejected_by_email"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  // Queue read index: list an association's actions by status + recency.
+  byAssocStatus: index("agent_actions_assoc_status_idx").on(table.associationId, table.status, table.createdAt),
+  // Statutory-first ranking index.
+  byAssocDeadline: index("agent_actions_assoc_deadline_idx").on(table.associationId, table.statutoryDeadline),
+}));
+
+// agent_action_audit_log — append-only, immutable. One row per lifecycle event
+// (filed / approved / rejected / executed / failed). One click from the queue.
+export const agentActionAuditLog = pgTable("agent_action_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  actionId: varchar("action_id").notNull().references(() => agentActions.id),
+  // The lifecycle event this row records.
+  event: text("event").notNull(), // filed | approved | rejected | executed | failed
+  // Who caused it — an agent name (agent-authored) or an admin identity (human).
+  actorType: text("actor_type").notNull(), // agent | human | system
+  actorId: text("actor_id"),
+  actorEmail: text("actor_email"),
+  // Human-readable explanation of the event (the "why", carried forward).
+  detail: text("detail"),
+  // Immutable snapshot of the action state at the moment of the event.
+  snapshot: jsonb("snapshot"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  byAction: index("agent_action_audit_action_idx").on(table.actionId, table.createdAt),
+  byAssoc: index("agent_action_audit_assoc_idx").on(table.associationId, table.createdAt),
+}));
+
+// agent_action_toggles — per-association, per-action-type L2 autonomy toggle.
+// When autoApprove=1, an L2 (reversible) action of that type executes without a
+// human approval; default (absent / 0) → L2 queues for approval. L1 ignores it;
+// L3/L4 always require approval regardless of any toggle.
+export const agentActionToggles = pgTable("agent_action_toggles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  actionType: text("action_type").notNull(),
+  autoApprove: integer("auto_approve").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqAssocType: uniqueIndex("agent_action_toggles_assoc_type_uq").on(table.associationId, table.actionType),
+}));
+
+export const insertAgentActionSchema = createInsertSchema(agentActions).omit({
+  id: true,
+  level: true,
+  status: true,
+  approvedByUserId: true,
+  approvedByEmail: true,
+  approvedAt: true,
+  rejectedByUserId: true,
+  rejectedByEmail: true,
+  rejectedAt: true,
+  rejectionReason: true,
+  executedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type AgentAction = typeof agentActions.$inferSelect;
+export type InsertAgentAction = z.infer<typeof insertAgentActionSchema>;
+export type AgentActionAuditEntry = typeof agentActionAuditLog.$inferSelect;
+export type AgentActionToggle = typeof agentActionToggles.$inferSelect;
+export type AgentActionLevel = (typeof agentActionLevelEnum.enumValues)[number];
+export type AgentActionStatus = (typeof agentActionStatusEnum.enumValues)[number];
+
+// ───────────────────────────────────────────────────────────────────────────
+// Rule violations (founder-os#9487 — Board mode "log a violation" wizard).
+//
+// A volunteer HOA board's most common enforcement action is recording that a
+// unit broke a community rule (bins left out, unauthorized parking, noise,
+// pets, an architectural change without approval). The platform had no
+// first-class table for this before Board mode — enforcement lived in ad-hoc
+// notes. This lean table backs the "Log a violation" wizard: one row per
+// logged violation, association-scoped, optionally tied to a unit + owner, with
+// an optional fine amount (the wizard posts the fine as a separate owner-ledger
+// `charge` entry and links it back via `ledgerEntryId`). Deliberately minimal —
+// no notice-generation / escalation workflow here (that is a later dispatch).
+export const violationStatusEnum = pgEnum("violation_status", ["open", "notice-sent", "cured", "escalated", "closed"]);
+
+export const violations = pgTable("violations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  // Free-text category the board picks from a plain-English list in the wizard
+  // (Trash / bins, Parking, Noise, Pets, Architectural, Landscaping, Other).
+  violationType: text("violation_type").notNull(),
+  description: text("description").notNull(),
+  observedAt: timestamp("observed_at").defaultNow().notNull(),
+  status: violationStatusEnum("status").notNull().default("open"),
+  // Optional fine posted alongside the violation. `ledgerEntryId` links to the
+  // owner-ledger `charge` row created for the fine (set by the wizard flow).
+  fineAmount: real("fine_amount"),
+  ledgerEntryId: varchar("ledger_entry_id"),
+  loggedByEmail: text("logged_by_email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssociation: index("violations_association_idx").on(table.associationId),
+  byUnit: index("violations_unit_idx").on(table.unitId),
+}));
+
+// `ledgerEntryId` + `loggedByEmail` are server-managed (set from the fine flow /
+// the authenticated admin), so they are omitted from the client insert schema.
+export const insertViolationSchema = createInsertSchema(violations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  ledgerEntryId: true,
+  loggedByEmail: true,
+});
+export type Violation = typeof violations.$inferSelect;
+export type InsertViolation = z.infer<typeof insertViolationSchema>;

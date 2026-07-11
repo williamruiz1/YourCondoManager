@@ -4,11 +4,12 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual, randomInt } from "crypto";
 import { storage } from "./storage";
 import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
 import { db } from "./db";
 import { debug } from "./logger";
+import { captureServerError } from "./observability";
 import { reserveDisclosureDollars, reserveDisclosureBasis } from "./ct-reserve-disclosure";
 import { sendEmail } from "./email/send";
 import {
@@ -22,6 +23,7 @@ import { CURRENT_POLICY_VERSION } from "@shared/policy-version";
 import { buildPerUnitBreakdown } from "@shared/portal-per-unit";
 import { invalidateAlertCache } from "./alerts";
 import { getMigrationHealth } from "./migration-health";
+import { vendorComplianceStatus } from "./services/vendor-compliance";
 
 /**
  * 4.1 Wave 15a — real-time alert cache invalidation wiring.
@@ -55,6 +57,7 @@ import { enqueueAssessmentRuleRun, getJobStatus as getBackgroundJobStatus } from
 import {
   buildAssessmentDetailForOwnerUnit,
   getUpcomingInstallmentsForOwnerUnit,
+  getAssessmentPlansForOwnerUnit,
 } from "./portal-assessment-detail";
 // Wave 33 (5.4 Part B): `./ftph-feature-tree` and `@shared/ftph-feature-tree`
 // together account for ~50 KB of feature-metadata wiring that is only
@@ -116,6 +119,8 @@ import {
   governanceTemplateItems,
   insertGovernanceMeetingSchema,
   insertGovernanceTemplateItemSchema,
+  violations,
+  insertViolationSchema,
   insertMeetingAgendaItemSchema,
   insertMeetingNoteSchema,
   insertHoaFeeScheduleSchema,
@@ -296,6 +301,9 @@ import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
+import { registerAgentActionRoutes } from "./routes/agent-actions";
+import { registerViolationTriageRoutes } from "./routes/violation-triage";
+import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import {
@@ -351,7 +359,18 @@ function readPolicyFile(filename: string): string | null {
   }
 }
 
-const uploadDir = path.resolve("uploads");
+// Uploads directory. Configurable via UPLOAD_DIR so it can point at a mounted
+// DURABLE Fly volume (fix #363/#379 — governing-doc uploads were written to the
+// machine's ephemeral root fs at /app/uploads and destroyed on every deploy /
+// machine replacement). In production UPLOAD_DIR="/data/uploads" resolves onto
+// the "ycm_uploads" Fly volume mounted at /data (see fly.toml [mounts]). When
+// UPLOAD_DIR is unset (local dev / tests) behavior is unchanged: repo-relative
+// "uploads". All upload writes (multer diskStorage + feedback screenshots) and
+// the /api/uploads/:filename serve route resolve through this single variable,
+// so pointing it at the volume makes every upload path durable.
+const uploadDir = process.env.UPLOAD_DIR
+  ? path.resolve(process.env.UPLOAD_DIR)
+  : path.resolve("uploads");
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -946,10 +965,17 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
 
     if (missingAssociationIds.length > 0) {
       for (const associationId of missingAssociationIds) {
+        // A-AUTH-004 (founder-os#10757): auto-hydrate LEAST PRIVILEGE — read-only, not
+        // read-write. Admin write authority must not silently expand as a side effect of
+        // a portal_access row; write scope requires an explicit grant.
+        // NOTE (enforcement gap, tracked as a follow-up): the `scope` VALUE is not yet
+        // consumed at write sites — access is currently gated only by the association-id's
+        // presence in adminScopedAssociationIds — so this read-only default is
+        // least-privilege-by-intent and audit hygiene until scope-value enforcement lands.
         await storage.upsertAdminAssociationScope({
           adminUserId: adminUser.id,
           associationId,
-          scope: "read-write",
+          scope: "read-only",
         });
       }
       scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
@@ -957,6 +983,7 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
         adminUserId: adminUser.id,
         email: adminUser.email,
         hydratedAssociationIds: missingAssociationIds,
+        grantedScope: "read-only",
         resultingScopeCount: scopes.length,
       });
     } else if (scopes.length === 0) {
@@ -1472,6 +1499,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdmin,
     requireAdminRole,
     getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // YCM Chief-of-Staff agent queue + four-level permission ladder + audit log
+  // (founder-os#9474, W1 foundation). The queue IS the chief-of-staff surface;
+  // every agent-proposed action routes through it. Level is server-authoritative
+  // (assigned from the action-type); L3/L4 cannot execute without a recorded
+  // human approval (L4 → board-level approver).
+  registerAgentActionRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // Violation-intake triage agent ability (founder-os#9479, W2). Intake an owner's
+  // violation report + photos → categorize against the applicable rule → draft the
+  // notice grounded in the rule + evidence → file a `reversible.draft_notice` (L2)
+  // action onto the queue routed to PM/board. Draft + route ONLY; issuing (send) is
+  // a separate L3 action a human always approves + signs.
+  registerViolationTriageRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    assertAssociationScope,
+  });
+
+  // Meeting-prep agent ability (founder-os#9478). Aggregates recent activity
+  // (open maintenance issues, open statutory records requests, open work
+  // orders, violation-notice actions in flight) + the prior meeting's minutes
+  // into a structured, fully-traceable draft agenda + packet, filed as a
+  // `suggest.meeting_prep` (L1) action onto the W1 queue for human review.
+  // NEVER distributes — distribution is a separate, never-auto-filed L2 action.
+  registerMeetingPrepRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
     assertAssociationScope,
   });
 
@@ -5688,6 +5750,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // Vendor compliance status (W-9 / COI / insurance-expiry) — founder-os#9482.
+  // Additive alongside /api/vendors and /api/vendors/renewal-alerts; does not
+  // change either existing response shape.
+  app.get("/api/vendors/compliance", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req);
+      const vendorRows = (await storage.getVendors(associationId)).filter((v) => v.status !== "inactive");
+      const coiMap = await storage.getVendorCoiOnFileMap(vendorRows.map((v) => v.id));
+      const result = vendorRows.map((vendor) => {
+        const hasCurrentCoi = Boolean(coiMap[vendor.id]);
+        const insuranceExpiresAt = vendor.insuranceExpiresAt ? new Date(vendor.insuranceExpiresAt) : null;
+        const w9ReceivedAt = vendor.w9ReceivedAt ? new Date(vendor.w9ReceivedAt) : null;
+        const { status, daysUntilExpiry, missing } = vendorComplianceStatus({
+          w9ReceivedAt,
+          hasCurrentCoi,
+          insuranceExpiresAt,
+        });
+        return {
+          vendorId: vendor.id,
+          vendorName: vendor.name,
+          associationId: vendor.associationId,
+          w9ReceivedAt,
+          hasCurrentCoi,
+          insuranceExpiresAt,
+          complianceStatus: status,
+          daysUntilExpiry,
+          missing,
+        };
+      });
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       await assertResourceScope(req as AdminRequest, "vendor", getParam(req.params.id));
@@ -6395,34 +6492,62 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(200).json({ received: true, handled: false });
       }
 
+      // #377 fail-closed: track whether a verification path actually validated.
+      // Previously, when a signature was present but no active signing secret
+      // existed for the association (or no associationId was present to resolve
+      // one), AND when NO signature header and no shared-secret env were present,
+      // execution fell THROUGH to the ledger-mutating processPaymentWebhookEvent()
+      // completely unauthenticated — a forged {associationId, provider, status,
+      // amount, ...} could mutate the owner ledger. Now every path that reaches
+      // the mutation below must have positively validated a credential; otherwise
+      // → 403 before any mutation. (The live per-HOA Stripe path is Branch A above,
+      // verified against each HOA's gateway.webhookSecret — untouched.)
+      let webhookVerified = false;
+
       if (stripeSignature || hmacSignature) {
         // HMAC-SHA256 verification — lookup signing secret for this association
         const associationIdForVerify = typeof req.body.associationId === "string" ? req.body.associationId : null;
-        if (associationIdForVerify) {
-          const [sigSecret] = await db.select().from(webhookSigningSecrets).where(
-            and(eq(webhookSigningSecrets.associationId, associationIdForVerify), eq(webhookSigningSecrets.isActive, 1))
-          ).limit(1);
-          if (sigSecret) {
-            const payload = JSON.stringify(req.body);
-            const expected = createHmac("sha256", sigSecret.secretHash).update(payload).digest("hex");
-            const provided = hmacSignature || (stripeSignature ? stripeSignature.split(",").find(p => p.startsWith("v1="))?.slice(3) : null);
-            if (!provided) return res.status(403).json({ message: "Missing webhook signature" });
-            try {
-              const expectedBuf = Buffer.from(expected, "utf8");
-              const providedBuf = Buffer.from(provided, "utf8");
-              if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
-                return res.status(403).json({ message: "Invalid webhook signature" });
-              }
-            } catch {
-              return res.status(403).json({ message: "Invalid webhook signature" });
-            }
-          }
+        if (!associationIdForVerify) {
+          // A signature was presented but there is no associationId to resolve a
+          // signing secret against — cannot verify → reject (was: silent skip).
+          return res.status(403).json({ message: "associationId required to verify webhook signature" });
         }
+        const [sigSecret] = await db.select().from(webhookSigningSecrets).where(
+          and(eq(webhookSigningSecrets.associationId, associationIdForVerify), eq(webhookSigningSecrets.isActive, 1))
+        ).limit(1);
+        if (!sigSecret) {
+          // A signature was presented but no active signing secret is configured
+          // for this association — cannot verify → reject (was: silent
+          // fall-through to the ledger mutation).
+          return res.status(403).json({ message: "Webhook signing secret is not configured for this association" });
+        }
+        const payload = JSON.stringify(req.body);
+        const expected = createHmac("sha256", sigSecret.secretHash).update(payload).digest("hex");
+        const provided = hmacSignature || (stripeSignature ? stripeSignature.split(",").find(p => p.startsWith("v1="))?.slice(3) : null);
+        if (!provided) return res.status(403).json({ message: "Missing webhook signature" });
+        try {
+          const expectedBuf = Buffer.from(expected, "utf8");
+          const providedBuf = Buffer.from(provided, "utf8");
+          if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
+            return res.status(403).json({ message: "Invalid webhook signature" });
+          }
+        } catch {
+          return res.status(403).json({ message: "Invalid webhook signature" });
+        }
+        webhookVerified = true;
       } else if (webhookSharedSecret) {
         const provided = req.header("x-payment-webhook-secret");
         if (!provided || provided !== webhookSharedSecret) {
           return res.status(403).json({ message: "Invalid webhook secret" });
         }
+        webhookVerified = true;
+      }
+
+      if (!webhookVerified) {
+        // No signature was presented and no shared-secret path validated → this
+        // is an unauthenticated (potentially forged) request. Reject BEFORE any
+        // ledger/billing mutation (#377 fail-closed).
+        return res.status(403).json({ message: "Webhook authentication required" });
       }
 
       const associationId = getParam(req.body.associationId);
@@ -7474,6 +7599,61 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       assertAssociationScope(req as AdminRequest, parsed.associationId);
       const result = await storage.createGovernanceMeeting(parsed);
       res.status(201).json(result);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // founder-os#9487 — Board mode "log a violation" wizard. A lean rule-violation
+  // log for volunteer boards. GET lists violations for the active association;
+  // POST records a new one (association-scoped, optionally tied to a unit/owner).
+  // The optional fine is posted by the client as a separate owner-ledger `charge`
+  // and linked back via `ledgerEntryId` on a follow-up PATCH — this endpoint just
+  // records the violation itself.
+  app.get("/api/violations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
+    try {
+      const associationId = getAssociationIdQuery(req as AdminRequest);
+      if (!associationId) return res.json([]);
+      const result = await db
+        .select()
+        .from(violations)
+        .where(eq(violations.associationId, associationId))
+        .orderBy(desc(violations.observedAt));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/violations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const parsed = insertViolationSchema.parse({
+        ...req.body,
+        observedAt: req.body?.observedAt ? new Date(req.body.observedAt) : req.body?.observedAt,
+      });
+      assertAssociationScope(req as AdminRequest, parsed.associationId);
+      const [created] = await db
+        .insert(violations)
+        .values({ ...parsed, loggedByEmail: (req as AdminRequest).adminUserEmail ?? null })
+        .returning();
+      res.status(201).json(created);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Link a posted fine (owner-ledger entry) back to a violation, or update status.
+  app.patch("/api/violations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
+    try {
+      const id = getParam(req.params.id);
+      const [existing] = await db.select().from(violations).where(eq(violations.id, id));
+      if (!existing) return res.status(404).json({ message: "Violation not found" });
+      assertAssociationScope(req as AdminRequest, existing.associationId);
+      const updates: Partial<typeof violations.$inferInsert> = { updatedAt: new Date() };
+      if (typeof req.body?.ledgerEntryId === "string") updates.ledgerEntryId = req.body.ledgerEntryId;
+      if (typeof req.body?.status === "string") updates.status = req.body.status;
+      const [updated] = await db.update(violations).set(updates).where(eq(violations.id, id)).returning();
+      res.json(updated);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -13423,7 +13603,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       }
 
       // Generate a 6-digit OTP (one token covers all associations for this email)
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      // A-AUTH-002 (founder-os#10757): CSPRNG for security one-time codes (CWE-338).
+      // randomInt(100000, 1000000) is uniform in [100000, 999999] — always 6 digits.
+      const otp = String(randomInt(100000, 1000000));
       const otpHash = createHmac("sha256", portalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
@@ -14347,7 +14529,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         return res.status(403).json({ message: "Not authorized" });
       }
       const ownerUnitId = req.portalUnitId ?? null;
-      const [allEntries, activeSchedules, paymentPlansAll, specialAssessmentUpcomingInstallments] = await Promise.all([
+      const [allEntries, activeSchedules, paymentPlansAll, specialAssessmentUpcomingInstallments, assessmentPlans] = await Promise.all([
         storage.getOwnerLedgerEntries(req.portalAssociationId),
         // Recurring charge schedules scoped to this owner's unit (or association-wide schedules)
         db.select().from(recurringChargeSchedules).where(
@@ -14366,6 +14548,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         // 4.3 Q5 — upcoming special-assessment installments for this owner's unit.
         // Each entry links to GET /api/portal/assessments/:assessmentId/detail.
         getUpcomingInstallmentsForOwnerUnit({
+          associationId: req.portalAssociationId,
+          unitId: ownerUnitId,
+          personId: req.portalPersonId,
+        }),
+        // 2026-07-09 (owner-finances redesign) — special-assessment PLAN
+        // progress (total · paid-to-date · remaining · installments paid/total ·
+        // next installment) so the portal shows the assessment as a payment
+        // plan paid over time, not an alarming lump balance due now.
+        getAssessmentPlansForOwnerUnit({
           associationId: req.portalAssociationId,
           unitId: ownerUnitId,
           personId: req.portalPersonId,
@@ -14518,6 +14709,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         } : null,
         recentEntries: myEntries.slice(-10),
         specialAssessmentUpcomingInstallments,
+        // 2026-07-09 — special-assessment payment-PLAN progress (additive,
+        // display-only). Drives the owner-portal "payment plan" card.
+        assessmentPlans,
         // 2026-05-25 — per-unit hierarchical breakdown (additive).
         byUnit,
         // 2026-07-03 — per-unit dues-vs-assessment breakdown (additive, read-only).
@@ -17006,17 +17200,30 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const stripeSignature = req.header("stripe-signature");
       const webhookSecret = await getSecret("PLATFORM_STRIPE_WEBHOOK_SECRET", "platform_stripe_webhook_secret");
 
-      if (stripeSignature && webhookSecret) {
-        const rawBody = Buffer.isBuffer((req as any).rawBody) ? (req as any).rawBody.toString("utf8") : JSON.stringify(req.body);
-        const { timestamp, signature } = parseStripeSignature(stripeSignature);
-        if (timestamp && signature) {
-          const expected = createHmac("sha256", webhookSecret).update(`${timestamp}.${rawBody}`).digest("hex");
-          const expectedBuf = Buffer.from(expected, "utf8");
-          const providedBuf = Buffer.from(signature, "utf8");
-          if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
-            return res.status(403).json({ message: "Invalid webhook signature" });
-          }
-        }
+      // #377 fail-closed: a forged event with no/invalid signature must NOT reach
+      // the mutation path (provisionWorkspace / platform-subscription flips).
+      // Previously verification only ran INSIDE `if (stripeSignature && webhookSecret)`
+      // and even then was skipped on a signature parse-fail — so a missing header,
+      // an unset secret, or an unparseable signature all fell through to processing
+      // a forged event. Now: require the signing secret configured AND a valid
+      // signature before ANY processing. (PLATFORM_STRIPE_WEBHOOK_SECRET is
+      // configured in production, so live platform Stripe events keep verifying.)
+      if (!webhookSecret) {
+        return res.status(503).json({ message: "Platform Stripe webhook secret is not configured" });
+      }
+      if (!stripeSignature) {
+        return res.status(403).json({ message: "Missing Stripe signature" });
+      }
+      const rawBody = Buffer.isBuffer((req as any).rawBody) ? (req as any).rawBody.toString("utf8") : JSON.stringify(req.body);
+      const { timestamp, signature } = parseStripeSignature(stripeSignature);
+      if (!timestamp || !signature) {
+        return res.status(403).json({ message: "Invalid Stripe signature format" });
+      }
+      const expected = createHmac("sha256", webhookSecret).update(`${timestamp}.${rawBody}`).digest("hex");
+      const expectedBuf = Buffer.from(expected, "utf8");
+      const providedBuf = Buffer.from(signature, "utf8");
+      if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
+        return res.status(403).json({ message: "Invalid webhook signature" });
       }
 
       const event = req.body as Record<string, unknown>;
@@ -17057,7 +17264,35 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         const subId = (eventObj.subscription as string) ?? null;
         if (subId) {
           const sub = await storage.getPlatformSubscriptionByStripeId(subId);
-          if (sub) await storage.updatePlatformSubscription(sub.id, { status: "active" });
+          if (sub) {
+            const wasActive = sub.status === "active";
+            await storage.updatePlatformSubscription(sub.id, { status: "active" });
+            // founder-os#1147 — payment-succeeded receipt email (acceptance
+            // criterion: transactional emails include payment-succeeded).
+            // Best-effort + non-crashing, mirroring the dunning email below.
+            // Idempotency: Stripe re-delivers on `invoice.payment_succeeded`
+            // AND `invoice.paid` for the same invoice, so key the receipt off
+            // the invoice number and skip a duplicate for a row already active
+            // (the initial trial-conversion charge flips trialing/past_due →
+            // active; steady-state renewals are the ones we email a receipt for).
+            const assocAdminEmail = sub.adminEmail;
+            const amountPaid = typeof eventObj.amount_paid === "number" ? eventObj.amount_paid : null;
+            const invoiceNumber = (eventObj.number as string) ?? (eventObj.id as string) ?? "";
+            const hostedInvoiceUrl = (eventObj.hosted_invoice_url as string) ?? null;
+            if (assocAdminEmail && amountPaid && amountPaid > 0) {
+              const amountStr = `$${(amountPaid / 100).toFixed(2)}`;
+              const invoiceLine = hostedInvoiceUrl
+                ? `<p><a href="${hostedInvoiceUrl}">View your invoice →</a></p>`
+                : "";
+              const receiptLabel = wasActive ? "renewal payment" : "payment";
+              await sendPlatformEmail({
+                to: assocAdminEmail,
+                subject: `Payment received — your Your Condo Manager subscription (${amountStr})`,
+                html: `<p>Hi,</p><p>We received your ${receiptLabel} of <strong>${amountStr}</strong> for your <strong>${sub.plan}</strong> Your Condo Manager subscription${invoiceNumber ? ` (invoice ${invoiceNumber})` : ""}.</p><p>Your subscription is active — thank you.</p>${invoiceLine}`,
+                text: `We received your ${receiptLabel} of ${amountStr} for your ${sub.plan} Your Condo Manager subscription${invoiceNumber ? ` (invoice ${invoiceNumber})` : ""}. Your subscription is active — thank you.${hostedInvoiceUrl ? `\n\nView your invoice: ${hostedInvoiceUrl}` : ""}`,
+              }).catch(() => {});
+            }
+          }
         }
         processed = true;
       } else if (eventType === "invoice.payment_failed") {
@@ -17087,7 +17322,23 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
       res.json({ received: true });
     } catch (e: any) {
-      console.error("Platform webhook error:", e.message);
+      // founder-os#1147 — Sentry error capture on every Stripe Billing webhook
+      // failure (acceptance criterion, per #1030 observability). captureServerError
+      // logs + forwards to Sentry when SENTRY_DSN is set, and never throws.
+      const eventId = (req.body as Record<string, unknown> | undefined)?.id as string | undefined;
+      const eventType = (req.body as Record<string, unknown> | undefined)?.type as string | undefined;
+      captureServerError(e, { scope: "platform-stripe-webhook", eventId, eventType });
+      // Record the failure on the webhook-event row so it's auditable (the row
+      // was upserted as `received` above; flip it to `failed` with the message).
+      if (eventId) {
+        try {
+          await db.update(platformWebhookEvents)
+            .set({ status: "failed", errorMessage: e?.message ?? "unknown", processedAt: new Date() })
+            .where(eq(platformWebhookEvents.providerEventId, eventId));
+        } catch {
+          // best-effort audit write; never mask the original webhook error
+        }
+      }
       res.status(500).json({ message: e.message });
     }
   });
@@ -17760,7 +18011,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         return res.json({ message: "If an account exists for this email, a login code has been sent." });
       }
 
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      // A-AUTH-002 (founder-os#10757): CSPRNG for security one-time codes (CWE-338).
+      // randomInt(100000, 1000000) is uniform in [100000, 999999] — always 6 digits.
+      const otp = String(randomInt(100000, 1000000));
       const otpHash = createHmac("sha256", vendorPortalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
       const vendorId = allCredentials[0].vendorId;
@@ -19065,7 +19318,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     return true;
   }
 
-  // Periodic cleanup of stale rate limit entries
+  // Periodic cleanup of stale rate limit entries.
+  // NOTE (founder-os#10741, SCALE-B-003): deliberately NOT advisory-locked —
+  // `hubPublicRateLimit` is a per-process in-memory Map, so each machine must GC
+  // its own; locking would leak memory on the others. Only side-effect sweeps
+  // are cross-machine-locked (see server/scheduler-lock.ts).
   setInterval(() => {
     const now = Date.now();
     for (const [ip, entry] of hubPublicRateLimit) {

@@ -22,6 +22,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
+// founder-os#9487 — Board mode (volunteer-board UX skin).
+import { BoardSidebar } from "@/components/board-mode/BoardSidebar";
+import { ModeSelectorGate } from "@/components/board-mode/ModeSelector";
+import { useViewMode, seedDefaultModeFromRole, setViewModeAdminId, setMode, setAdvancedView } from "@/context/view-mode";
 import { GlobalCommandPalette } from "@/components/global-command-palette";
 import { canAccessWipRoute } from "@/lib/wip-features";
 import { trackPageView } from "@/lib/tracking";
@@ -51,6 +55,9 @@ const OnboardingPage = lazyWithReload(() => import("@/pages/onboarding"), "@/pag
 const UnitsPage = lazyWithReload(() => import("@/pages/units"), "@/pages/units");
 const PersonsPage = lazyWithReload(() => import("@/pages/persons"), "@/pages/persons");
 const BoardPage = lazyWithReload(() => import("@/pages/board"), "@/pages/board");
+// founder-os#9487 — Board mode home + guided-wizard host.
+const BoardHomePage = lazyWithReload(() => import("@/pages/board-home"), "@/pages/board-home");
+const BoardWizardPage = lazyWithReload(() => import("@/pages/board-wizard"), "@/pages/board-wizard");
 const DocumentsPage = lazyWithReload(() => import("@/pages/documents"), "@/pages/documents");
 const RecordsRequestsPage = lazyWithReload(() => import("@/pages/records-requests"), "@/pages/records-requests");
 const RoadmapPage = lazyWithReload(() => import("@/pages/roadmap"), "@/pages/roadmap");
@@ -354,13 +361,29 @@ function WorkspaceRouter({
   adminRole: AdminRole | null;
   singleAssociationBoardExperience: boolean;
 }) {
+  // founder-os#9487 — on the Board surface, Home is the wizard-first board home,
+  // not the manager KPI dashboard.
+  const { mode, advancedView } = useViewMode();
+  const boardSurface = mode === "board" && !advancedView;
   return (
     <Suspense fallback={<RouteFallback />}>
       <Switch>
         <Route path="/app">
-          <OnboardingResumeGuard>
-            <DashboardPage />
-          </OnboardingResumeGuard>
+          {boardSurface ? (
+            <RouteRedirect to="/app/board-home" />
+          ) : (
+            <OnboardingResumeGuard>
+              <DashboardPage />
+            </OnboardingResumeGuard>
+          )}
+        </Route>
+
+        {/* founder-os#9487 — Board mode home + the five guided wizards. Available
+         * to every authenticated admin (mode is a per-user preference, not a
+         * role gate); the sidebar surface differs, the routes do not. */}
+        <Route path="/app/board-home" component={BoardHomePage} />
+        <Route path="/app/board/:action">
+          {(params) => <BoardWizardPage action={params.action ?? ""} />}
         </Route>
 
         {/* #1327 — Self-managed onboarding wizard. Sits alongside /app so
@@ -812,6 +835,7 @@ function HeaderActions({
   onLogoutGoogleSession: () => Promise<void>;
 }) {
   const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
+  const { mode: viewMode } = useViewMode();
   const accountEmail = authSession?.user?.email || authSession?.admin?.email || null;
   const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
   const activeAssociationName =
@@ -960,6 +984,16 @@ function HeaderActions({
                 </div>
               ) : null}
             </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {/* founder-os#9487 — mode switch for dual-role users. */}
+            <DropdownMenuItem
+              className="cursor-pointer"
+              onSelect={() => setMode(viewMode === "board" ? "manager" : "board")}
+              data-testid="button-switch-view-mode"
+            >
+              <span className="material-symbols-outlined text-[16px]">swap_horiz</span>
+              {viewMode === "board" ? "Switch to Manager view" : "Switch to Board view"}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="cursor-pointer"
@@ -1197,7 +1231,16 @@ function WorkspaceShell({
     staleTime: 5 * 60 * 1000,
   });
 
+  // founder-os#9487 — Board vs Manager view. First-run selector gates the shell
+  // until a mode is chosen; the chosen mode picks the sidebar surface.
+  const { mode, advancedView, modeChosen } = useViewMode();
+  const boardSurface = mode === "board" && !advancedView;
+
   const subscription = billingData && "plan" in billingData ? billingData : null;
+
+  if (!modeChosen) {
+    return <ModeSelectorGate />;
+  }
 
   async function openBillingPortal() {
     try {
@@ -1220,8 +1263,23 @@ function WorkspaceShell({
     <AssociationProvider>
       <SidebarProvider style={style as CSSProperties}>
         <div className="flex h-screen w-full">
-          <AppSidebar adminRole={adminRole} />
+          {boardSurface ? <BoardSidebar /> : <AppSidebar adminRole={adminRole} />}
           <div className="flex min-w-0 flex-1 flex-col">
+            {/* founder-os#9487 — Board mode advanced-view banner: a Board-mode
+                user viewing the full technical workspace can return to the
+                simple board view here. */}
+            {mode === "board" && advancedView ? (
+              <div className="flex items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900" data-testid="advanced-view-banner">
+                <span className="font-medium">Advanced view — full manager tools</span>
+                <button
+                  onClick={() => setAdvancedView(false)}
+                  className="font-semibold underline hover:no-underline"
+                  data-testid="advanced-view-exit"
+                >
+                  Back to simple board view
+                </button>
+              </div>
+            ) : null}
             {/* 5.3-F2 (Wave 18) — header compression on <640px:
                 shorter row (h-12), tighter padding, no gap so the
                 association switcher / account menu / palette fit. */}
@@ -1382,8 +1440,12 @@ function AuthAwareApp() {
   useEffect(() => {
     if (authSession?.admin?.id) {
       setAdminIdForSettings(authSession.admin.id);
+      // founder-os#9487 — scope the view-mode store to this admin, then default
+      // board-role users into Board mode (until they explicitly choose).
+      setViewModeAdminId(authSession.admin.id);
+      seedDefaultModeFromRole(authSession.admin.role ?? null);
     }
-  }, [authSession?.admin?.id]);
+  }, [authSession?.admin?.id, authSession?.admin?.role]);
   // Re-apply theme whenever preference or route changes (dark mode is workspace-only)
   useEffect(() => {
     applyTheme(userSettings.theme);

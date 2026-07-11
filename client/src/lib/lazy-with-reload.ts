@@ -48,6 +48,13 @@ let pageIsUnloading = false;
 if (typeof window !== "undefined") {
   window.addEventListener("pagehide", () => { pageIsUnloading = true; });
   window.addEventListener("beforeunload", () => { pageIsUnloading = true; });
+  // bfcache restore (back/forward) reuses this document with pageIsUnloading
+  // still `true` from the earlier pagehide. Without resetting it, the reload
+  // recovery path below permanently stands down for the life of the restored
+  // page — a subsequent stale-chunk navigation then shows a dead error screen
+  // instead of self-healing. `pageshow` fires on both fresh loads and bfcache
+  // restores; reset the flag so recovery stays armed.
+  window.addEventListener("pageshow", () => { pageIsUnloading = false; });
 }
 
 /** Matches the cross-browser dynamic-import / chunk-load failure messages. */
@@ -70,6 +77,29 @@ function safeSessionStorage(): Storage | null {
     return window.sessionStorage;
   } catch {
     return null; // private mode / storage disabled
+  }
+}
+
+/**
+ * Clear every per-route one-reload-budget flag. Used by the ErrorBoundary's
+ * stale-chunk recovery: when the boundary takes over (because this guard's
+ * per-chunk reload budget was already spent) and hard-reloads the page, it
+ * first wipes these flags so the fresh page load gets a clean recovery budget
+ * again — otherwise a lingering "1" flag would make the guard immediately
+ * rethrow on the very next stale event instead of reloading.
+ */
+export function clearChunkReloadFlags(): void {
+  const store = safeSessionStorage();
+  if (!store) return;
+  try {
+    const toRemove: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (key && key.startsWith(RELOAD_FLAG_PREFIX)) toRemove.push(key);
+    }
+    for (const key of toRemove) store.removeItem(key);
+  } catch {
+    /* storage disabled / access denied — nothing to clear */
   }
 }
 
