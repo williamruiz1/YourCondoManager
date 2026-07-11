@@ -21,7 +21,7 @@ import {
 import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2, User, X, UserPlus, FileUp } from "lucide-react";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -1254,7 +1254,7 @@ export default function UnitsPage() {
                               <ChevronDown className="h-4 w-4 text-muted-foreground" />
                             )}
                             <div className="font-headline text-xl font-semibold text-on-surface">{group.building}</div>
-                            {group.isLegacyGroup ? <Badge variant="outline">Legacy</Badge> : null}
+                            {group.isLegacyGroup ? <Pill tone="muted">Legacy</Pill> : null}
                           </div>
                           <div className="ml-6 mt-1 text-xs text-muted-foreground">Manage ownership, occupancy, and contact actions for this building.</div>
                         </button>
@@ -1271,9 +1271,9 @@ export default function UnitsPage() {
                         </Button>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge variant="outline">{group.unitCount} units</Badge>
-                        <Badge variant="outline">{group.ownerLinkedCount} owned</Badge>
-                        <Badge variant="secondary">{group.occupiedCount} occupied</Badge>
+                        <Pill tone="muted">{group.unitCount} units</Pill>
+                        <Pill tone="muted">{group.ownerLinkedCount} owned</Pill>
+                        <Pill tone="info">{group.occupiedCount} occupied</Pill>
                       </div>
                     </div>
                     {collapsedBuildings[group.groupKey] ? null : (
@@ -1302,16 +1302,15 @@ export default function UnitsPage() {
                                   <div className="label-caps text-on-surface/45">Unit</div>
                                   <div className="mt-1 font-headline text-3xl font-bold text-primary">{row.unit.unitNumber}</div>
                                 </div>
-                                <Badge
-                                  variant={
-                                    row.occupancyType === "OWNER_OCCUPIED" ? "default"
-                                    : row.occupancyType === "TENANT" ? "secondary"
-                                    : "outline"
+                                <Pill
+                                  tone={
+                                    row.occupancyType === "OWNER_OCCUPIED" ? "ok"
+                                    : row.occupancyType === "TENANT" ? "info"
+                                    : "muted"
                                   }
-                                  className="mt-1"
                                 >
                                   {row.occupancyLabel}
-                                </Badge>
+                                </Pill>
                               </div>
 
                               <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1427,15 +1426,15 @@ export default function UnitsPage() {
                               <div className="font-medium">{row.unit.unitNumber}</div>
 
                               <div className="min-w-0">
-                                <Badge
-                                  variant={
-                                    row.occupancyType === "OWNER_OCCUPIED" ? "default"
-                                    : row.occupancyType === "TENANT" ? "secondary"
-                                    : "outline"
+                                <Pill
+                                  tone={
+                                    row.occupancyType === "OWNER_OCCUPIED" ? "ok"
+                                    : row.occupancyType === "TENANT" ? "info"
+                                    : "muted"
                                   }
                                 >
                                   {row.occupancyLabel}
-                                </Badge>
+                                </Pill>
                               </div>
 
                               <div className="min-w-0 w-full rounded-md border bg-background px-2 py-2 text-left lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
