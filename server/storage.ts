@@ -305,7 +305,7 @@ import {
   type ConsentRecord,
   paymentTransactions,
 } from "@shared/schema";
-import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
+import { normalizeAdminNotificationPreferences, type AdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { recordPlatformProcessingFee, netLedgerCreditDollars } from "./services/convenience-fee";
 import { governanceStateTemplateLibrary } from "@shared/governance-state-template-library";
 
@@ -16042,7 +16042,7 @@ export class DatabaseStorage implements IStorage {
               emailNotifications: row.emailNotifications,
               pushNotifications: row.pushNotifications,
               desktopNotifications: row.desktopNotifications,
-              alertDigest: row.alertDigest as any,
+              alertDigest: row.alertDigest as AdminNotificationPreferences["alertDigest"],
               quietHoursEnabled: row.quietHoursEnabled,
               quietHoursStart: row.quietHoursStart,
               quietHoursEnd: row.quietHoursEnd,
