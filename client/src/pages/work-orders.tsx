@@ -1,5 +1,10 @@
 // zone: Operations
 // persona: Manager, Board Officer, Assisted Board, PM Assistant
+//
+// YCM Redesign — Work Orders restyled onto the shared @ycm/design-system
+// (F1, founder-os#10187), mirroring the M1 Dashboard restyle pattern. All
+// live data wiring is preserved verbatim -- status/escalation chips use
+// the DS Pill component.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { MaintenanceRequest, Unit, Vendor, VendorInvoice, WorkOrder } from "@shared/schema";
@@ -13,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { operationsSubPages } from "@/lib/sub-page-nav";
 import { AssociationScopeBanner } from "@/components/association-scope-banner";
@@ -28,6 +33,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MaintenanceSchedulesContent } from "./maintenance-schedules";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 type WorkOrderStatus = "open" | "assigned" | "in-progress" | "pending-review" | "closed" | "cancelled";
 type WorkOrderPriority = "low" | "medium" | "high" | "urgent";
@@ -475,9 +482,9 @@ export function WorkOrdersContent() {
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-semibold">Maintenance Requests Ready for Conversion</h2>
             <div className="flex items-center gap-2">
-              <Badge variant="outline">{convertibleRequests.length} available</Badge>
+              <Pill tone="muted">{convertibleRequests.length} available</Pill>
               {convertibleOverdueCount > 0 && (
-                <Badge variant="destructive" data-testid="badge-convertible-overdue">{convertibleOverdueCount} overdue</Badge>
+                <Pill tone="bad"><span data-testid="badge-convertible-overdue">{convertibleOverdueCount} overdue</span></Pill>
               )}
             </div>
           </div>
@@ -509,7 +516,7 @@ export function WorkOrdersContent() {
                         {request.priority}
                       </span>
                     </TableCell>
-                    <TableCell><Badge variant="secondary">{request.status}</Badge></TableCell>
+                    <TableCell><Pill tone="info">{request.status}</Pill></TableCell>
                     <TableCell>{units.find((unit) => unit.id === request.unitId)?.unitNumber || "-"}</TableCell>
                     <TableCell>
                       {dueAt ? (
@@ -519,7 +526,7 @@ export function WorkOrdersContent() {
                             {isOverdue ? "Overdue" : dueAt.toLocaleDateString()}
                           </span>
                           {stage > 0 && (
-                            <Badge variant="destructive" className="h-5 px-1.5 text-[10px]" aria-label={`Escalation stage ${stage}`}>stage {stage}</Badge>
+                            <Pill tone="bad"><span aria-label={`Escalation stage ${stage}`}>stage {stage}</span></Pill>
                           )}
                         </span>
                       ) : (
@@ -555,7 +562,7 @@ export function WorkOrdersContent() {
                   <Button size="sm" onClick={() => convertRequest.mutate(request)} disabled={convertRequest.isPending}>Convert</Button>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">{request.status}</Badge>
+                  <Pill tone="info">{request.status}</Pill>
                   <span className={`inline-flex items-center gap-1 text-xs font-medium ${request.priority === "urgent" ? "text-red-600 dark:text-red-400" : request.priority === "high" ? "text-orange-600 dark:text-orange-400" : "text-foreground"}`} aria-label={`Priority: ${request.priority}`}>
                     {request.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
                     {request.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
@@ -568,7 +575,7 @@ export function WorkOrdersContent() {
                     </span>
                   )}
                   {stage > 0 && (
-                    <Badge variant="destructive" className="h-5 px-1.5 text-[10px]" aria-label={`Escalation stage ${stage}`}>stage {stage}</Badge>
+                    <Pill tone="bad"><span aria-label={`Escalation stage ${stage}`}>stage {stage}</span></Pill>
                   )}
                 </div>
               </div>
@@ -739,7 +746,7 @@ export function WorkOrdersContent() {
                   <TableCell>{units.find((unit) => unit.id === order.unitId)?.unitNumber || "-"}</TableCell>
                   <TableCell>{vendors.find((vendor) => vendor.id === order.vendorId)?.name || "-"}</TableCell>
                   <TableCell>{invoices.find((invoice) => invoice.id === order.vendorInvoiceId)?.invoiceNumber || (order.vendorInvoiceId ? "linked" : "-")}</TableCell>
-                  <TableCell><Badge variant={order.status === "closed" ? "default" : "secondary"}>{order.status}</Badge></TableCell>
+                  <TableCell><Pill tone={order.status === "closed" ? "ok" : "info"}>{order.status}</Pill></TableCell>
                   <TableCell>
                     <span className={`inline-flex items-center gap-1 text-xs font-medium ${order.priority === "urgent" ? "text-red-600 dark:text-red-400" : order.priority === "high" ? "text-orange-600 dark:text-orange-400" : order.priority === "low" ? "text-muted-foreground" : "text-foreground"}`} aria-label={`Priority: ${order.priority}`}>
                       {order.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
@@ -797,7 +804,7 @@ export function WorkOrdersContent() {
                       <div className="mt-1 text-xs text-muted-foreground">{order.locationText || order.category}</div>
                     </button>
                     <div className="flex flex-col items-end gap-2">
-                      <Badge variant={order.status === "closed" ? "default" : "secondary"}>{order.status}</Badge>
+                      <Pill tone={order.status === "closed" ? "ok" : "info"}>{order.status}</Pill>
                       <span className={`inline-flex items-center gap-1 text-xs font-medium ${order.priority === "urgent" ? "text-red-600 dark:text-red-400" : order.priority === "high" ? "text-orange-600 dark:text-orange-400" : order.priority === "low" ? "text-muted-foreground" : "text-foreground"}`} aria-label={`Priority: ${order.priority}`}>
                         {order.priority === "urgent" && <AlertTriangle className="h-3 w-3" aria-hidden="true" />}
                         {order.priority === "high" && <ChevronUp className="h-3 w-3" aria-hidden="true" />}
@@ -847,7 +854,7 @@ export function WorkOrdersContent() {
           {selectedOrder ? (
             <div className="mt-6 space-y-6">
               <div className="grid gap-4 sm:grid-cols-2">
-                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Status</div><div className="mt-1"><Badge variant={selectedOrder.status === "closed" ? "default" : "secondary"}>{selectedOrder.status}</Badge></div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Status</div><div className="mt-1"><Pill tone={selectedOrder.status === "closed" ? "ok" : "info"}>{selectedOrder.status}</Pill></div></CardContent></Card>
                 <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Priority</div><div className="mt-1 font-medium">{selectedOrder.priority}</div></CardContent></Card>
                 <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Vendor</div><div className="mt-1 font-medium">{vendors.find((vendor) => vendor.id === selectedOrder.vendorId)?.name || "-"}</div></CardContent></Card>
                 <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Unit</div><div className="mt-1 font-medium">{units.find((unit) => unit.id === selectedOrder.unitId)?.unitNumber || "-"}</div></CardContent></Card>
@@ -965,7 +972,7 @@ export function WorkOrdersContent() {
                   <CardContent className="p-4 space-y-3">
                     <div className="font-medium text-sm flex items-center gap-2">
                       Vendor Activity
-                      {vendorActivity.length > 0 && <Badge variant="outline" className="text-xs">{vendorActivity.length}</Badge>}
+                      {vendorActivity.length > 0 && <Pill tone="muted">{vendorActivity.length}</Pill>}
                     </div>
                     {(selectedOrder as any).vendorEstimatedCompletionDate && (
                       <div className="text-sm text-muted-foreground">
@@ -1007,7 +1014,7 @@ export default function WorkOrdersPage() {
   useDocumentTitle(t("workOrders.title"));
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
-    <section className="flex flex-col min-h-0" aria-labelledby="work-orders-heading">
+    <section className="flex flex-col min-h-0 ds-scope fin-ds" aria-labelledby="work-orders-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title={t("workOrders.title")}
