@@ -300,6 +300,7 @@ import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
+import { registerVendorRoutes } from "./routes/vendors";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAgentActionRoutes } from "./routes/agent-actions";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
@@ -1488,6 +1489,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdminRole,
     getAssociationIdQuery,
     assertAssociationScope,
+  });
+
+  // Vendor management (`/api/vendors/*`) — extracted from this God-file
+  // (founder-os#10758, ARCH-B-001/CQ-002). MOVE-ONLY; the route-inventory
+  // snapshot test proves the exposed method+path set is unchanged.
+  registerVendorRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+    assertAssociationInputScope,
+    assertResourceScope,
+    safeInvalidateAlertCache,
+    upload,
   });
 
   // HOA Remediation Phase 2 — dual-approval (maker-checker) on disbursements
@@ -5658,169 +5673,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           rejectVoteCount: r.rejectVoteCount,
         })),
       );
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
-    try {
-      const result = await storage.getVendors(getAssociationIdQuery(req));
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/vendors/:id/metrics", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
-    try {
-      const vendorId = getParam(req.params.id);
-      const allWorkOrders = await storage.getWorkOrders({});
-      const vendorWOs = allWorkOrders.filter((wo) => wo.vendorId === vendorId);
-      const now = Date.now();
-      const closedWOs = vendorWOs.filter((wo) => wo.status === "closed");
-      const openWOs = vendorWOs.filter((wo) => wo.status !== "closed" && wo.status !== "cancelled");
-      const avgResolutionDays = closedWOs.length > 0
-        ? Math.round(closedWOs.reduce((sum, wo) => {
-            const created = new Date(wo.createdAt).getTime();
-            const closed = new Date(wo.updatedAt).getTime();
-            return sum + (closed - created) / (1000 * 60 * 60 * 24);
-          }, 0) / closedWOs.length)
-        : null;
-      const byStatus: Record<string, number> = {};
-      for (const wo of vendorWOs) {
-        byStatus[wo.status] = (byStatus[wo.status] ?? 0) + 1;
-      }
-      const byPriority: Record<string, number> = {};
-      for (const wo of vendorWOs) {
-        const p = wo.priority || "normal";
-        byPriority[p] = (byPriority[p] ?? 0) + 1;
-      }
-      res.json({
-        totalWorkOrders: vendorWOs.length,
-        openWorkOrders: openWOs.length,
-        closedWorkOrders: closedWOs.length,
-        avgResolutionDays,
-        byStatus,
-        byPriority,
-        recentWorkOrders: vendorWOs
-          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, 5)
-          .map((wo) => ({ id: wo.id, title: wo.title, status: wo.status, priority: wo.priority, createdAt: wo.createdAt })),
-      });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/vendors", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
-    try {
-      const parsed = insertVendorSchema.parse(req.body);
-      assertAssociationScope(req as AdminRequest, parsed.associationId);
-      const result = await storage.createVendor(parsed);
-      safeInvalidateAlertCache(); // 15a: vendor-contract-renewal source write
-      res.status(201).json(result);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.patch("/api/vendors/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
-    try {
-      await assertResourceScope(req as AdminRequest, "vendor", getParam(req.params.id));
-      const parsed = insertVendorSchema.partial().parse(req.body);
-      if (Object.prototype.hasOwnProperty.call(parsed, "associationId")) {
-        assertAssociationInputScope(req as AdminRequest, parsed.associationId ?? null);
-      }
-      const result = await storage.updateVendor(getParam(req.params.id), parsed);
-      if (!result) return res.status(404).json({ message: "Vendor not found" });
-      safeInvalidateAlertCache(); // 15a: vendor-contract-renewal source write (status/insurance-expiry changes)
-      res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/vendors/renewal-alerts", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
-    try {
-      const result = await storage.getVendorRenewalAlerts(getAssociationIdQuery(req));
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  // Vendor compliance status (W-9 / COI / insurance-expiry) — founder-os#9482.
-  // Additive alongside /api/vendors and /api/vendors/renewal-alerts; does not
-  // change either existing response shape.
-  app.get("/api/vendors/compliance", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
-    try {
-      const associationId = getAssociationIdQuery(req);
-      const vendorRows = (await storage.getVendors(associationId)).filter((v) => v.status !== "inactive");
-      const coiMap = await storage.getVendorCoiOnFileMap(vendorRows.map((v) => v.id));
-      const result = vendorRows.map((vendor) => {
-        const hasCurrentCoi = Boolean(coiMap[vendor.id]);
-        const insuranceExpiresAt = vendor.insuranceExpiresAt ? new Date(vendor.insuranceExpiresAt) : null;
-        const w9ReceivedAt = vendor.w9ReceivedAt ? new Date(vendor.w9ReceivedAt) : null;
-        const { status, daysUntilExpiry, missing } = vendorComplianceStatus({
-          w9ReceivedAt,
-          hasCurrentCoi,
-          insuranceExpiresAt,
-        });
-        return {
-          vendorId: vendor.id,
-          vendorName: vendor.name,
-          associationId: vendor.associationId,
-          w9ReceivedAt,
-          hasCurrentCoi,
-          insuranceExpiresAt,
-          complianceStatus: status,
-          daysUntilExpiry,
-          missing,
-        };
-      });
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.get("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
-    try {
-      await assertResourceScope(req as AdminRequest, "vendor", getParam(req.params.id));
-      const result = await storage.getVendorDocuments(getParam(req.params.id));
-      res.json(result);
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/vendors/:id/documents", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), upload.single("file"), async (req: AdminRequest, res) => {
-    try {
-      const vendorId = getParam(req.params.id);
-      await assertResourceScope(req, "vendor", vendorId);
-      const file = req.file;
-      if (!file) {
-        return res.status(400).json({ message: "File is required" });
-      }
-      const vendorAssociationId = await storage.getAssociationIdForScopedResource("vendor", vendorId);
-      if (!vendorAssociationId) {
-        return res.status(404).json({ message: "Vendor not found" });
-      }
-      assertAssociationScope(req, vendorAssociationId);
-
-      const result = await storage.createVendorDocument(
-        vendorId,
-        {
-          associationId: vendorAssociationId,
-          title: String(req.body.title || ""),
-          documentType: String(req.body.documentType || "Vendor"),
-          uploadedBy: req.body.uploadedBy || req.adminUserEmail || null,
-          fileUrl: `/api/uploads/${file.filename}`,
-        },
-        req.adminUserEmail,
-      );
-      res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
