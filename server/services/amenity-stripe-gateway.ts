@@ -183,7 +183,16 @@ export function createStripeAmenityGateway(opts: {
       if (!holdId) return { ok: false, reason: "deposit-hold-not-found" };
       // Clean checkout: cancel the uncaptured auth-hold — releases the money,
       // never captured, nothing leaves the resident's account.
-      const { ok, body } = await stripePost(`/payment_intents/${holdId}/cancel`, ctx, new URLSearchParams());
+      // A-STRIPE-001: stable Idempotency-Key so a retry of the SAME release
+      // replays instead of erroring on an already-canceled intent (matches the
+      // chargeFee/holdDeposit invariant in stripe-idempotency.ts). A cancel has
+      // no amount, so the reservation grain is the stable key.
+      const { ok, body } = await stripePost(
+        `/payment_intents/${holdId}/cancel`,
+        ctx,
+        new URLSearchParams(),
+        `amn-refund-${reservationId}`,
+      );
       if (!ok) return { ok: false, reason: "deposit-refund-failed" };
       return { ok: true, intentId: body!.id as string };
     },
@@ -196,7 +205,16 @@ export function createStripeAmenityGateway(opts: {
       // Damage/violation: capture (some/all of) the hold → income.
       const params = new URLSearchParams();
       params.set("amount_to_capture", String(amountCents));
-      const { ok, body } = await stripePost(`/payment_intents/${holdId}/capture`, ctx, params);
+      // A-STRIPE-001: stable Idempotency-Key so a retry of the SAME forfeit
+      // does not double-capture. The captured amount is part of the grain so
+      // two DISTINCT partial forfeits of different amounts are distinct keys
+      // (Stripe would otherwise replay the first capture for the second).
+      const { ok, body } = await stripePost(
+        `/payment_intents/${holdId}/capture`,
+        ctx,
+        params,
+        `amn-forfeit-${reservationId}-${amountCents}`,
+      );
       if (!ok) return { ok: false, reason: "deposit-forfeit-failed" };
       return { ok: true, intentId: body!.id as string };
     },

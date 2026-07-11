@@ -321,7 +321,11 @@ import {
   periodFromDate,
   applyChargeMetadataToCheckoutSession,
 } from "./services/stripe-charge-metadata";
-import { paymentLinkCheckoutKey } from "./services/stripe-idempotency";
+import {
+  paymentLinkCheckoutKey,
+  platformCustomerKey,
+  platformSubscriptionKey,
+} from "./services/stripe-idempotency";
 import { getStripeApplicationFeeRate } from "./platform-settings-store";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
@@ -16248,24 +16252,62 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
   // ── Platform Billing / Subscription Routes ──────────────────────────────────
 
-  // Helper: make a Stripe API call using the platform secret key
-  async function stripeRequest(method: string, path: string, body?: URLSearchParams): Promise<Record<string, unknown>> {
+  // Helper: make a Stripe API call using the platform secret key.
+  //
+  // A-STRIPE-004: money-moving creates (customer / subscription / checkout
+  // session) MUST pass a stable `idempotencyKey` so a network retry replays the
+  // first result instead of creating a duplicate Stripe object (the TOCTOU
+  // double-subscription this finding describes). Retry-with-backoff on transient
+  // 429/5xx is enabled ONLY when a key is present — retrying WITHOUT a key could
+  // itself double-create — so un-keyed callers keep the exact prior behavior
+  // (single attempt, no idempotency header).
+  async function stripeRequest(
+    method: string,
+    path: string,
+    body?: URLSearchParams,
+    idempotencyKey?: string,
+  ): Promise<Record<string, unknown>> {
     const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
     if (!secretKey) throw new Error("Platform Stripe key not configured");
-    const resp = await fetch(`https://api.stripe.com/v1${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body?.toString(),
-    });
-    const data = await resp.json().catch(() => ({})) as Record<string, unknown>;
-    if (!resp.ok) {
+    const requestHeaders: Record<string, string> = {
+      Authorization: `Bearer ${secretKey}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    };
+    if (idempotencyKey) requestHeaders["Idempotency-Key"] = idempotencyKey;
+
+    const maxAttempts = idempotencyKey ? 4 : 1;
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // NOTE: use the inferred fetch-response type — the bare `Response` name is
+      // Express's Response inside this route module.
+      let resp: Awaited<ReturnType<typeof fetch>>;
+      try {
+        resp = await fetch(`https://api.stripe.com/v1${path}`, {
+          method,
+          headers: requestHeaders,
+          body: body?.toString(),
+        });
+      } catch (netErr) {
+        // Network-level failure — retryable only when idempotency-keyed.
+        lastError = netErr instanceof Error ? netErr : new Error(String(netErr));
+        if (attempt < maxAttempts) {
+          await new Promise((r) => setTimeout(r, 200 * 2 ** (attempt - 1)));
+          continue;
+        }
+        throw lastError;
+      }
+      const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
+      if (resp.ok) return data;
       const errMsg = (data.error as any)?.message ?? `Stripe error ${resp.status}`;
+      const retryable = resp.status === 429 || resp.status >= 500;
+      if (retryable && attempt < maxAttempts) {
+        lastError = new Error(errMsg);
+        await new Promise((r) => setTimeout(r, 200 * 2 ** (attempt - 1)));
+        continue;
+      }
       throw new Error(errMsg);
     }
-    return data;
+    throw lastError ?? new Error("Stripe request failed");
   }
 
   // MeterPoster adapter — lets the usage-reconcile service POST Stripe Billing-Meter
@@ -16638,7 +16680,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           customerParams.set("metadata[associationId]", assoc.id);
           customerParams.set("metadata[plan]", parsed.plan);
           customerParams.set("metadata[source]", "admin-platform-billing-create");
-          const customer = await stripeRequest("POST", "/customers", customerParams);
+          const customer = await stripeRequest("POST", "/customers", customerParams, platformCustomerKey(assoc.id)); // A-STRIPE-004: idempotency-keyed
           customerId = customer.id as string;
         }
 
@@ -16654,7 +16696,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         subParams.set("metadata[source]", "admin-platform-billing-create");
         subParams.set("payment_behavior", "default_incomplete");
         subParams.set("expand[]", "latest_invoice.payment_intent");
-        const stripeSub = await stripeRequest("POST", "/subscriptions", subParams);
+        const stripeSub = await stripeRequest("POST", "/subscriptions", subParams, platformSubscriptionKey({ associationId: assoc.id, plan: parsed.plan })); // A-STRIPE-004: TOCTOU-safe
 
         // Map Stripe status → local enum.
         const statusMap: Record<string, "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete"> = {

@@ -43,6 +43,39 @@ export function checkoutSessionKey(transactionId: string): string {
 }
 
 /**
+ * Platform SaaS-billing — Stripe customer create (A-STRIPE-004). One platform
+ * customer per association, so a network retry of the create replays the first
+ * customer instead of forking a duplicate.
+ */
+export function platformCustomerKey(associationId: string): string {
+  return join(["platcust", associationId]);
+}
+
+/**
+ * Platform SaaS-billing — Stripe subscription create (A-STRIPE-004). Keyed by
+ * association+plan so a retry of the SAME subscription create (the TOCTOU
+ * window where the local row isn't written yet) replays the first subscription
+ * instead of issuing a second. A different plan is a distinct key.
+ */
+export function platformSubscriptionKey(params: {
+  associationId: string;
+  plan: string;
+}): string {
+  return join(["platsub", params.associationId, params.plan]);
+}
+
+/**
+ * Platform SaaS-billing — Stripe Checkout Session create (A-STRIPE-004). Keyed
+ * by association+plan so a retry of the same signup checkout replays.
+ */
+export function platformCheckoutKey(params: {
+  associationId: string;
+  plan: string;
+}): string {
+  return join(["platco", params.associationId, params.plan]);
+}
+
+/**
  * Owner payment-LINK hosted checkout — one session per (link, amount, period).
  * A partial-pay link can be paid for different amounts, so amount is part of the
  * grain; a network retry of the SAME amount in the SAME period collapses.
@@ -89,14 +122,25 @@ export function paymentIntentKey(params: {
  * a $50 partial refund of the same charge are DISTINCT operations → distinct
  * keys. A retry of the SAME refund (same charge, same amount) collapses.
  * `amountCents` null = full refund (use "full" sentinel so it's stable).
+ *
+ * A-STRIPE-005: the (charge, amount) grain alone COLLAPSES two legitimately
+ * distinct partial refunds of EQUAL magnitude on the same charge issued within
+ * Stripe's ~24h idempotency window (Stripe replays the first and silently drops
+ * the second). Pass a `refundRequestId` — a per-refund-request disambiguator
+ * that is STABLE across network retries of the SAME logical refund (so a true
+ * retry still collapses) but DISTINCT per new refund action — to make each
+ * distinct refund a distinct key. It is APPENDED only when present, so callers
+ * that don't supply it keep the exact prior key (no in-flight retry breakage).
  */
 export function refundKey(params: {
   chargeId: string;
   amountCents: number | null | undefined;
+  refundRequestId?: string | null;
 }): string {
   return join([
     "refund",
     params.chargeId,
     params.amountCents == null ? "full" : params.amountCents,
+    ...(params.refundRequestId ? [params.refundRequestId] : []),
   ]);
 }
