@@ -3544,6 +3544,12 @@ export const amenityReservations = pgTable("amenity_reservations", {
   depositRefundedCents: integer("deposit_refunded_cents").notNull().default(0),
   /** Portion of the held deposit forfeited (kept as income), in cents. */
   depositForfeitedCents: integer("deposit_forfeited_cents").notNull().default(0),
+  // A-STRIPE-003 (founder-os#10752, migration 0058): the deposit-hold
+  // PaymentIntent id (pi_…) persisted at hold time. ADDITIVE / nullable —
+  // legacy reservations stay null and fall back to Stripe Search. Refund/forfeit
+  // look this up DIRECTLY (strongly consistent) instead of the eventually-
+  // consistent Search API, so a resolution issued right after the hold resolves.
+  depositHoldIntentId: varchar("deposit_hold_intent_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

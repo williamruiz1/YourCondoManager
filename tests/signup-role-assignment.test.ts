@@ -20,15 +20,20 @@ describe("Signup role assignment (source-scan)", () => {
     expect(routesSource).toContain("/api/public/signup/start");
   });
 
+  // Window widened 5000 -> 6000 (founder-os#10752): the Stripe idempotency
+  // hardening pass added a plan/price-resolution rewrite + explanatory
+  // comments ahead of the signup INSERT, pushing role: "manager" from
+  // ~4300 to ~5158 chars past the anchor. 6000 gives comfortable margin
+  // (measured: the route mount for the NEXT endpoint starts at ~5328).
   it('signup INSERT uses role: "manager"', () => {
     const signupIdx = routesSource.indexOf("/api/public/signup/start");
-    const region = routesSource.substring(signupIdx, signupIdx + 5000);
+    const region = routesSource.substring(signupIdx, signupIdx + 6000);
     expect(region).toContain('role: "manager"');
   });
 
   it('signup INSERT does NOT use role: "platform-admin"', () => {
     const signupIdx = routesSource.indexOf("/api/public/signup/start");
-    const region = routesSource.substring(signupIdx, signupIdx + 5000);
+    const region = routesSource.substring(signupIdx, signupIdx + 6000);
     expect(region).not.toMatch(/role:\s*["']platform-admin["']/);
   });
 

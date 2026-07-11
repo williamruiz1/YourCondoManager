@@ -43,7 +43,12 @@ describe("GET /api/platform/subscriptions (founder portfolio list, founder-os#11
 
 describe("POST /api/admin/platform/subscriptions (create, founder-os#1147)", () => {
   const anchor = '"/api/admin/platform/subscriptions"';
-  const handler = handlerRegion(anchor, 80, 4500);
+  // Window widened 4500 -> 7000 (founder-os#10752): the Stripe idempotency
+  // hardening pass added explanatory comments ahead of the persist calls,
+  // pushing storage.createPlatformSubscription/updatePlatformSubscription
+  // past the old 4500-char window. 7000 comfortably covers the full handler
+  // body (measured ~6409 chars from anchor to the next route mount).
+  const handler = handlerRegion(anchor, 80, 7000);
 
   it("mounts at POST /api/admin/platform/subscriptions", () => {
     expect(routesSource).toMatch(/app\.post\(\s*\n?\s*"\/api\/admin\/platform\/subscriptions"/);

@@ -85,18 +85,54 @@ export function paymentIntentKey(params: {
 }
 
 /**
- * Refund — keyed by the charge + the refunded amount (cents). A full refund and
- * a $50 partial refund of the same charge are DISTINCT operations → distinct
- * keys. A retry of the SAME refund (same charge, same amount) collapses.
- * `amountCents` null = full refund (use "full" sentinel so it's stable).
+ * Refund — keyed by the charge + an optional per-refund-request disambiguator.
+ *
+ * A true NETWORK RETRY of a single logical refund passes the SAME `requestId`
+ * (or omits it and repeats the same charge+amount) → the key collapses and
+ * Stripe replays the first refund. Two LEGITIMATELY DISTINCT refunds of the same
+ * charge and the same magnitude (e.g. refund $25, then a separate $25 later)
+ * within Stripe's ~24h idempotency window are DISTINCT operations — the caller
+ * supplies a distinct `requestId` (a per-refund-request id / attempt nonce) so
+ * they produce DISTINCT keys and Stripe issues both (A-STRIPE-005).
+ *
+ * `amountCents` null = full refund (use "full" sentinel so it's stable). When no
+ * `requestId` is supplied the key degrades to the legacy charge+amount grain
+ * (a retry-collapse of one logical refund) — back-compatible.
  */
 export function refundKey(params: {
   chargeId: string;
   amountCents: number | null | undefined;
+  /**
+   * Per-refund-request disambiguator. Same value across a retry of ONE logical
+   * refund (collapse); distinct value for a distinct refund operation (both
+   * succeed). Omit for the legacy charge+amount retry-collapse grain.
+   */
+  requestId?: string | null;
 }): string {
   return join([
     "refund",
     params.chargeId,
     params.amountCents == null ? "full" : params.amountCents,
+    ...(params.requestId ? [params.requestId] : []),
   ]);
+}
+
+/**
+ * Amenity deposit FORFEIT (capture-the-hold → income). Keyed by the reservation
+ * + the captured amount so a network retry of the same forfeit collapses to one
+ * capture, while distinct partial forfeits of DIFFERENT amounts are distinct
+ * keys (A-STRIPE-001). A same-amount second forfeit of one reservation is
+ * blocked at the service layer by the unresolved-deposit invariant.
+ */
+export function amenityForfeitKey(params: { reservationId: string; amountCents: number }): string {
+  return join(["amn-forfeit", params.reservationId, params.amountCents]);
+}
+
+/**
+ * Amenity deposit REFUND (cancel/release the uncaptured hold). Keyed by the
+ * reservation + the released amount so a network retry collapses to one release
+ * (A-STRIPE-001).
+ */
+export function amenityRefundKey(params: { reservationId: string; amountCents: number }): string {
+  return join(["amn-refund", params.reservationId, params.amountCents]);
 }

@@ -298,6 +298,7 @@ import { buildArAgingReport } from "./services/ar-aging";
 import { registerAutopayRoutes } from "./routes/autopay";
 import { registerPaymentPortalRoutes } from "./routes/payment-portal";
 import { registerStripeConnectRoutes } from "./routes/stripe-connect";
+import { platformStripeRequest } from "./services/platform-stripe-request";
 import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation";
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
@@ -16249,23 +16250,19 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   // ── Platform Billing / Subscription Routes ──────────────────────────────────
 
   // Helper: make a Stripe API call using the platform secret key
-  async function stripeRequest(method: string, path: string, body?: URLSearchParams): Promise<Record<string, unknown>> {
+  // A-STRIPE-004: platform Stripe calls carry a stable Idempotency-Key on money-
+  // moving / create POSTs (so a retry collapses to one object) and retry 429/5xx
+  // with backoff. The idempotency + retry contract lives in platformStripeRequest
+  // (unit-tested); this thin wrapper only resolves the secret.
+  async function stripeRequest(
+    method: string,
+    path: string,
+    body?: URLSearchParams,
+    opts?: { idempotencyKey?: string },
+  ): Promise<Record<string, unknown>> {
     const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
     if (!secretKey) throw new Error("Platform Stripe key not configured");
-    const resp = await fetch(`https://api.stripe.com/v1${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body?.toString(),
-    });
-    const data = await resp.json().catch(() => ({})) as Record<string, unknown>;
-    if (!resp.ok) {
-      const errMsg = (data.error as any)?.message ?? `Stripe error ${resp.status}`;
-      throw new Error(errMsg);
-    }
-    return data;
+    return platformStripeRequest(secretKey, method, path, body, { idempotencyKey: opts?.idempotencyKey });
   }
 
   // MeterPoster adapter — lets the usage-reconcile service POST Stripe Billing-Meter
@@ -16638,7 +16635,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           customerParams.set("metadata[associationId]", assoc.id);
           customerParams.set("metadata[plan]", parsed.plan);
           customerParams.set("metadata[source]", "admin-platform-billing-create");
-          const customer = await stripeRequest("POST", "/customers", customerParams);
+          // A-STRIPE-004: stable key so a retry of this create reuses the customer
+          // instead of forking a second one (the DB existence check is TOCTOU).
+          const customer = await stripeRequest("POST", "/customers", customerParams, {
+            idempotencyKey: `plat-cust:${assoc.id}:${parsed.plan}`,
+          });
           customerId = customer.id as string;
         }
 
@@ -16654,7 +16655,13 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         subParams.set("metadata[source]", "admin-platform-billing-create");
         subParams.set("payment_behavior", "default_incomplete");
         subParams.set("expand[]", "latest_invoice.payment_intent");
-        const stripeSub = await stripeRequest("POST", "/subscriptions", subParams);
+        // A-STRIPE-004: stable key so a network retry of THIS subscribe collapses
+        // to one subscription (closes the TOCTOU where a retry, seeing the local
+        // row still unwritten, would issue a second subscription). A genuine
+        // re-subscribe after a cancel carries the existing row id → distinct key.
+        const stripeSub = await stripeRequest("POST", "/subscriptions", subParams, {
+          idempotencyKey: `plat-sub:${assoc.id}:${parsed.plan}:${existing?.id ?? "new"}`,
+        });
 
         // Map Stripe status → local enum.
         const statusMap: Record<string, "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete"> = {
@@ -16822,7 +16829,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       customerParams.set("metadata[organizationName]", organizationName);
       customerParams.set("metadata[plan]", plan);
       customerParams.set("metadata[planKey]", tier.planKey);
-      const customer = await stripeRequest("POST", "/customers", customerParams);
+      // A-STRIPE-004: stable key so a retry of this signup reuses the customer.
+      const customer = await stripeRequest("POST", "/customers", customerParams, {
+        idempotencyKey: `plat-signup-cust:${email.toLowerCase().trim()}:${tier.planKey}`,
+      });
       const customerId = customer.id as string;
 
       // Create stub association + admin user
@@ -16870,7 +16880,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       sessionParams.set("metadata[plan]", plan);
       sessionParams.set("metadata[planKey]", tier.planKey);
 
-      const session = await stripeRequest("POST", "/checkout/sessions", sessionParams);
+      // A-STRIPE-004: stable key so a retry of this signup collapses to one session.
+      const session = await stripeRequest("POST", "/checkout/sessions", sessionParams, {
+        idempotencyKey: `plat-signup-co:${email.toLowerCase().trim()}:${tier.planKey}`,
+      });
       res.json({ checkoutUrl: session.url, sessionId: session.id });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -17099,7 +17112,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         customerParams.set("metadata[plan]", "self-managed");
         customerParams.set("metadata[adminUserId]", adminUserId);
         customerParams.set("metadata[source]", "add-hoa-authenticated");
-        const customer = await stripeRequest("POST", "/customers", customerParams);
+        // A-STRIPE-004: stable key so a retry reuses the customer (one per admin
+        // add-hoa action + association name).
+        const customer = await stripeRequest("POST", "/customers", customerParams, {
+          idempotencyKey: `plat-addhoa-cust:${adminUserId}:${parsed.data.associationName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60)}`,
+        });
         const customerId = customer.id as string;
 
         // Create stub association + scope binding. NO new adminUsers row —
@@ -17157,7 +17174,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         sessionParams.set("metadata[adminUserId]", adminUserId);
         sessionParams.set("metadata[plan]", "self-managed");
         sessionParams.set("metadata[source]", "add-hoa-authenticated");
-        const checkoutSession = await stripeRequest("POST", "/checkout/sessions", sessionParams);
+        // A-STRIPE-004: stable key so a retry collapses to one checkout session.
+        const checkoutSession = await stripeRequest("POST", "/checkout/sessions", sessionParams, {
+          idempotencyKey: `plat-addhoa-co:${assoc.id}`,
+        });
 
         // Pending platform_subscriptions row keyed by the new associationId.
         // The unique-index on (associationId) is exercised here — if the

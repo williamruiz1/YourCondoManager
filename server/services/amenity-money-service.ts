@@ -62,10 +62,17 @@ export interface AmenityMoneyGateway {
   chargeFee(args: { reservationId: string; amountCents: number }): Promise<AmenityGatewayResult>;
   /** Auth-and-hold the refundable deposit (manual-capture PaymentIntent). */
   holdDeposit(args: { reservationId: string; amountCents: number }): Promise<AmenityGatewayResult>;
-  /** Release/refund the (uncaptured or captured) held deposit back to the resident. */
-  refundDeposit(args: { reservationId: string; amountCents: number }): Promise<AmenityGatewayResult>;
-  /** Forfeit (capture → income) some/all of the held deposit for damage/violation. */
-  forfeitDeposit(args: { reservationId: string; amountCents: number }): Promise<AmenityGatewayResult>;
+  /**
+   * Release/refund the (uncaptured or captured) held deposit back to the resident.
+   * `holdIntentId` (when known — persisted at hold time) drives a strongly-consistent
+   * direct lookup; absent, the gateway falls back to eventually-consistent search.
+   */
+  refundDeposit(args: { reservationId: string; amountCents: number; holdIntentId?: string | null }): Promise<AmenityGatewayResult>;
+  /**
+   * Forfeit (capture → income) some/all of the held deposit for damage/violation.
+   * `holdIntentId` (when known) drives a strongly-consistent direct lookup.
+   */
+  forfeitDeposit(args: { reservationId: string; amountCents: number; holdIntentId?: string | null }): Promise<AmenityGatewayResult>;
 }
 
 export interface AmenityCaptureResult {
@@ -154,6 +161,10 @@ export async function captureAmenityBookingMoney(args: {
 
   let feeChargedCents = 0;
   let depositHeldCents = 0;
+  // A-STRIPE-003: capture the deposit-hold PaymentIntent id so refund/forfeit
+  // can look it up strongly-consistently (direct by id) instead of via the
+  // eventually-consistent Stripe Search API.
+  let depositHoldIntentId: string | null = null;
 
   // SLICE 1 — charge the usage fee (immediate). Column written only on success.
   if (feeAmount > 0) {
@@ -164,14 +175,23 @@ export async function captureAmenityBookingMoney(args: {
   // SLICE 2 — hold the refundable deposit (auth-and-hold). Written only on success.
   if (depositAmount > 0) {
     const holdResult = await gateway.holdDeposit({ reservationId: reservation.id, amountCents: depositAmount });
-    if (holdResult.ok) depositHeldCents = depositAmount;
+    if (holdResult.ok) {
+      depositHeldCents = depositAmount;
+      depositHoldIntentId = holdResult.intentId ?? null;
+    }
   }
 
   const mutated = feeChargedCents > 0 || depositHeldCents > 0;
   if (mutated) {
     await db
       .update(amenityReservations)
-      .set({ feeChargedCents, depositHeldCents, updatedAt: new Date() })
+      .set({
+        feeChargedCents,
+        depositHeldCents,
+        // Persist only when we actually held a deposit; never clobber with null.
+        ...(depositHoldIntentId ? { depositHoldIntentId } : {}),
+        updatedAt: new Date(),
+      })
       .where(eq(amenityReservations.id, reservation.id));
 
     // GUARANTEE C — best-effort, non-fatal GL sync (never breaks the money path).
@@ -253,15 +273,19 @@ export async function resolveAmenityDeposit(args: {
   let refunded = 0;
   let forfeited = 0;
 
+  // A-STRIPE-003: prefer the stored hold intent id (strongly consistent) for the
+  // resolution lookup; the gateway falls back to search when it's absent (legacy).
+  const holdIntentId = reservation.depositHoldIntentId ?? null;
+
   // SLICE 3 — refund. Column incremented only on a successful Stripe refund.
   if (refundReq > 0) {
-    const r = await gateway.refundDeposit({ reservationId: reservation.id, amountCents: refundReq });
+    const r = await gateway.refundDeposit({ reservationId: reservation.id, amountCents: refundReq, holdIntentId });
     if (r.ok) refunded = refundReq;
   }
 
   // SLICE 4 — forfeit (capture → income). Incremented only on success.
   if (forfeitReq > 0) {
-    const f = await gateway.forfeitDeposit({ reservationId: reservation.id, amountCents: forfeitReq });
+    const f = await gateway.forfeitDeposit({ reservationId: reservation.id, amountCents: forfeitReq, holdIntentId });
     if (f.ok) forfeited = forfeitReq;
   }
 

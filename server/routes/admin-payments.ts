@@ -122,6 +122,11 @@ const refundChargeSchema = z.object({
   // refund_application_fee defaults true server-side so the HOA never loses
   // YCM's platform fee on a refund; allow an explicit override for the rare case.
   refundApplicationFee: z.boolean().optional(),
+  // A-STRIPE-005: optional per-refund-request disambiguator. Supply a stable id
+  // (generated once per refund action, reused on retry) so two DISTINCT partial
+  // refunds of the same charge+amount both succeed while a network retry of one
+  // still collapses. Omit for the legacy charge+amount retry-collapse grain.
+  requestId: z.string().trim().min(1).max(64).optional(),
 });
 
 // Reverse a manual/non-Stripe posting on the owner ledger (founder-os#8535 /
@@ -669,6 +674,7 @@ export function registerAdminPaymentsRoutes(
           amountCents: parsed.amountCents,
           reason: parsed.reason,
           refundApplicationFee: parsed.refundApplicationFee,
+          requestId: parsed.requestId,
         });
 
         // Audit every refund (who, charge, amount, whether app fee refunded).
