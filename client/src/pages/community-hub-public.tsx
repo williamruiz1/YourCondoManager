@@ -264,7 +264,7 @@ export default function CommunityHubPublicPage() {
         <div
           aria-hidden="true"
           className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full blur-3xl opacity-30"
-          style={{ background: "#2DBDB0" }}
+          style={{ background: "#15A39C" }}
         />
         <div className="relative max-w-4xl mx-auto px-4 py-12 sm:py-20">
           <div className="flex items-center gap-4 mb-5">
@@ -297,7 +297,7 @@ export default function CommunityHubPublicPage() {
           )}
         </div>
         {/* base accent rule */}
-        <div className="h-1 w-full" style={{ background: "#2DBDB0" }} aria-hidden="true" />
+        <div className="h-1 w-full" style={{ background: "#15A39C" }} aria-hidden="true" />
       </header>
 
       <main id="main-content" tabIndex={-1} className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
