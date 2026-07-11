@@ -46,9 +46,48 @@ export function readServerObservabilityConfig(): ServerObservabilityConfig {
   };
 }
 
+export interface ObservabilityAssertion {
+  ok: boolean;
+  level: "ok" | "warn" | "error";
+  message: string;
+}
+
+/**
+ * Boot-time observability assertion (A-OPS-003 / CQ-009).
+ *
+ * A money app must NOT be silently blind to production errors. When
+ * `SENTRY_DSN` is unset in production this returns an `error`-level
+ * assertion so `initServerObservability` can log it LOUDLY (and, when
+ * `SENTRY_ENFORCE=1`, fail the boot) — closing the "wired but inert, no-op
+ * in prod" gap so it can never silently regress again. Pure + testable.
+ */
+export function assertServerObservabilityConfig(
+  cfg: ServerObservabilityConfig = readServerObservabilityConfig(),
+): ObservabilityAssertion {
+  if (cfg.dsn) {
+    return { ok: true, level: "ok", message: "SENTRY_DSN configured; error reporting active" };
+  }
+  if (cfg.environment === "production") {
+    return {
+      ok: false,
+      level: "error",
+      message:
+        "SENTRY_DSN is UNSET in production — server errors are NOT being captured. " +
+        "Set the SENTRY_DSN Fly secret (see INSTALL-OBSERVABILITY.md). " +
+        "Set SENTRY_ENFORCE=1 to hard-fail the boot instead of warning.",
+    };
+  }
+  return {
+    ok: true,
+    level: "warn",
+    message: `SENTRY_DSN unset (env=${cfg.environment}) — error reporting disabled (expected outside production)`,
+  };
+}
+
 /**
  * Initialize Sentry server-side. Safe to call repeatedly — only the first
- * call wires anything. No-op when `SENTRY_DSN` is unset (local dev path).
+ * call wires anything. No-op when `SENTRY_DSN` is unset (local dev path),
+ * but LOUD in production (see `assertServerObservabilityConfig`).
  */
 export async function initServerObservability(
   cfg: ServerObservabilityConfig = readServerObservabilityConfig(),
@@ -56,7 +95,16 @@ export async function initServerObservability(
   if (initialized) return;
   initialized = true;
   if (!cfg.dsn) {
-    log("[observability] SENTRY_DSN not set; server-side error reporting disabled");
+    const assertion = assertServerObservabilityConfig(cfg);
+    if (assertion.level === "error") {
+      // Loud, error-level banner so an unset prod DSN can never be missed.
+      log(`[observability] CRITICAL: ${assertion.message}`);
+      if (process.env.SENTRY_ENFORCE === "1") {
+        throw new Error(`[observability] ${assertion.message}`);
+      }
+    } else {
+      log(`[observability] ${assertion.message}`);
+    }
     return;
   }
   try {
