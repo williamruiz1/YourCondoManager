@@ -322,6 +322,7 @@ import {
   applyChargeMetadataToCheckoutSession,
 } from "./services/stripe-charge-metadata";
 import { paymentLinkCheckoutKey } from "./services/stripe-idempotency";
+import { stripeFetch } from "./services/stripe-fetch";
 import { getStripeApplicationFeeRate } from "./platform-settings-store";
 import { findRetryEligibleTransactions, runAutopayRetries, getDelinquencySettings as getDelinquencySettingsForRoute } from "./services/retry-service";
 import { generateDelinquencyNotices, getNoticeHistory } from "./services/delinquency-notice-service";
@@ -6215,31 +6216,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Stripe-Account header (spec §1.1) — direct charges on the connected
       // HOA account when onboarding is complete. Without it, the charge lands
-      // on YCM's platform account (legacy pre-Connect behavior).
-      const stripeHeaders: Record<string, string> = {
-        Authorization: `Bearer ${gateway.secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      };
-      if (connectedAccountId) {
-        stripeHeaders["Stripe-Account"] = connectedAccountId;
-      }
-
-      // Idempotency: one hosted session per (link, amount, period). A network
-      // retry of this POST returns the original session rather than creating a
-      // second checkout for the same owner payment.
-      stripeHeaders["Idempotency-Key"] = paymentLinkCheckoutKey({
-        linkToken: link.token,
-        amountCents,
-        period: periodFromDate(),
-      });
-
-      const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      // on YCM's platform account (legacy pre-Connect behavior). Idempotency:
+      // one hosted session per (link, amount, period) — a network retry of this
+      // POST returns the original session rather than a second checkout.
+      const stripeResponse = await stripeFetch({
+        secretKey: gateway.secretKey,
         method: "POST",
-        headers: stripeHeaders,
-        body: sessionParams.toString(),
+        path: "/checkout/sessions",
+        stripeAccount: connectedAccountId ?? undefined,
+        idempotencyKey: paymentLinkCheckoutKey({
+          linkToken: link.token,
+          amountCents,
+          period: periodFromDate(),
+        }),
+        body: sessionParams,
       });
 
-      const stripeBody = await stripeResponse.json().catch(() => null) as Record<string, unknown> | null;
+      const stripeBody = stripeResponse.data;
       if (!stripeResponse.ok || !stripeBody || typeof stripeBody.url !== "string") {
         const providerMessage =
           stripeBody && typeof stripeBody.error === "object" && stripeBody.error && typeof (stripeBody.error as Record<string, unknown>).message === "string"
@@ -16252,17 +16245,14 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   async function stripeRequest(method: string, path: string, body?: URLSearchParams): Promise<Record<string, unknown>> {
     const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
     if (!secretKey) throw new Error("Platform Stripe key not configured");
-    const resp = await fetch(`https://api.stripe.com/v1${path}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body?.toString(),
+    const { ok, status, data } = await stripeFetch({
+      secretKey,
+      method: method as "GET" | "POST" | "DELETE",
+      path,
+      body,
     });
-    const data = await resp.json().catch(() => ({})) as Record<string, unknown>;
-    if (!resp.ok) {
-      const errMsg = (data.error as any)?.message ?? `Stripe error ${resp.status}`;
+    if (!ok) {
+      const errMsg = (data.error as any)?.message ?? `Stripe error ${status}`;
       throw new Error(errMsg);
     }
     return data;

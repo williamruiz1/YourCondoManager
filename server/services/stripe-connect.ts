@@ -23,6 +23,7 @@
  */
 
 import { getSecret } from "../platform-secrets-store";
+import { stripeFetch } from "./stripe-fetch";
 
 export type StripeConnectStatus = "pending" | "active" | "restricted" | "disabled";
 
@@ -195,28 +196,17 @@ export async function callPlatformStripe<T = Record<string, unknown>>(
   if (!secretKey) {
     throw new Error("Platform Stripe secret key not configured");
   }
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${secretKey}`,
-  };
-  if (opts.body) {
-    headers["Content-Type"] = "application/x-www-form-urlencoded";
-  }
-  if (opts.stripeAccount) {
-    headers["Stripe-Account"] = opts.stripeAccount;
-  }
-  // Idempotency-Key only applies to POST (the money-moving / create verb).
-  if (opts.idempotencyKey && opts.method === "POST") {
-    headers["Idempotency-Key"] = opts.idempotencyKey;
-  }
-  const resp = await fetch(`https://api.stripe.com/v1${opts.path}`, {
+  const { ok, status, data } = await stripeFetch({
+    secretKey,
     method: opts.method,
-    headers,
-    body: opts.body ? opts.body.toString() : undefined,
+    path: opts.path,
+    body: opts.body,
+    stripeAccount: opts.stripeAccount,
+    idempotencyKey: opts.idempotencyKey,
   });
-  const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!resp.ok) {
+  if (!ok) {
     const errBody = (data.error ?? {}) as Record<string, unknown>;
-    const msg = typeof errBody.message === "string" ? errBody.message : `Stripe error ${resp.status}`;
+    const msg = typeof errBody.message === "string" ? errBody.message : `Stripe error ${status}`;
     throw new Error(`Stripe API error: ${msg}`);
   }
   return data as T;

@@ -9,6 +9,7 @@ import { db } from "./db";
 import { isPortalAccessIdleExpired } from "./portal-expiry";
 import { sendPlatformEmail } from "./email-provider";
 import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
+import { stripeFetch } from "./services/stripe-fetch";
 import {
   agentActions,
   adminAssociationScopes,
@@ -484,14 +485,13 @@ async function verifyStripeGatewayCredentials(payload: {
     throw new Error("Stripe publishable and secret keys must both be test or both be live");
   }
 
-  const response = await fetch("https://api.stripe.com/v1/account", {
+  const response = await stripeFetch({
+    secretKey: payload.secretKey,
     method: "GET",
-    headers: {
-      Authorization: `Bearer ${payload.secretKey}`,
-    },
+    path: "/account",
   });
 
-  const body = await response.json().catch(() => null) as Record<string, unknown> | null;
+  const body = response.data;
   if (!response.ok || !body || typeof body.id !== "string") {
     const providerMessage =
       body && isRecord(body.error) && typeof body.error.message === "string"

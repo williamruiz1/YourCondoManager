@@ -44,6 +44,7 @@ import {
   type ReportSubscriptionUsageResult,
 } from "./stripe-meter-reporting";
 import { getSecret } from "../platform-secrets-store";
+import { stripeFetch } from "./stripe-fetch";
 
 // ── Standalone Stripe meter poster ───────────────────────────────────────────
 
@@ -58,17 +59,14 @@ export async function createPlatformStripeMeterPoster(): Promise<MeterPoster | n
   const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
   if (!secretKey?.trim()) return null;
   return async (path, body) => {
-    const resp = await fetch(`https://api.stripe.com/v1${path}`, {
+    const { ok, status, data } = await stripeFetch({
+      secretKey,
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body.toString(),
+      path,
+      body,
     });
-    const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
-    if (!resp.ok) {
-      const errMsg = (data.error as any)?.message ?? `Stripe error ${resp.status}`;
+    if (!ok) {
+      const errMsg = (data.error as any)?.message ?? `Stripe error ${status}`;
       throw new Error(errMsg);
     }
     return data;

@@ -92,6 +92,7 @@ import type {
   WebhookEvent,
 } from "./provider";
 import { shouldEnforceFcWebhookVerification } from "./stripe-fc-env-guard";
+import { stripeFetch } from "../stripe-fetch";
 
 // ── Stripe API access (raw fetch — matches the codebase pattern) ─────────────
 //
@@ -100,7 +101,6 @@ import { shouldEnforceFcWebhookVerification } from "./stripe-fc-env-guard";
 // We mirror that here so FC uses the exact same credential + transport, and so
 // tests can mock `fetch` without an SDK.
 
-const STRIPE_API_BASE = "https://api.stripe.com/v1";
 
 async function getPlatformSecretKey(): Promise<string> {
   const key = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
@@ -121,21 +121,17 @@ interface StripeCallOpts {
 
 async function stripeCall<T = Record<string, unknown>>(opts: StripeCallOpts): Promise<T> {
   const secretKey = await getPlatformSecretKey();
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${secretKey}`,
-  };
-  if (opts.body) headers["Content-Type"] = "application/x-www-form-urlencoded";
-  const qs = opts.query && Array.from(opts.query.keys()).length > 0 ? `?${opts.query.toString()}` : "";
-  const resp = await fetch(`${STRIPE_API_BASE}${opts.path}${qs}`, {
+  const { ok, status, data } = await stripeFetch({
+    secretKey,
     method: opts.method,
-    headers,
-    body: opts.body ? opts.body.toString() : undefined,
+    path: opts.path,
+    body: opts.body,
+    query: opts.query,
   });
-  const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!resp.ok) {
+  if (!ok) {
     const errBody = (data.error ?? {}) as Record<string, unknown>;
     const msg =
-      typeof errBody.message === "string" ? errBody.message : `Stripe error ${resp.status}`;
+      typeof errBody.message === "string" ? errBody.message : `Stripe error ${status}`;
     throw new Error(`Stripe FC API error: ${msg}`);
   }
   return data as T;
