@@ -23,7 +23,7 @@ import { runPressingItemsSweep } from "./services/pressing-items/scanner";
 import { runUsageReconcileSweep } from "./services/usage-reconcile";
 import { sendPlatformAdminEmailNotification } from "./admin-notification-service";
 import { recoverInFlightJobs } from "./job-queue";
-import { log } from "./logger";
+import { log, formatApiLogLine } from "./logger";
 import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
@@ -368,12 +368,11 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+      // A-SEC-001 (founder-os#10738): never serialize response bodies into
+      // production logs (PII / auth tokens leak). formatApiLogLine logs only
+      // method/path/status/duration in production; a redacted+truncated body
+      // preview is appended ONLY in non-production for local debugging.
+      log(formatApiLogLine(req.method, path, res.statusCode, duration, capturedJsonResponse));
     }
   });
 
