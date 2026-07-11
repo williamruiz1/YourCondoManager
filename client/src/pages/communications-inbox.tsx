@@ -39,7 +39,7 @@ import {
 } from "lucide-react";
 
 import { BreadcrumbNav } from "@/components/breadcrumb-nav";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -49,6 +49,8 @@ import { ErrorState } from "@/components/error-state";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useToast } from "@/hooks/use-toast";
 import { t } from "@/i18n/use-strings";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useCrossAssociationAlerts,
@@ -73,18 +75,16 @@ const ZONE_LABELS: Record<AlertZone, string> = {
   platform: "Platform",
 };
 
-function severityBadgeVariant(
-  severity: AlertSeverity,
-): "default" | "destructive" | "secondary" | "outline" {
+function severityPillTone(severity: AlertSeverity): PillTone {
   switch (severity) {
     case "critical":
     case "high":
-      return "destructive";
+      return "bad";
     case "medium":
-      return "default";
+      return "warn";
     case "low":
     default:
-      return "secondary";
+      return "muted";
   }
 }
 
@@ -141,20 +141,16 @@ function InboxRow({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-medium truncate">{alert.title}</span>
-            <Badge
-              variant={severityBadgeVariant(alert.severity)}
-              className="text-xs"
-              data-testid={`inbox-alert-severity-${alert.alertId}`}
-            >
-              {severityLabel(alert.severity)}
-            </Badge>
-            <Badge
-              variant="outline"
-              className="text-xs"
-              data-testid={`inbox-alert-zone-${alert.alertId}`}
-            >
-              {ZONE_LABELS[alert.zone]}
-            </Badge>
+            <Pill tone={severityPillTone(alert.severity)}>
+              <span data-testid={`inbox-alert-severity-${alert.alertId}`}>
+                {severityLabel(alert.severity)}
+              </span>
+            </Pill>
+            <Pill tone="muted">
+              <span data-testid={`inbox-alert-zone-${alert.alertId}`}>
+                {ZONE_LABELS[alert.zone]}
+              </span>
+            </Pill>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{alert.description}</p>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -334,7 +330,7 @@ export default function CommunicationsInboxPage() {
 
   return (
     <section
-      className="container mx-auto max-w-5xl space-y-4 p-4"
+      className="container mx-auto max-w-5xl space-y-4 p-4 ds-scope fin-ds"
       data-testid="communications-inbox-page"
       aria-labelledby="inbox-page-heading"
     >

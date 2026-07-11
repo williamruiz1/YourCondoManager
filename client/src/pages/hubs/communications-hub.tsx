@@ -25,6 +25,8 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { HubAlertWidget } from "@/components/hub-alert-widget";
 import { Card, CardContent } from "@/components/ui/card";
 import { t } from "@/i18n/use-strings";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 interface HubLink {
   href: string;
@@ -69,7 +71,7 @@ export default function CommunicationsHub() {
   useDocumentTitle(t("hub.communications.title"));
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
+    <div className="container mx-auto py-6 space-y-6 ds-scope fin-ds">
       <WorkspacePageHeader
         title={t("hub.communications.title")}
         summary={t("hub.communications.summary")}

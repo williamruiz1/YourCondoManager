@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -21,6 +21,14 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
 import { Megaphone } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
+
+function priorityPillTone(priority: string): PillTone {
+  if (priority === "urgent") return "bad";
+  if (priority === "important") return "warn";
+  return "muted";
+}
 
 const emptyForm = {
   title: "",
@@ -278,20 +286,20 @@ export function AnnouncementsContent() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        {a.isPinned ? <Badge variant="outline" className="text-xs">Pinned</Badge> : null}
+                        {a.isPinned ? <Pill tone="info">Pinned</Pill> : null}
                         <div className="text-sm font-semibold leading-5">{a.title}</div>
                       </div>
                       <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">{a.body}</div>
                     </div>
-                    <Badge variant={a.isPublished ? "secondary" : "outline"}>{a.isPublished ? "Live" : "Draft"}</Badge>
+                    <Pill tone={a.isPublished ? "ok" : "muted"}>{a.isPublished ? "Live" : "Draft"}</Pill>
                   </div>
                   <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                     <div>
                       <div className="uppercase tracking-wide">Priority</div>
                       <div className="mt-1">
-                        <Badge variant={a.priority === "urgent" ? "destructive" : a.priority === "important" ? "secondary" : "outline"}>
+                        <Pill tone={priorityPillTone(a.priority)}>
                           {a.priority}
-                        </Badge>
+                        </Pill>
                       </div>
                     </div>
                     <div>
@@ -342,7 +350,7 @@ export function AnnouncementsContent() {
                   <TableRow key={a.id}>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {a.isPinned ? <Badge variant="outline" className="text-xs">📌</Badge> : null}
+                        {a.isPinned ? <Pill tone="info">📌</Pill> : null}
                         <div>
                           <div className="font-medium">{a.title}</div>
                           <div className="text-xs text-muted-foreground line-clamp-1">{a.body}</div>
@@ -350,11 +358,11 @@ export function AnnouncementsContent() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={a.priority === "urgent" ? "destructive" : a.priority === "important" ? "secondary" : "outline"}>{a.priority}</Badge>
+                      <Pill tone={priorityPillTone(a.priority)}>{a.priority}</Pill>
                     </TableCell>
                     <TableCell>{a.targetAudience}</TableCell>
                     <TableCell>
-                      <Badge variant={a.isPublished ? "secondary" : "outline"}>{a.isPublished ? "Published" : "Draft"}</Badge>
+                      <Pill tone={a.isPublished ? "ok" : "muted"}>{a.isPublished ? "Published" : "Draft"}</Pill>
                     </TableCell>
                     <TableCell className="text-sm">{a.expiresAt ? new Date(a.expiresAt).toLocaleDateString() : "-"}</TableCell>
                     <TableCell className="text-right">
@@ -387,7 +395,7 @@ export default function AnnouncementsPage() {
   useDocumentTitle(t("announcements.crumb"));
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
-    <section className="p-6 space-y-6" aria-labelledby="announcements-heading">
+    <section className="p-6 space-y-6 ds-scope fin-ds" aria-labelledby="announcements-heading">
       <WorkspacePageHeader
         title={t("announcements.title")}
         headingId="announcements-heading"
