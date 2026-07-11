@@ -50,9 +50,13 @@ print((cands[0].get("id") if cands else "") or "")' 2>/dev/null || true)"
 [ -n "$VOL_ID" ] || fail_or_warn "could not resolve a volume id for $DB_APP (token scope? app name?)"
 
 echo "[snapshot] Creating on-demand snapshot of volume $VOL_ID ($DB_APP) ..."
-if flyctl volumes snapshots create "$VOL_ID" 2>&1; then
+# NOTE: `flyctl volumes snapshots create/list` resolves the target app from the
+# working dir's fly.toml (here: yourcondomanager) UNLESS -a is given — so without
+# `-a "$DB_APP"` it fails with "volume not found / does not belong to app
+# yourcondomanager" for the DB app's volume. Always pass the DB app explicitly.
+if flyctl volumes snapshots create "$VOL_ID" -a "$DB_APP" 2>&1; then
   echo "[snapshot] OK — pre-deploy snapshot created for $DB_APP volume $VOL_ID."
-  echo "[snapshot] List/restore: flyctl volumes snapshots list $VOL_ID  (runbook: docs/DEPLOY-ROLLBACK.md)"
+  echo "[snapshot] List/restore: flyctl volumes snapshots list $VOL_ID -a $DB_APP  (runbook: docs/DEPLOY-ROLLBACK.md)"
   exit 0
 fi
 fail_or_warn "flyctl volumes snapshots create failed for $VOL_ID"
