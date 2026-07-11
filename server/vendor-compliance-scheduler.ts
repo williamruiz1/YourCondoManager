@@ -30,6 +30,7 @@ import { storage } from "./storage";
 import { fileAction } from "./services/agent-action-service";
 import { vendorComplianceStatus, type VendorComplianceStatus } from "./services/vendor-compliance";
 import { log } from "./logger";
+import { withSchedulerLock } from "./scheduler-lock";
 import type { Vendor } from "@shared/schema";
 
 export const VENDOR_COMPLIANCE_ACTION_TYPE = "suggest.vendor_compliance_renewal";
@@ -131,13 +132,20 @@ export function startVendorComplianceScheduler(intervalMs: number = DAY_MS): voi
   if (complianceTimer) return;
   const tick = async (): Promise<void> => {
     try {
-      const result = await runVendorComplianceSweep();
-      if (result.filed.length > 0 || result.errors.length > 0) {
-        log(
-          `[vendor-compliance] sweep complete filed=${result.filed.length} skipped=${result.skippedAlreadyOpen.length} errors=${result.errors.length}`,
-          "automation",
-        );
-      }
+      // SCALE-B-003 / A-REL-005 (founder-os#10741): the compliance sweep FILES
+      // agent actions — a DB-mutating side effect that must not double-fire
+      // across machines. Run under the cross-machine advisory lock (no-op
+      // single-machine; skips if another machine holds it). This is in addition
+      // to the existing per-item hasOpenAgentAction guard inside the sweep.
+      await withSchedulerLock("vendor-compliance", async () => {
+        const result = await runVendorComplianceSweep();
+        if (result.filed.length > 0 || result.errors.length > 0) {
+          log(
+            `[vendor-compliance] sweep complete filed=${result.filed.length} skipped=${result.skippedAlreadyOpen.length} errors=${result.errors.length}`,
+            "automation",
+          );
+        }
+      });
     } catch (err) {
       console.error("[vendor-compliance] sweep failed", err);
     }

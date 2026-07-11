@@ -10,6 +10,7 @@ import { createServer } from "http";
 // see the import-time note further down and the dynamic `await import("./seed")`.
 import { storage } from "./storage";
 import { pool, db } from "./db";
+import { withSchedulerLock } from "./scheduler-lock";
 import { eq } from "drizzle-orm";
 import { autopayEnrollments, delinquencyEscalations } from "@shared/schema";
 import { runAutopayCollectionForAssociation } from "./routes/autopay";
@@ -23,7 +24,7 @@ import { runPressingItemsSweep } from "./services/pressing-items/scanner";
 import { runUsageReconcileSweep } from "./services/usage-reconcile";
 import { sendPlatformAdminEmailNotification } from "./admin-notification-service";
 import { recoverInFlightJobs } from "./job-queue";
-import { log } from "./logger";
+import { log, formatApiLogLine } from "./logger";
 import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
@@ -48,7 +49,7 @@ dotenv.config({ path: ".env.local", override: true });
 // block below so the CJS bundle target stays compatible. No-op when
 // `SENTRY_DSN` is unset (local dev). See INSTALL-OBSERVABILITY.md for the
 // production deploy steps (Issue founder-os#1030).
-import { initServerObservability } from "./observability";
+import { initServerObservability, assertServerObservabilityConfigured } from "./observability";
 
 const app = express();
 const httpServer = createServer(app);
@@ -337,8 +338,15 @@ function startAutomationJobs() {
   }
 
   const intervalMs = Math.max(60_000, Number(process.env.AUTOMATION_SWEEPS_INTERVAL_MS || 300_000));
+  // SCALE-B-003 / A-REL-005 (founder-os#10741): the automation sweep fans out
+  // autopay charging, delinquency notices, and assessment dispatch — real money
+  // + owner-facing side effects that MUST NOT double-fire across machines. Wrap
+  // every tick in a cross-machine advisory lock so only one machine runs the
+  // sweep per interval. No-op on the current single-machine topology (the lock
+  // always acquires immediately). The in-memory __automationJobState flag still
+  // guards against overlapping runs on the SAME machine.
   const timer = setInterval(() => {
-    runAutomationSweep().catch((error) => {
+    withSchedulerLock("automation-sweep", () => runAutomationSweep()).catch((error) => {
       console.error("Automation sweep failed:", error);
     });
   }, intervalMs);
@@ -348,7 +356,7 @@ function startAutomationJobs() {
     timer,
   };
 
-  runAutomationSweep().catch((error) => {
+  withSchedulerLock("automation-sweep", () => runAutomationSweep()).catch((error) => {
     console.error("Automation sweep failed:", error);
   });
   log(`automation sweeps started (interval ${intervalMs}ms)`, "automation");
@@ -368,12 +376,11 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+      // A-SEC-001 (founder-os#10738): never serialize response bodies into
+      // production logs (PII / auth tokens leak). formatApiLogLine logs only
+      // method/path/status/duration in production; a redacted+truncated body
+      // preview is appended ONLY in non-production for local debugging.
+      log(formatApiLogLine(req.method, path, res.statusCode, duration, capturedJsonResponse));
     }
   });
 
@@ -384,6 +391,13 @@ app.use((req, res, next) => {
   // Init Sentry first inside the async boot so errors during the rest of
   // boot are captured. Safe across hot-reload (idempotent init).
   await initServerObservability();
+
+  // A-OPS-003 / CQ-009 — boot-time observability assertion. Makes the
+  // "Sentry silently no-ops in production" failure LOUD so it can never
+  // regress unnoticed. Non-strict by default (a missing DSN loud-warns but
+  // never bricks prod); SENTRY_STRICT=1 upgrades it to a hard boot-fail once
+  // the DSN secret is provisioned. Non-production is a silent no-op.
+  assertServerObservabilityConfigured();
 
   // BLINDSPOT F7 — Plaid production env-flip guard. Refuse to boot in
   // PLAID_ENV=production unless webhook JWT verification is wired + the
@@ -557,7 +571,15 @@ app.use((req, res, next) => {
   // list so neither is inlined into the main bundle.
   const seedModuleSpecifier =
     process.env.NODE_ENV === "production" ? "./seed.cjs" : "./seed.js";
-  void (async () => {
+  // STARTUP-B-006 (founder-os#10741): seedDatabase() runs on every boot (a
+  // 4k-line seed). With Fly auto_stop/auto_start, a cold start pays the full
+  // seed before serving. Gate it behind SEED_ON_BOOT so it can be disabled once
+  // verified redundant in prod. DEFAULT = current seed-on-boot behavior (the
+  // flag must be explicitly "false" to skip) — a low-risk item, not rushed.
+  const seedOnBoot = (process.env.SEED_ON_BOOT ?? "true").toLowerCase() !== "false";
+  if (!seedOnBoot) {
+    log("[boot] seed :: SKIPPED (SEED_ON_BOOT=false)", "startup");
+  } else void (async () => {
     try {
       log(`[boot] seed :: starting lazy import of ${seedModuleSpecifier}`, "startup");
       const { seedDatabase } = await import(/* @vite-ignore */ seedModuleSpecifier);
