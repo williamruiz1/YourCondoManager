@@ -119,3 +119,62 @@ export function captureServerError(
 export function isServerObservabilityInitialized(): boolean {
   return initialized && sentryRef !== null;
 }
+
+/** Test-only: reset the init latch + Sentry ref so each case starts clean. */
+export function __resetServerObservabilityForTest(): void {
+  initialized = false;
+  sentryRef = null;
+}
+
+export interface ObservabilityConfigAssertion {
+  /** True when a DSN is present (Sentry can actually capture). */
+  configured: boolean;
+  /** True when we emitted a loud "observability disabled in prod" warning. */
+  warned: boolean;
+}
+
+/**
+ * Boot-time assertion (A-OPS-003 / CQ-009) — make the "Sentry silently no-ops in
+ * production" failure LOUD so it can never regress unnoticed again.
+ *
+ *   - non-production                       → silent ok (local dev / tests / preview)
+ *   - production + DSN present             → ok
+ *   - production + DSN absent + strict     → THROWS (aborts boot; mirrors the
+ *                                            BLINDSPOT F7 Plaid env-flip guard —
+ *                                            "make the safe order mechanical")
+ *   - production + DSN absent + non-strict → LOUD error-level log, no throw
+ *                                            (default: never brick prod on a
+ *                                            missing observability secret)
+ *
+ * `strict` defaults from `SENTRY_STRICT` ("1"/"true"/"yes"/"on"). Set it once the
+ * DSN secret is provisioned so a future deploy that drops the secret hard-fails.
+ */
+export function assertServerObservabilityConfigured(
+  cfg: ServerObservabilityConfig = readServerObservabilityConfig(),
+  opts: { strict?: boolean } = {},
+): ObservabilityConfigAssertion {
+  const isProd = cfg.environment === "production";
+  if (!isProd) {
+    return { configured: Boolean(cfg.dsn), warned: false };
+  }
+  if (cfg.dsn) {
+    return { configured: true, warned: false };
+  }
+
+  const strictRaw = (process.env.SENTRY_STRICT ?? "").trim().toLowerCase();
+  const strict = opts.strict ?? (strictRaw === "1" || strictRaw === "true" || strictRaw === "yes" || strictRaw === "on");
+
+  const message =
+    "[observability] SENTRY_DSN is UNSET in production — server error reporting is DISABLED. " +
+    "Set the SENTRY_DSN Fly secret + redeploy so production exceptions are captured. " +
+    "(Set SENTRY_STRICT=1 to make a missing DSN hard-fail the boot.)";
+
+  if (strict) {
+    // Loud + fatal — aborts boot, exactly like the F7 Plaid guard.
+    throw new Error(message);
+  }
+  // Loud but non-fatal — the app still boots (observability being down must not
+  // take prod down), but the miss is unmissable in the logs + health surface.
+  log(`ERROR ${message}`);
+  return { configured: false, warned: true };
+}

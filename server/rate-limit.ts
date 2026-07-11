@@ -20,7 +20,12 @@ export function createRateLimiter(options: {
   const buckets = new Map<string, Bucket>();
   const { windowMs, max, message = "Too many requests, please try again later." } = options;
 
-  // Periodic cleanup to prevent unbounded memory growth
+  // Periodic cleanup to prevent unbounded memory growth.
+  // NOTE (founder-os#10741, SCALE-B-003): this is deliberately NOT wrapped in a
+  // cross-machine advisory lock — `buckets` is a per-process in-memory Map, so
+  // each machine must GC its OWN map. Locking it would leave other machines'
+  // maps uncleaned (a memory leak). Only SIDE-EFFECT sweeps (money/email/DB) use
+  // withSchedulerLock; per-machine memory hygiene correctly runs per-machine.
   setInterval(() => {
     const now = Date.now();
     for (const [key, bucket] of buckets.entries()) {
