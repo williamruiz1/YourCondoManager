@@ -37,12 +37,14 @@ import { useEffect } from "react";
 import { format } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { ExternalLink, CreditCard, AlertCircle } from "lucide-react";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAdminRole } from "@/hooks/useAdminRole";
 import { EmptyState } from "@/components/empty-state";
 import { t } from "@/i18n/use-strings";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 // 4.4 Q6 Wave 13 — role gate. Mirrors the requireAdminRole on
 // POST /api/admin/billing/portal-session at server/routes.ts:13390.
@@ -82,11 +84,11 @@ function statusLabel(status: string): string {
   return status;
 }
 
-function statusBadgeVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
-  if (status === "active") return "default";
-  if (status === "trialing") return "secondary";
-  if (status === "canceled" || status === "unpaid") return "destructive";
-  return "outline";
+function statusPillTone(status: string): PillTone {
+  if (status === "active") return "ok";
+  if (status === "trialing") return "info";
+  if (status === "canceled" || status === "unpaid") return "bad";
+  return "muted";
 }
 
 export default function SettingsBillingPage() {
@@ -135,7 +137,7 @@ export default function SettingsBillingPage() {
   const hasBilling = Boolean(subscription);
 
   return (
-    <div className="min-h-full bg-surface-container-low">
+    <div className="min-h-full bg-surface-container-low ds-scope fin-ds">
       <div className="max-w-3xl mx-auto px-6 py-10 space-y-6">
         <div>
           <h1 className="font-headline text-3xl font-bold text-on-surface">{t("settings.billing.title")}</h1>
@@ -169,12 +171,9 @@ export default function SettingsBillingPage() {
                     </CardTitle>
                     <CardDescription>{t("settings.billing.plan.currentLabel")}</CardDescription>
                   </div>
-                  <Badge
-                    variant={statusBadgeVariant(subscription!.status)}
-                    data-testid="billing-status-badge"
-                  >
-                    {statusLabel(subscription!.status)}
-                  </Badge>
+                  <Pill tone={statusPillTone(subscription!.status)}>
+                    <span data-testid="billing-status-badge">{statusLabel(subscription!.status)}</span>
+                  </Pill>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">

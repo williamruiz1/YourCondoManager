@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AdminNotificationPreferences } from "@shared/admin-notification-preferences";
@@ -30,6 +30,8 @@ import { AmenitiesFeatureToggleCard } from "@/components/settings/amenities-feat
 import { CriticalAlertDeliveryCard } from "@/components/settings/critical-alert-delivery-card";
 import { Link } from "wouter";
 import { CreditCard, ChevronRight } from "lucide-react";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 type AuthSession = {
   authenticated: boolean;
@@ -202,12 +204,12 @@ const NOTIFICATION_GROUPS: Array<{
   },
 ];
 
-function roleBadgeVariant(role: string) {
-  if (role === "platform-admin") return "default" as const;
-  if (role === "board-officer") return "secondary" as const;
-  if (role === "assisted-board") return "secondary" as const;
-  if (role === "pm-assistant") return "secondary" as const;
-  return "outline" as const;
+function rolePillTone(role: string): PillTone {
+  if (role === "platform-admin") return "ok";
+  if (role === "board-officer") return "info";
+  if (role === "assisted-board") return "info";
+  if (role === "pm-assistant") return "info";
+  return "muted";
 }
 
 function roleLabel(role: string) {
@@ -360,7 +362,7 @@ export default function UserSettingsPage() {
   const totalNotificationCount = NOTIFICATION_PREFERENCE_KEYS.length;
 
   return (
-    <div className="min-h-full bg-surface-container-low">
+    <div className="min-h-full bg-surface-container-low ds-scope fin-ds">
       {/* 5.3-F4 (Wave 18) — 320px floor: tighten outer padding on
           smallest screens so card content does not overflow at 320px. */}
       <div className="max-w-5xl mx-auto px-3 py-6 space-y-6 sm:px-6 sm:py-10">
@@ -392,7 +394,7 @@ export default function UserSettingsPage() {
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Role</Label>
-                    <div>{role ? <Badge variant={roleBadgeVariant(role)}>{roleLabel(role)}</Badge> : "—"}</div>
+                    <div>{role ? <Pill tone={rolePillTone(role)}>{roleLabel(role)}</Pill> : "—"}</div>
                   </div>
                 </div>
               </CardContent>
@@ -479,8 +481,8 @@ export default function UserSettingsPage() {
               <CardContent className="flex flex-col gap-4 py-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">Notification center</Badge>
-                    <Badge variant="outline">{enabledNotificationCount}/{totalNotificationCount} enabled</Badge>
+                    <Pill tone="info">Notification center</Pill>
+                    <Pill tone="muted">{enabledNotificationCount}/{totalNotificationCount} enabled</Pill>
                   </div>
                   <div>
                     <h2 className="text-xl font-semibold text-on-surface">Notification settings</h2>
@@ -625,7 +627,7 @@ export default function UserSettingsPage() {
                               <div className="flex flex-wrap items-center gap-2">
                                 <p className="text-sm font-medium">{item.label}</p>
                                 {item.tags.map((tag) => (
-                                  <Badge key={tag} variant="outline">{tag}</Badge>
+                                  <Pill key={tag} tone="muted">{tag}</Pill>
                                 ))}
                               </div>
                               <p className="text-xs text-muted-foreground">{item.description}</p>
