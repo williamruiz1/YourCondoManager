@@ -46,7 +46,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
+import { Pill } from "@ycm/design-system";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { AsyncStateBoundary } from "@/components/async-state-boundary";
@@ -54,6 +54,8 @@ import { DataTableShell } from "@/components/data-table-shell";
 import { TaskFlowChecklist } from "@/components/task-flow-checklist";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 const documentTypes = ["Meeting Minutes", "Bylaws", "Financial Report", "Insurance", "Legal", "Maintenance", "Operations", "Other"];
 
@@ -371,7 +373,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
 
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
-    <section className="p-6 space-y-6" aria-labelledby="documents-heading">
+    <section className="p-6 space-y-6 ds-scope fin-ds" aria-labelledby="documents-heading">
       <WorkspacePageHeader
         title={t("documents.title")}
         headingId="documents-heading"
@@ -614,7 +616,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                           </div>
                         </TableCell>
                         <TableCell className="text-muted-foreground">{getAssocName(d.associationId)}</TableCell>
-                        <TableCell><Badge variant="secondary">{d.documentType}</Badge></TableCell>
+                        <TableCell><Pill tone="muted">{d.documentType}</Pill></TableCell>
                         <TableCell className="text-muted-foreground">{d.uploadedBy || "-"}</TableCell>
                         <TableCell className="text-muted-foreground">{new Date(d.createdAt).toLocaleDateString()}</TableCell>
                         <TableCell>
@@ -682,11 +684,11 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="secondary">{d.documentType}</Badge>
+                      <Pill tone="muted">{d.documentType}</Pill>
                       {missingFileIds.has(d.id) ? (
-                        <Badge variant="destructive" className="gap-1">
-                          <AlertTriangle className="h-3 w-3" />Missing
-                        </Badge>
+                        <Pill tone="bad">
+                          <span className="inline-flex items-center gap-1"><AlertTriangle className="h-3 w-3" />Missing</span>
+                        </Pill>
                       ) : null}
                     </div>
                     <div className="text-xs text-muted-foreground">{d.uploadedBy || "Uploader not set"}</div>
@@ -786,7 +788,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                 {tags?.length ? (
                   tags.map((tag) => (
                     <div key={tag.id} className="break-all text-sm text-muted-foreground">
-                      <Badge variant="outline">{tag.entityType}</Badge>
+                      <Pill tone="info">{tag.entityType}</Pill>
                       <span className="ml-2">{tag.entityId}</span>
                     </div>
                   ))
@@ -859,7 +861,7 @@ export default function DocumentsPage({ typeFilter }: { typeFilter?: string } = 
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="font-medium">v{version.versionNumber}: {version.title}</p>
-                            {(version as any).isCurrent ? <Badge variant="secondary" className="text-xs">Current</Badge> : null}
+                            {(version as any).isCurrent ? <Pill tone="ok">Current</Pill> : null}
                           </div>
                           <p className="text-muted-foreground text-xs mt-0.5">
                             {new Date(version.createdAt).toLocaleDateString()}
