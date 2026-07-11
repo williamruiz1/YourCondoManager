@@ -6385,6 +6385,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
           return res.status(403).json({ message: "Invalid Stripe webhook signature" });
         }
+        // A-WEBHOOK-003: reject stale/replayed timestamps even when the HMAC
+        // matches — mirrors Stripe SDK constructEvent's default 5-min tolerance
+        // and the Plaid verifier's replay window. A captured valid webhook must
+        // not be replayable indefinitely.
+        const stripeToleranceS = Number(process.env.STRIPE_WEBHOOK_TOLERANCE_S || 5 * 60);
+        const eventTs = Number(timestamp);
+        if (!Number.isFinite(eventTs) || Math.abs(Math.floor(Date.now() / 1000) - eventTs) > stripeToleranceS) {
+          return res.status(403).json({ message: "Stripe webhook timestamp outside tolerance (replay rejected)" });
+        }
 
         const result = await storage.processPaymentWebhookEvent({
           associationId: normalizedStripeEvent.associationId,
