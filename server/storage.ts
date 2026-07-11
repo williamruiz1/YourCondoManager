@@ -6,6 +6,7 @@ import path from "path";
 import { promisify } from "util";
 import { inflateRawSync } from "zlib";
 import { db } from "./db";
+import { isPortalAccessIdleExpired } from "./portal-session-expiry";
 import { sendPlatformEmail } from "./email-provider";
 import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
 import {
@@ -13353,12 +13354,9 @@ export class DatabaseStorage implements IStorage {
     let access = await this.getPortalAccessById(portalAccessId);
     if (!access || access.status !== "active") return undefined;
 
-    // Enforce 30-day session expiry based on last login
-    const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-    if (access.lastLoginAt) {
-      const elapsed = Date.now() - new Date(access.lastLoginAt).getTime();
-      if (elapsed > SESSION_MAX_AGE_MS) return undefined;
-    }
+    // Enforce the 30-day idle-session expiry (shared with the file-upload path
+    // via server/portal-session-expiry.ts — A-AUTH-005).
+    if (isPortalAccessIdleExpired(access)) return undefined;
 
     let boardRole: BoardRole | null = null;
     if (access.boardRoleId) {

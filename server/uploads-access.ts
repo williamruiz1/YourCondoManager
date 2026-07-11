@@ -23,6 +23,7 @@
  *        with Content-Disposition: attachment.
  */
 import path from "path";
+import { isPortalAccessIdleExpired } from "./portal-session-expiry";
 
 // Extensions safe to render inline in the browser. Everything else downloads.
 // PDFs/images/plain text are the day-one governing-doc set (bylaws, CC&Rs,
@@ -75,7 +76,9 @@ export interface UploadAccessDeps {
   documentExistsInAssociations(fileUrl: string, associationIds: string[]): Promise<boolean>;
   /** True when a document_versions row with this fileUrl belongs to a document in one of the associations. */
   versionExistsInAssociations(fileUrl: string, associationIds: string[]): Promise<boolean>;
-  getPortalAccessById(id: string): Promise<{ id: string; status: string } | undefined>;
+  getPortalAccessById(
+    id: string,
+  ): Promise<{ id: string; status: string; lastLoginAt?: Date | string | null } | undefined>;
   getPortalDocuments(portalAccessId: string): Promise<Array<{ id: string; fileUrl: string | null }>>;
   getDocumentVersions(documentId: string): Promise<Array<{ fileUrl: string | null }>>;
 }
@@ -123,6 +126,12 @@ export async function authorizeUploadAccess(
   }
   const portalAccess = await deps.getPortalAccessById(portalAccessId);
   if (!portalAccess || portalAccess.status !== "active") {
+    return { kind: "deny", status: 403, message: "Portal access required" };
+  }
+  // A-AUTH-005 — enforce the same 30-day idle-session expiry the normal portal
+  // routes apply (resolvePortalAccessContext), so an active-but-idle-expired
+  // portal access can't fetch files after it's been denied everywhere else.
+  if (isPortalAccessIdleExpired(portalAccess)) {
     return { kind: "deny", status: 403, message: "Portal access required" };
   }
 

@@ -45,6 +45,10 @@ function makeDeps(): UploadAccessDeps {
       { id: "doc-a2", fileUrl: "/api/uploads/old-current.pdf" },
     ],
     "portal-b": [{ id: "doc-b", fileUrl: FILE_B }],
+    // A-AUTH-005 — idle vs fresh portal access both "see" doc-a; only the
+    // idle-expired one should be denied by the shared expiry check.
+    "portal-idle": [{ id: "doc-a", fileUrl: FILE_A }],
+    "portal-fresh": [{ id: "doc-a", fileUrl: FILE_A }],
   };
   const versions: Record<string, Array<{ fileUrl: string | null }>> = {
     "doc-a": [],
@@ -85,7 +89,11 @@ function makeDeps(): UploadAccessDeps {
         ? { id, status: "active" }
         : id === "portal-revoked"
           ? { id, status: "revoked" }
-          : undefined,
+          : id === "portal-idle"
+            ? { id, status: "active", lastLoginAt: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000) }
+            : id === "portal-fresh"
+              ? { id, status: "active", lastLoginAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000) }
+              : undefined,
     getPortalDocuments: async (portalAccessId) => portalDocs[portalAccessId] ?? [],
     getDocumentVersions: async (documentId) => versions[documentId] ?? [],
   };
@@ -156,6 +164,24 @@ describe("owner portal access (community scoping)", () => {
       makeDeps(),
     );
     expect(d).toMatchObject({ kind: "deny", status: 403, message: "Portal access required" });
+  });
+
+  // A-AUTH-005 — the file surface now enforces the same 30-day idle-session
+  // expiry as every other portal route (resolvePortalAccessContext).
+  it("an idle-expired (active but >30d) portal access is DENIED file access", async () => {
+    const d = await authorizeUploadAccess(
+      { fileUrl: FILE_A, authUser: null, portalAccessId: "portal-idle" },
+      makeDeps(),
+    );
+    expect(d).toMatchObject({ kind: "deny", status: 403, message: "Portal access required" });
+  });
+
+  it("a fresh (recently-active) portal access still fetches its visible doc", async () => {
+    const d = await authorizeUploadAccess(
+      { fileUrl: FILE_A, authUser: null, portalAccessId: "portal-fresh" },
+      makeDeps(),
+    );
+    expect(d).toMatchObject({ kind: "allow" });
   });
 });
 
