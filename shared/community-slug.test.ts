@@ -4,6 +4,8 @@ import {
   sanitizeSlug,
   isReservedSlug,
   ensureUniqueSlug,
+  normalizeSlugKey,
+  slugMatches,
   RESERVED_COMMUNITY_SLUGS,
 } from "./community-slug";
 
@@ -116,5 +118,52 @@ describe("ensureUniqueSlug", () => {
       maxAttempts: 3,
     });
     expect(slug).toMatch(/^cherryhill-[a-z0-9]{4}$/);
+  });
+});
+
+describe("normalizeSlugKey", () => {
+  it("reduces case + separator variants to one comparison key", () => {
+    expect(normalizeSlugKey("cherryhill")).toBe("cherryhill");
+    expect(normalizeSlugKey("Cherry-Hill")).toBe("cherryhill");
+    expect(normalizeSlugKey("CHERRY_HILL")).toBe("cherryhill");
+    expect(normalizeSlugKey("cherry hill")).toBe("cherryhill");
+    expect(normalizeSlugKey("cherry-hill-court")).toBe("cherryhillcourt");
+  });
+
+  it("strips accents to ascii", () => {
+    expect(normalizeSlugKey("Cañada-Verde")).toBe("canadaverde");
+  });
+
+  it("keeps distinctive words distinct (formatting-only, never semantic)", () => {
+    expect(normalizeSlugKey("cherryhill")).not.toBe(normalizeSlugKey("cherry-hill-court"));
+  });
+
+  it("returns empty string for empty / symbol-only input", () => {
+    expect(normalizeSlugKey("")).toBe("");
+    expect(normalizeSlugKey("--__--")).toBe("");
+  });
+});
+
+describe("slugMatches", () => {
+  it("matches the exact stored slug regardless of case / separators typed", () => {
+    expect(slugMatches("cherryhill", "cherryhill")).toBe(true);
+    expect(slugMatches("cherryhill", "Cherry-Hill")).toBe(true);
+    expect(slugMatches("cherryhill", "CHERRYHILL")).toBe(true);
+    expect(slugMatches("cherry-hill-court", "Cherry Hill Court")).toBe(true);
+  });
+
+  it("does NOT match a semantically different identifier", () => {
+    // "cherryhill" (the clean derived slug) is a distinct URL from the legacy
+    // "cherry-hill-court" — tolerant matching only forgives FORMATTING.
+    expect(slugMatches("cherryhill", "cherryhillcourt")).toBe(false);
+    expect(slugMatches("cherryhill", "maplegrove")).toBe(false);
+  });
+
+  it("never matches on empty / nullish inputs", () => {
+    expect(slugMatches("cherryhill", "")).toBe(false);
+    expect(slugMatches("", "cherryhill")).toBe(false);
+    expect(slugMatches(null, "cherryhill")).toBe(false);
+    expect(slugMatches(undefined, "cherryhill")).toBe(false);
+    expect(slugMatches("--", "--")).toBe(false); // both normalize to ""
   });
 });
