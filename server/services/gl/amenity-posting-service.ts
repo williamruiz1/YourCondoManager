@@ -35,7 +35,7 @@ import {
   type AmenityReservationMoneyLike,
 } from "./amenity-posting";
 import { ensureChartOfAccounts } from "./gl-posting-service";
-import { isGlEnabled } from "./flag";
+import { isGlEnabledForAssociation } from "./flag";
 
 export interface AmenityGlPostingResult {
   skipped: boolean;
@@ -118,10 +118,11 @@ export async function syncAssociationAmenityGl(
   associationId: string,
   opts: { force?: boolean } = {},
 ): Promise<AmenityGlPostingResult> {
-  if (!opts.force && !isGlEnabled()) {
+  if (!opts.force && !isGlEnabledForAssociation(associationId)) {
     return {
       skipped: true,
-      reason: "GL_ENABLED is off (forward-only/parallel: GL not source-of-truth)",
+      reason:
+        "GL not enabled for this association (forward-only/parallel: GL not source-of-truth)",
       accountsSeeded: 0,
       reservationsConsidered: 0,
       journalsConsidered: 0,
