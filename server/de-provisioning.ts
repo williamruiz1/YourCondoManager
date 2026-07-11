@@ -31,6 +31,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { db } from "./db.js";
+import { withSchedulerLock } from "./lib/scheduler-lock.js";
 import {
   adminUsers,
   authUsers,
@@ -322,10 +323,12 @@ export function startDeprovisioningScheduler(intervalMs: number = DAY_MS): void 
       console.error("[deprov] sweep failed", err);
     }
   };
+  // founder-os#10741 (SCALE-B-003): cross-machine advisory lock so the deprov
+  // sweep fires on only ONE machine. No-op on the current single-machine topology.
   deprovTimer = setInterval(() => {
-    void tick();
+    void withSchedulerLock("deprov-sweep", tick);
   }, intervalMs);
-  void tick();
+  void withSchedulerLock("deprov-sweep", tick);
   log(`[deprov] scheduler started (interval ${intervalMs}ms)`, "automation");
 }
 

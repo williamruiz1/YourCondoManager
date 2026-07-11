@@ -27,6 +27,7 @@
  * never surface on the wrong association's queue.
  */
 import { storage } from "./storage";
+import { withSchedulerLock } from "./lib/scheduler-lock";
 import { fileAction } from "./services/agent-action-service";
 import { vendorComplianceStatus, type VendorComplianceStatus } from "./services/vendor-compliance";
 import { log } from "./logger";
@@ -142,10 +143,12 @@ export function startVendorComplianceScheduler(intervalMs: number = DAY_MS): voi
       console.error("[vendor-compliance] sweep failed", err);
     }
   };
+  // founder-os#10741 (SCALE-B-003): cross-machine advisory lock so the vendor
+  // compliance sweep fires on only ONE machine. No-op on single-machine topology.
   complianceTimer = setInterval(() => {
-    void tick();
+    void withSchedulerLock("vendor-compliance-sweep", tick);
   }, intervalMs);
-  void tick();
+  void withSchedulerLock("vendor-compliance-sweep", tick);
   log(`[vendor-compliance] scheduler started (interval ${intervalMs}ms)`, "automation");
 }
 

@@ -1,5 +1,6 @@
 import { storage } from "./storage";
 import { log } from "./logger";
+import { withSchedulerLock } from "./lib/scheduler-lock";
 
 /**
  * Auto-close elections whose closesAt timestamp has passed.
@@ -22,12 +23,14 @@ export function startElectionScheduler(): void {
   if (electionCloseTimer) return;
 
   const INTERVAL_MS = 60_000; // 60 seconds
+  // founder-os#10741 (SCALE-B-003): cross-machine advisory lock so elections
+  // close on only ONE machine. No-op on the current single-machine topology.
   electionCloseTimer = setInterval(() => {
-    closeExpiredElections();
+    void withSchedulerLock("election-close", closeExpiredElections);
   }, INTERVAL_MS);
 
   // Run immediately on startup
-  closeExpiredElections();
+  void withSchedulerLock("election-close", closeExpiredElections);
 
   log(`election auto-close scheduler started (interval ${INTERVAL_MS}ms)`, "automation");
 }

@@ -28,6 +28,7 @@ import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
 import { startVendorComplianceScheduler } from "./vendor-compliance-scheduler";
+import { withSchedulerLock } from "./lib/scheduler-lock";
 import { createRateLimiter, createPgRateLimiter, onWriteOnly, type RateLimitQuery } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
@@ -338,7 +339,10 @@ function startAutomationJobs() {
 
   const intervalMs = Math.max(60_000, Number(process.env.AUTOMATION_SWEEPS_INTERVAL_MS || 300_000));
   const timer = setInterval(() => {
-    runAutomationSweep().catch((error) => {
+    // founder-os#10741 (SCALE-B-003 / A-REL-005): cross-machine advisory lock so
+    // the money-adjacent automation sweep (autopay / delinquency / assessment)
+    // fires on only ONE machine. No-op on the current single-machine topology.
+    withSchedulerLock("automation-sweep", runAutomationSweep).catch((error) => {
       console.error("Automation sweep failed:", error);
     });
   }, intervalMs);
@@ -557,6 +561,14 @@ app.use((req, res, next) => {
   // list so neither is inlined into the main bundle.
   const seedModuleSpecifier =
     process.env.NODE_ENV === "production" ? "./seed.cjs" : "./seed.js";
+  // founder-os#10741 (STARTUP-B-006): gate DB seeding off the production boot
+  // path behind an env flag. Default preserves current seed-on-boot behavior;
+  // set SEED_ON_BOOT=false to skip seeding at startup (e.g. once the DB is
+  // provisioned, so a boot / crash-restart never re-runs the ~120 KB demo seed).
+  if (process.env.SEED_ON_BOOT === "false") {
+    log("[boot] seed :: skipped (SEED_ON_BOOT=false)", "startup");
+    return;
+  }
   void (async () => {
     try {
       log(`[boot] seed :: starting lazy import of ${seedModuleSpecifier}`, "startup");
