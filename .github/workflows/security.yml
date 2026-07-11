@@ -1,7 +1,8 @@
 # Security gate — additive to ci.yml.
-# Runs on every PR targeting main; fails on critical CVEs only.
-# High/moderate severities are surfaced via PR label so authors can
-# triage without blocking unrelated work.
+# Runs on every PR targeting main; fails on HIGH + CRITICAL CVEs (founder-os#10740
+# CQ-003 — was critical-only, so a High auth-bypass/RCE could merge + auto-deploy).
+# Pre-existing/triaged high advisories are excepted via .github/npm-audit-allowlist.txt
+# (a package listed there does not fail the gate). Moderate stays a PR label only.
 #
 # Spec: docs/specs/security-maturity-roadmap-2026-05-10.md (Workstream 1)
 
@@ -48,6 +49,15 @@ jobs:
           MOD=$(echo "$AUDIT"  | jq '.metadata.vulnerabilities.moderate // 0')
           echo "::notice::npm audit — critical=$CRIT high=$HIGH moderate=$MOD"
 
+          # CQ-003 — the set of high advisories whose package is NOT allowlisted.
+          # These are what actually fail the gate (critical always fails).
+          ALLOW=$(grep -vE '^\s*#|^\s*$' .github/npm-audit-allowlist.txt 2>/dev/null | tr -d '\r' | jq -R . | jq -s . )
+          EFFECTIVE_HIGH=$(echo "$AUDIT" | jq --argjson allow "${ALLOW:-[]}" '
+            [ (.vulnerabilities // {}) | to_entries[]
+              | select(.value.severity=="high")
+              | select(.key as $k | ($allow | index($k)) | not) ] | length')
+          echo "::notice::CQ-003 gate — critical=$CRIT effective-high=$EFFECTIVE_HIGH (allowlisted-high excepted)"
+
           # Ensure severity labels exist (idempotent, force-updates color/desc).
           gh label create "security: critical-vulns" --color "B60205" --description "Critical CVEs detected by security workflow" --force >/dev/null 2>&1 || true
           gh label create "security: high-vulns"     --color "D93F0B" --description "High-severity CVEs detected by security workflow" --force >/dev/null 2>&1 || true
@@ -68,7 +78,7 @@ jobs:
             echo "No moderate-or-above vulnerabilities found; no severity label applied."
           fi
 
-          if [ "$CRIT" -gt 0 ]; then
-            echo "::error::$CRIT critical CVE(s) detected — failing the security gate."
+          if [ "$CRIT" -gt 0 ] || [ "$EFFECTIVE_HIGH" -gt 0 ]; then
+            echo "::error::security gate failed — $CRIT critical + $EFFECTIVE_HIGH non-allowlisted high CVE(s). Fix the dependency, or (if genuinely accepted) add its package to .github/npm-audit-allowlist.txt with a dated reason."
             exit 1
           fi

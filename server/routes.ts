@@ -4,7 +4,7 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual, randomInt } from "crypto";
 import { storage } from "./storage";
 import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
 import { db } from "./db";
@@ -965,10 +965,17 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
 
     if (missingAssociationIds.length > 0) {
       for (const associationId of missingAssociationIds) {
+        // A-AUTH-004 (founder-os#10757): auto-hydrate LEAST PRIVILEGE — read-only, not
+        // read-write. Admin write authority must not silently expand as a side effect of
+        // a portal_access row; write scope requires an explicit grant.
+        // NOTE (enforcement gap, tracked as a follow-up): the `scope` VALUE is not yet
+        // consumed at write sites — access is currently gated only by the association-id's
+        // presence in adminScopedAssociationIds — so this read-only default is
+        // least-privilege-by-intent and audit hygiene until scope-value enforcement lands.
         await storage.upsertAdminAssociationScope({
           adminUserId: adminUser.id,
           associationId,
-          scope: "read-write",
+          scope: "read-only",
         });
       }
       scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
@@ -976,6 +983,7 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
         adminUserId: adminUser.id,
         email: adminUser.email,
         hydratedAssociationIds: missingAssociationIds,
+        grantedScope: "read-only",
         resultingScopeCount: scopes.length,
       });
     } else if (scopes.length === 0) {
@@ -13595,7 +13603,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       }
 
       // Generate a 6-digit OTP (one token covers all associations for this email)
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      // A-AUTH-002 (founder-os#10757): CSPRNG for security one-time codes (CWE-338).
+      // randomInt(100000, 1000000) is uniform in [100000, 999999] — always 6 digits.
+      const otp = String(randomInt(100000, 1000000));
       const otpHash = createHmac("sha256", portalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
@@ -18001,7 +18011,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         return res.json({ message: "If an account exists for this email, a login code has been sent." });
       }
 
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      // A-AUTH-002 (founder-os#10757): CSPRNG for security one-time codes (CWE-338).
+      // randomInt(100000, 1000000) is uniform in [100000, 999999] — always 6 digits.
+      const otp = String(randomInt(100000, 1000000));
       const otpHash = createHmac("sha256", vendorPortalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
       const vendorId = allCredentials[0].vendorId;
