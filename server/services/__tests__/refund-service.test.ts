@@ -103,6 +103,21 @@ describe("refundConnectCharge", () => {
     expect(fullKey).not.toBe(partialKey);
   });
 
+  it("A-STRIPE-005 distinct requestIds → distinct keys (both refunds succeed); same request collapses", async () => {
+    // Two legitimately distinct $50 partial refunds of the SAME charge.
+    await refundConnectCharge({ associationId: "a1", chargeId: "ch_1", amountCents: 5000, requestId: "rr_A" });
+    const keyA = captured[0].idempotencyKey;
+    captured = [];
+    await refundConnectCharge({ associationId: "a1", chargeId: "ch_1", amountCents: 5000, requestId: "rr_B" });
+    const keyB = captured[0].idempotencyKey;
+    // Distinct requestIds → distinct keys → Stripe issues BOTH refunds.
+    expect(keyA).not.toBe(keyB);
+    // A true network retry of ONE refund (same requestId) → same key → collapses.
+    captured = [];
+    await refundConnectCharge({ associationId: "a1", chargeId: "ch_1", amountCents: 5000, requestId: "rr_A" });
+    expect(captured[0].idempotencyKey).toBe(keyA);
+  });
+
   it("R1.6 disabled flag rejects before any Stripe call", async () => {
     process.env.REFUNDS_ENABLED = "0";
     expect(isRefundsEnabled()).toBe(false);

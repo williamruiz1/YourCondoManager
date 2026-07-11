@@ -166,6 +166,18 @@ describe("captureAmenityBookingMoney — Slice 1 (fee) + Slice 2 (deposit hold)"
     expect(updates).toHaveLength(0);
   });
 
+  it("A-STRIPE-003: persists the deposit-hold PaymentIntent id on the reservation", async () => {
+    process.env.GL_ENABLED_ASSOCIATIONS = ASSOC;
+    selectQueue = [[reservation()], [amenity()]];
+    const gw: AmenityMoneyGateway = {
+      ...okGateway(),
+      holdDeposit: async () => ({ ok: true, intentId: "pi_hold_stored" }),
+    };
+    await captureAmenityBookingMoney({ reservationId: RES_ID, gateway: gw });
+    // The stored intent id lands in the same money-column write.
+    expect(updates[0]).toMatchObject({ depositHeldCents: DEPOSIT, depositHoldIntentId: "pi_hold_stored" });
+  });
+
   it("IDEMPOTENT: a reservation already captured is not re-charged", async () => {
     process.env.GL_ENABLED = "1";
     selectQueue = [[reservation({ feeChargedCents: FEE })]];
@@ -252,5 +264,25 @@ describe("resolveAmenityDeposit — Slice 3 (refund) + Slice 4 (forfeit)", () =>
     expect(out.depositRefundedCents).toBe(0);
     expect(out.mutated).toBe(false);
     expect(updates).toHaveLength(0);
+  });
+
+  it("A-STRIPE-003: threads the stored hold-intent id to refund/forfeit (strong-consistent lookup)", async () => {
+    process.env.GL_ENABLED_ASSOCIATIONS = ASSOC;
+    selectQueue = [[reservation({ depositHeldCents: DEPOSIT, depositHoldIntentId: "pi_stored_1" })]];
+    const gw = okGateway();
+    const refundSpy = vi.spyOn(gw, "refundDeposit");
+    const forfeitSpy = vi.spyOn(gw, "forfeitDeposit");
+    await resolveAmenityDeposit({ reservationId: RES_ID, refundCents: 15000, forfeitCents: 5000, gateway: gw });
+    expect(refundSpy).toHaveBeenCalledWith(expect.objectContaining({ holdIntentId: "pi_stored_1", amountCents: 15000 }));
+    expect(forfeitSpy).toHaveBeenCalledWith(expect.objectContaining({ holdIntentId: "pi_stored_1", amountCents: 5000 }));
+  });
+
+  it("A-STRIPE-003: legacy reservation (no stored id) passes null → gateway search fallback", async () => {
+    process.env.GL_ENABLED_ASSOCIATIONS = ASSOC;
+    selectQueue = [[reservation({ depositHeldCents: DEPOSIT })]]; // no depositHoldIntentId
+    const gw = okGateway();
+    const refundSpy = vi.spyOn(gw, "refundDeposit");
+    await resolveAmenityDeposit({ reservationId: RES_ID, refundCents: DEPOSIT, gateway: gw });
+    expect(refundSpy).toHaveBeenCalledWith(expect.objectContaining({ holdIntentId: null }));
   });
 });

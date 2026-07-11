@@ -11,6 +11,8 @@ import {
   paymentIntentKey,
   refundKey,
   paymentLinkCheckoutKey,
+  amenityForfeitKey,
+  amenityRefundKey,
 } from "../stripe-idempotency";
 
 describe("stripe idempotency keys", () => {
@@ -57,5 +59,45 @@ describe("stripe idempotency keys", () => {
     const dirty = refundKey({ chargeId: "ch /weird?&id", amountCents: 100 });
     expect(dirty.length).toBeLessThanOrEqual(255);
     expect(dirty).toMatch(/^[a-zA-Z0-9._:-]+$/);
+  });
+
+  // A-STRIPE-005 — a per-refund-request disambiguator makes two DISTINCT partial
+  // refunds of the same charge+amount distinct keys, while a true retry collapses.
+  it("refund key: distinct requestIds → distinct keys; same request → same key", () => {
+    const base = { chargeId: "ch_1", amountCents: 2500 };
+    const reqA = refundKey({ ...base, requestId: "rr_A" });
+    const reqB = refundKey({ ...base, requestId: "rr_B" });
+    // Two legitimately distinct $25 refunds of the same charge → both succeed.
+    expect(reqA).not.toBe(reqB);
+    // A true network retry of ONE refund (same request) collapses.
+    expect(reqA).toBe(refundKey({ ...base, requestId: "rr_A" }));
+    // Omitting requestId degrades to the legacy charge+amount grain (back-compat).
+    const legacy = refundKey(base);
+    expect(legacy).toBe(refundKey({ ...base }));
+    expect(legacy).not.toBe(reqA);
+  });
+
+  // A-STRIPE-001 — amenity forfeit/refund keys are stable per (reservation,amount)
+  // and distinguish different amounts (distinct partial forfeits).
+  it("amenity forfeit key: stable per reservation+amount; distinct amounts distinct", () => {
+    expect(amenityForfeitKey({ reservationId: "r1", amountCents: 5000 })).toBe(
+      amenityForfeitKey({ reservationId: "r1", amountCents: 5000 }),
+    );
+    expect(amenityForfeitKey({ reservationId: "r1", amountCents: 5000 })).not.toBe(
+      amenityForfeitKey({ reservationId: "r1", amountCents: 7500 }),
+    );
+    expect(amenityForfeitKey({ reservationId: "r1", amountCents: 5000 })).not.toBe(
+      amenityForfeitKey({ reservationId: "r2", amountCents: 5000 }),
+    );
+  });
+
+  it("amenity refund key: stable per reservation+amount; distinct from forfeit", () => {
+    expect(amenityRefundKey({ reservationId: "r1", amountCents: 5000 })).toBe(
+      amenityRefundKey({ reservationId: "r1", amountCents: 5000 }),
+    );
+    // A refund (release) and a forfeit (capture) of the same hold are DIFFERENT ops.
+    expect(amenityRefundKey({ reservationId: "r1", amountCents: 5000 })).not.toBe(
+      amenityForfeitKey({ reservationId: "r1", amountCents: 5000 }),
+    );
   });
 });
