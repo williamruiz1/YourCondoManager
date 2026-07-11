@@ -36,6 +36,8 @@ import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
 import { getScrollBehavior } from "@/lib/prefers-reduced-motion";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 const unitFormSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -665,7 +667,7 @@ export default function UnitsPage() {
     // assistive tech identifies the page region by its visible heading. The
     // inner gradient container stays as <section> for visual styling but is
     // labelled by the same heading.
-    <section className="space-y-8 p-4 sm:p-6" aria-labelledby="units-heading">
+    <section className="space-y-8 p-4 sm:p-6 ds-scope fin-ds" aria-labelledby="units-heading">
       <section aria-labelledby="units-heading" className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(145deg,hsl(var(--primary))_0%,hsl(217_78%_34%)_48%,hsl(221_45%_18%)_100%)] p-6 text-primary-foreground md:rounded-[24px] md:border md:border-outline-variant/30 md:bg-surface-container-lowest md:text-on-surface">
         <div className="absolute inset-0 md:hidden">
           <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/10 blur-3xl" />
@@ -679,7 +681,7 @@ export default function UnitsPage() {
             </div>
             <h1
               id="units-heading"
-              className="mt-4 font-headline text-4xl font-bold italic leading-tight text-white md:mt-0 md:text-3xl md:not-italic md:text-on-surface"
+              className="ds-heading-plain mt-4 font-headline text-4xl font-bold italic leading-tight text-white md:mt-0 md:text-3xl md:not-italic md:text-on-surface"
               data-testid="text-page-title"
             >
               {t("units.title")}

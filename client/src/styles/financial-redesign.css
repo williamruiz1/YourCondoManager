@@ -26,10 +26,13 @@
   box-shadow: var(--ds-shadow, 0 1px 3px rgba(1, 77, 74, 0.04));
 }
 
-/* Headings pick up the DS deep-teal brand color */
-.fin-ds h1,
-.fin-ds h2,
-.fin-ds h3 {
+/* Headings pick up the DS deep-teal brand color. `.ds-heading-plain` is the
+   escape hatch for a heading that must keep its own explicit color (e.g. a
+   dark gradient hero heading using Tailwind's text-white) instead of being
+   forced teal -- see units.tsx's Buildings & Units hero. */
+.fin-ds h1:not(.ds-heading-plain),
+.fin-ds h2:not(.ds-heading-plain),
+.fin-ds h3:not(.ds-heading-plain) {
   color: var(--ds-teal, #014d4a);
 }
 
