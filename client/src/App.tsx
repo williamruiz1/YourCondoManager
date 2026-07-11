@@ -45,6 +45,9 @@ const SolutionsPage = lazyWithReload(() => import("@/pages/solutions"), "@/pages
 // founder-os#1025 — printable sales one-pager (PDF + web), CT/DE board outreach.
 const SalesOnepagerPage = lazyWithReload(() => import("@/pages/sales-onepager"), "@/pages/sales-onepager");
 const WorkspacePreviewPage = lazyWithReload(() => import("@/pages/workspace-preview"), "@/pages/workspace-preview");
+// founder-os#10187 F1 — internal design-system gallery (@ycm/design-system).
+// Renders every shared redesign primitive, pixel-matched to the signed-off brand.css.
+const RedesignKitPage = lazyWithReload(() => import("@/pages/redesign-kit"), "@/pages/redesign-kit");
 const DashboardPage = lazyWithReload(() => import("@/pages/dashboard"), "@/pages/dashboard");
 const OperationsDashboardPage = lazyWithReload(() => import("@/pages/operations-dashboard"), "@/pages/operations-dashboard");
 const AssociationsPage = lazyWithReload(() => import("@/pages/associations"), "@/pages/associations");
@@ -617,6 +620,12 @@ function PublicRouter({
             hasWorkspaceAccess={hasWorkspaceAccess}
             onStartGoogleSignIn={onStartGoogleSignIn}
           />
+        </Route>
+        {/* founder-os#10187 F1 — internal design-system gallery. Renders every
+            shared redesign primitive so the DS can be verified pixel-for-pixel
+            against the signed-off brand.css. Internal/noindex; no nav link. */}
+        <Route path="/redesign-kit">
+          <RedesignKitPage />
         </Route>
         {/* founder-os#1025 — sales one-pager (public; no auth gate, same as
             /pricing and /solutions). Renders the same copy as the downloadable

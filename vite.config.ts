@@ -26,6 +26,7 @@ export default defineConfig({
       "@": path.resolve(import.meta.dirname, "client", "src"),
       "@shared": path.resolve(import.meta.dirname, "shared"),
       "@assets": path.resolve(import.meta.dirname, "attached_assets"),
+      "@ycm/design-system": path.resolve(import.meta.dirname, "client", "src", "components", "redesign", "index.tsx"),
     },
   },
   root: path.resolve(import.meta.dirname, "client"),
