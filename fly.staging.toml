@@ -53,6 +53,15 @@ primary_region = "ewr"
   size = "shared-cpu-1x"
   memory = "512mb"
 
+[mounts]
+  # Matches prod's fly.toml [mounts] — the staging machines already have a
+  # `ycm_uploads` volume attached (provisioned via `fly volume create`); this
+  # section was missing here, which made `flyctl deploy` warn "volume mounted
+  # but app config does not specify a volume" and require an interactive
+  # `--yes` confirmation. Declaring it keeps config in sync with reality.
+  source = "ycm_uploads"
+  destination = "/data"
+
 [env]
   NODE_ENV = "production"
   PORT = "5000"
@@ -61,3 +70,4 @@ primary_region = "ewr"
   APP_ENV = "staging"
   OUTBOUND_SIDE_EFFECTS_DISABLED = "1"
   YCM_STAGING = "1"
+  UPLOAD_DIR = "/data/uploads"
