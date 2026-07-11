@@ -71,6 +71,10 @@ export const ACTION_TYPE_LEVELS: Record<string, AgentActionLevel> = {
   // correction is always possible; still requires an approval unless the
   // association's L2 autonomy toggle is on for this type.
   "reversible.distribute_meeting_packet": "L2",
+  // ARC workflow plumbing (founder-os#9481, W2). Moving a request through intake
+  // and routing is reversible workflow plumbing — the agent may do it (L2). The
+  // approve/deny DECISION is L4 (member-affecting) below.
+  "reversible.arc_route": "L2",
   // L3 — financial / irreversible. ALWAYS requires a human approval.
   "financial.approve_disbursement": "L3",
   "financial.post_ledger_entry": "L3",
@@ -83,6 +87,13 @@ export const ACTION_TYPE_LEVELS: Record<string, AgentActionLevel> = {
   "board.amend_governance": "L4",
   "member.assess_fine": "L4",
   "member.change_assessment": "L4",
+  // ARC committee decision (founder-os#9481, W2). Approving OR denying an owner's
+  // architectural-change request is member-affecting → L4: it can NEVER be
+  // actuated by an agent alone; it requires a board-level human decision. A
+  // DENIAL in particular carries member-appeal rights, so the L4 gate is the
+  // load-bearing control. The appeal decision is likewise L4.
+  "member.arc_decision": "L4",
+  "member.arc_appeal_decision": "L4",
 };
 
 export const DEFAULT_UNKNOWN_LEVEL: AgentActionLevel = "L3";

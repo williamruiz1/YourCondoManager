@@ -303,6 +303,7 @@ import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAgentActionRoutes } from "./routes/agent-actions";
+import { registerArcRoutes } from "./routes/arc";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
 import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
@@ -1534,6 +1535,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerAdminDisbursementRoutes(app, {
     requireAdmin,
     requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // Architectural Review Committee (ARC) workflow (founder-os#9481, W2). Owner
+  // architectural-change-request lifecycle: intake → committee routing →
+  // decision capture → records → appeal. The APPROVE/DENY decision is L4
+  // (member-affecting) — an agent alone can never actuate a denial (enforced in
+  // the service via the canonical permission ladder). NET-NEW / ADDITIVE.
+  //   Admin:  /api/admin/arc/requests[/:id/{route,decision,appeal,appeal-decision}]
+  //   Portal: /api/portal/arc/requests[/:id/appeal]  (owner submit + appeal)
+  registerArcRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    requirePortal,
     getAssociationIdQuery,
     assertAssociationScope,
   });
