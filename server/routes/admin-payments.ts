@@ -663,12 +663,20 @@ export function registerAdminPaymentsRoutes(
         const parsed = refundChargeSchema.parse(req.body);
         assertAssociationScope(req, parsed.associationId);
 
+        // A-STRIPE-005 (founder-os#10752): pass the client's Idempotency-Key
+        // header (if any) as the per-refund-request disambiguator so two
+        // legitimately-distinct equal-amount partial refunds of one charge both
+        // succeed, while a true client retry (same header) still collapses.
+        const refundRequestId =
+          (req.header("Idempotency-Key") || req.header("X-Idempotency-Key") || "").trim() || undefined;
+
         const result = await refundConnectCharge({
           associationId: parsed.associationId,
           chargeId: parsed.chargeId,
           amountCents: parsed.amountCents,
           reason: parsed.reason,
           refundApplicationFee: parsed.refundApplicationFee,
+          requestId: refundRequestId,
         });
 
         // Audit every refund (who, charge, amount, whether app fee refunded).

@@ -47,6 +47,30 @@ describe("stripe idempotency keys", () => {
     expect(refundKey({ chargeId: "ch_2", amountCents: 5000 })).not.toBe(partial50);
   });
 
+  it("A-STRIPE-005 — requestId disambiguates two distinct equal-amount partial refunds", () => {
+    // The bug: charge+amount alone collapses two legitimately-distinct $25
+    // partial refunds of one charge within Stripe's 24h window (the 2nd is
+    // silently replayed as the 1st). A per-request id makes them distinct.
+    const base = { chargeId: "ch_1", amountCents: 2500 };
+    const refundA = refundKey({ ...base, requestId: "req-A" });
+    const refundB = refundKey({ ...base, requestId: "req-B" });
+    expect(refundA).not.toBe(refundB); // two distinct decisions → distinct keys → both succeed
+    // A true network retry of ONE decision reuses its id → collapses.
+    expect(refundKey({ ...base, requestId: "req-A" })).toBe(refundA);
+  });
+
+  it("A-STRIPE-005 — requestId is backward-compatible (absent → legacy key)", () => {
+    const legacy = refundKey({ chargeId: "ch_1", amountCents: 2500 });
+    // Omitted / null / empty requestId must produce the byte-identical old key
+    // so existing callers are unchanged.
+    expect(refundKey({ chargeId: "ch_1", amountCents: 2500, requestId: undefined })).toBe(legacy);
+    expect(refundKey({ chargeId: "ch_1", amountCents: 2500, requestId: null })).toBe(legacy);
+    expect(refundKey({ chargeId: "ch_1", amountCents: 2500, requestId: "" })).toBe(legacy);
+    // And a requestId still stays within Stripe's 255-char cap.
+    expect(refundKey({ chargeId: "ch_1", amountCents: 2500, requestId: "x".repeat(300) }).length)
+      .toBeLessThanOrEqual(255);
+  });
+
   it("payment-link checkout key keyed by link+amount+period", () => {
     const base = { linkToken: "tok_1", amountCents: 10000, period: "2026-06" };
     expect(paymentLinkCheckoutKey(base)).toBe(paymentLinkCheckoutKey({ ...base }));

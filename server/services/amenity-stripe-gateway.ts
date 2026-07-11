@@ -183,7 +183,16 @@ export function createStripeAmenityGateway(opts: {
       if (!holdId) return { ok: false, reason: "deposit-hold-not-found" };
       // Clean checkout: cancel the uncaptured auth-hold — releases the money,
       // never captured, nothing leaves the resident's account.
-      const { ok, body } = await stripePost(`/payment_intents/${holdId}/cancel`, ctx, new URLSearchParams());
+      // A-STRIPE-001 (founder-os#10752): carry a stable Idempotency-Key so a
+      // network retry of the cancel replays Stripe's first result instead of
+      // erroring/looping. A hold is cancelled once per reservation → keyed by
+      // the hold intent id (stable + unique to this exact release).
+      const { ok, body } = await stripePost(
+        `/payment_intents/${holdId}/cancel`,
+        ctx,
+        new URLSearchParams(),
+        `amn-refund-${reservationId}-${holdId}`,
+      );
       if (!ok) return { ok: false, reason: "deposit-refund-failed" };
       return { ok: true, intentId: body!.id as string };
     },
@@ -196,7 +205,17 @@ export function createStripeAmenityGateway(opts: {
       // Damage/violation: capture (some/all of) the hold → income.
       const params = new URLSearchParams();
       params.set("amount_to_capture", String(amountCents));
-      const { ok, body } = await stripePost(`/payment_intents/${holdId}/capture`, ctx, params);
+      // A-STRIPE-001 (founder-os#10752): carry a stable Idempotency-Key so a
+      // retry after a DB-write failure does NOT double-capture. The amount is
+      // part of the grain — a distinct partial forfeit (different amount) is a
+      // distinct operation → distinct key; a true retry of the SAME capture
+      // collapses. Keyed by hold intent id too so two reservations can't collide.
+      const { ok, body } = await stripePost(
+        `/payment_intents/${holdId}/capture`,
+        ctx,
+        params,
+        `amn-forfeit-${reservationId}-${holdId}-${amountCents}`,
+      );
       if (!ok) return { ok: false, reason: "deposit-forfeit-failed" };
       return { ok: true, intentId: body!.id as string };
     },

@@ -45,6 +45,14 @@ export interface RefundConnectChargeParams {
    * DEFAULT true — so the HOA never loses YCM's platform fee on a refund.
    */
   refundApplicationFee?: boolean;
+  /**
+   * A-STRIPE-005 (founder-os#10752): a per-refund-REQUEST disambiguator for the
+   * Stripe Idempotency-Key — typically the caller's `Idempotency-Key` request
+   * header. Distinct refund decisions pass distinct ids so two legitimately-
+   * distinct equal-amount partial refunds of one charge both succeed; a true
+   * retry of ONE decision reuses the id and collapses. Omit → legacy behavior.
+   */
+  requestId?: string | null;
 }
 
 export interface RefundResult {
@@ -108,7 +116,11 @@ export async function refundConnectCharge(
     path: "/refunds",
     body,
     stripeAccount: routing.stripeAccountHeader,
-    idempotencyKey: refundKey({ chargeId: params.chargeId, amountCents: params.amountCents }),
+    idempotencyKey: refundKey({
+      chargeId: params.chargeId,
+      amountCents: params.amountCents,
+      requestId: params.requestId, // A-STRIPE-005 disambiguator (undefined = legacy key)
+    }),
   });
 
   return {

@@ -89,14 +89,28 @@ export function paymentIntentKey(params: {
  * a $50 partial refund of the same charge are DISTINCT operations → distinct
  * keys. A retry of the SAME refund (same charge, same amount) collapses.
  * `amountCents` null = full refund (use "full" sentinel so it's stable).
+ *
+ * A-STRIPE-005 (founder-os#10752): charge+amount ALONE collapses two
+ * LEGITIMATELY DISTINCT partial refunds of equal magnitude on one charge within
+ * Stripe's ~24h idempotency window (refund $25, then a separate $25 later —
+ * Stripe replays the first and silently skips the second). The optional
+ * `requestId` is a per-refund-REQUEST disambiguator (a client `Idempotency-Key`
+ * header, or an attempt nonce): distinct refund decisions pass distinct
+ * requestIds → distinct keys → both succeed; a true network retry of ONE
+ * decision reuses the same requestId → collapses. When absent (legacy callers),
+ * the key is byte-identical to before (backward-compatible: retry-collapse by
+ * amount is preserved; the equal-amount-partial collision remains only for
+ * callers that do not supply a requestId).
  */
 export function refundKey(params: {
   chargeId: string;
   amountCents: number | null | undefined;
+  requestId?: string | null;
 }): string {
   return join([
     "refund",
     params.chargeId,
     params.amountCents == null ? "full" : params.amountCents,
+    ...(params.requestId ? [params.requestId] : []),
   ]);
 }
