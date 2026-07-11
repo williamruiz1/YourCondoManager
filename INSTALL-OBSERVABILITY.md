@@ -52,17 +52,19 @@ property.
 
 ## Step 3 — Install Sentry SDKs (local)
 
-The dynamic-import code in this PR degrades to a no-op if the packages
-aren't installed. Add them now:
+**As of the A-OPS-003 / CQ-009 PR, `@sentry/node` + `@sentry/react` are already
+declared in `package.json`** (`^8.0.0`). The dynamic-import code degrades to a
+no-op until they're actually installed into `node_modules`. Install them on a
+machine OUTSIDE the sandbox (the sandboxed fleet worktree can't run `npm install`
+— esbuild's postinstall is SIGKILL'd):
 
 ```bash
 cd ~/code/YourCondoManager
-npm install --save @sentry/node @sentry/react
+npm install   # resolves the @sentry/* deps already in package.json + writes package-lock.json
 ```
 
-This will update `package.json` + `package-lock.json`. Commit those
-changes in a small follow-up PR (e.g. `chore(deps): add @sentry/node +
-@sentry/react`).
+Commit the resulting `package-lock.json` change (e.g. `chore(deps): lock
+@sentry/node + @sentry/react`).
 
 If `npm install` fails on a transitive version mismatch (a known
 intermittent issue with `@sentry/core`), pin specific versions:
@@ -86,7 +88,20 @@ flyctl secrets set SENTRY_DSN="<paste-from-step-1-ycm-server-DSN>"
 
 # Optional: tag the release (helps Sentry group errors per deploy)
 flyctl secrets set SENTRY_RELEASE="$(git rev-parse --short HEAD)"
+
+# RECOMMENDED once the DSN is set: make a FUTURE missing DSN hard-fail the boot,
+# so this can never silently regress to a no-op again (A-OPS-003 / CQ-009).
+flyctl secrets set SENTRY_STRICT=1
 ```
+
+> **Boot-time assertion (A-OPS-003 / CQ-009).** On boot in production the server
+> now calls `assertServerObservabilityConfigured()`. With `SENTRY_DSN` unset it
+> emits a LOUD `ERROR [observability] SENTRY_DSN is UNSET in production…` line
+> (visible in `flyctl logs`) — and, when `SENTRY_STRICT=1`, hard-fails the boot
+> (mirroring the Plaid F7 env-flip guard). Default is loud-warn-not-fatal so a
+> missing observability secret never bricks prod; flip `SENTRY_STRICT=1` after the
+> DSN is provisioned. The `/api/admin/observability-smoke-test` route reports
+> `sentry.initialized` + `sentry.dsnConfigured` so you can confirm capture live.
 
 Edit `fly.toml` under `[build.args]`:
 

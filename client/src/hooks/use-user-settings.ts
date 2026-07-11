@@ -113,19 +113,31 @@ export { DEFAULT_SETTINGS };
 
 // ── Theme application ──────────────────────────────────────────────────────────
 
-/** Apply the dark class only when on a workspace route (/app/*). Public pages stay light. */
-export function applyTheme(theme: UserSettings["theme"]) {
-  const isWorkspace = window.location.pathname.startsWith("/app");
+/**
+ * Apply the theme.
+ *
+ * SHELVED 2026-07-07 (per William): dark mode is disabled app-wide — the app
+ * always renders LIGHT, regardless of the user's saved theme setting or the OS
+ * `prefers-color-scheme`. The dark `dark:` CSS variants + tokens are intentionally
+ * left in place so dark mode can be re-enabled later by restoring the original
+ * body of this function. To un-shelve: delete the force-light short-circuit and
+ * reinstate the theme/system branching preserved in the comment below.
+ */
+export function applyTheme(_theme: UserSettings["theme"]) {
   const root = document.documentElement;
+  // Force light everywhere — never add the `dark` class on any route.
+  root.classList.remove("dark");
+  return;
 
+  /* ── SHELVED dark-mode logic (reversible) ──────────────────────────────────
+  const isWorkspace = window.location.pathname.startsWith("/app");
   if (!isWorkspace) {
     root.classList.remove("dark");
     return;
   }
-
-  if (theme === "dark") {
+  if (_theme === "dark") {
     root.classList.add("dark");
-  } else if (theme === "light") {
+  } else if (_theme === "light") {
     root.classList.remove("dark");
   } else {
     if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
@@ -134,6 +146,7 @@ export function applyTheme(theme: UserSettings["theme"]) {
       root.classList.remove("dark");
     }
   }
+  ───────────────────────────────────────────────────────────────────────────── */
 }
 
 // ── Date formatting ────────────────────────────────────────────────────────────

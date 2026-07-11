@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { and, eq, ilike, sql } from "drizzle-orm";
+import { and, eq, ilike, isNotNull, ne, sql } from "drizzle-orm";
 import {
   adminUsers, adminAssociationScopes, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, hubPageConfigs, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
   elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
@@ -16,6 +16,7 @@ import {
   paymentPlans,
   hoaFeeSchedules,
   specialAssessments,
+  portalAccess,
 } from "@shared/schema";
 import { slugifyCommunityName } from "@shared/community-slug";
 import { log } from "./logger";
@@ -3769,6 +3770,67 @@ export async function seedDatabase() {
       await db.insert(ownerships).values(o).onConflictDoNothing();
     }
     log(`[seed] chc real ownerships :: ${CHC_REAL_OWNERSHIPS.length} records upserted (idempotent)`, "seed");
+  });
+
+  await runBlock("portal-access-chc", async () => {
+    // ── Real CHC Owners — Section 3: Portal Access (owner login) ──────────────
+    // #386: the CHC seed provisioned units + owners + ledger entries but ZERO
+    // `portal_access` rows, so owners could not log in on a fresh seed and
+    // go-live gate B.2 (checkB2_ownerPortalBalance) returned `pending`
+    // ("no active portal_access rows — owners cannot log in"). Provision an
+    // active, owner-role portal_access row for every seeded CHC owner that has
+    // an email on file (email is NOT NULL on portal_access; owners without an
+    // email are skipped and get provisioned later via the real onboarding-invite
+    // flow). Mirrors production `storage.createPortalAccess` semantics:
+    // role "owner", status "active", acceptedAt = now, lowercased email.
+    //
+    // Driven off the already-seeded ownerships → persons → units (not a
+    // hand-copied list) so it stays in sync with the owner roster above. One row
+    // per (owner, unit); an owner with multiple units gets one row per unit, and
+    // co-owners of one unit each get their own row (distinct emails). Idempotent
+    // via onConflictDoNothing (unique index on
+    // association_id, email, COALESCE(unit_id, '')).
+    const owners = await db
+      .select({
+        personId: ownerships.personId,
+        unitId: ownerships.unitId,
+        email: persons.email,
+      })
+      .from(ownerships)
+      .innerJoin(persons, eq(persons.id, ownerships.personId))
+      .innerJoin(units, eq(units.id, ownerships.unitId))
+      .where(
+        and(
+          eq(units.associationId, CHERRY_HILL_CONDO_ID),
+          isNotNull(persons.email),
+          ne(persons.email, ""),
+        ),
+      );
+
+    const now = new Date();
+    let inserted = 0;
+    for (const o of owners) {
+      const email = (o.email ?? "").trim().toLowerCase();
+      if (!email) continue;
+      const res = await db
+        .insert(portalAccess)
+        .values({
+          associationId: CHERRY_HILL_CONDO_ID,
+          personId: o.personId,
+          unitId: o.unitId,
+          email,
+          role: "owner",
+          status: "active",
+          acceptedAt: now,
+        })
+        .onConflictDoNothing()
+        .returning({ id: portalAccess.id });
+      if (res.length > 0) inserted++;
+    }
+    log(
+      `[seed] chc portal access :: ${inserted} owner logins provisioned (of ${owners.length} owner/unit pairs with email; idempotent)`,
+      "seed",
+    );
   });
 
 

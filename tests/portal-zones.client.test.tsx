@@ -326,85 +326,116 @@ describe("Portal Finances — per-unit hierarchical breakdown (2026-05-25)", () 
   });
 });
 
-describe("Portal Finances — plan-aware Amount Due This Period (2026-05-25 live)", () => {
-  // William verbatim: "if it's on the quarterly plan, then it shouldn't show
-  // due until that quarter is up". The server is the source of truth for
-  // whether `amountDueThisPeriod` is populated; the client renders the hero
-  // card based on its presence. These tests cover the three branches.
+describe("Portal Finances — 'Pay this period' + assessment PLAN redesign (2026-07-09)", () => {
+  // William, repeatedly: LEAD with what's actually due THIS period (this
+  // month's dues + this month's assessment installment), calm/brand — never a
+  // big red lump balance. The full special assessment is shown as a payment
+  // PLAN (total · paid · remaining "over time" · progress · next), and RED is
+  // reserved for genuinely past-due only.
 
-  it("NO PLAN: amount-due hero is hidden; total balance is the primary CTA", async () => {
+  const ROOF_PLAN = {
+    assessmentId: "a-roof",
+    assessmentName: "Roof & façade special assessment",
+    total: 18000,
+    paidToDate: 6000,
+    remaining: 12000,
+    installmentCount: 12,
+    installmentsPaid: 4,
+    installmentAmount: 1500,
+    nextInstallmentAmount: 1500,
+    nextInstallmentDueDate: "2999-01-31T00:00:00.000Z", // future → on track, NOT red
+    nextInstallmentNumber: 5,
+  };
+
+  it("leads with a calm 'Pay this period' hero = this month's dues + installment (NOT the full assessment)", async () => {
     installFetchStub({
       "/api/portal/financial-dashboard": {
         balance: 5618.61,
         totalCharges: 5618.61,
         totalPayments: 0,
-        amountDueThisPeriod: null,
-        byUnit: [],
+        byUnit: [{ unitId: "u-1", unitLabel: "1417-F", total: 990, byCategory: { charge: 990 } }],
+        specialAssessmentUpcomingInstallments: [{ installmentAmount: 1500 }],
+        assessmentPlans: [ROOF_PLAN],
       },
     });
     renderAt("/portal/finances", <PortalFinancesPage />);
     await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
-    // Wait for the dashboard query to resolve and the balance to render.
+    // The hero leads with the THIS-PERIOD total: 990 dues + 1,500 installment.
     await waitFor(() =>
-      expect(screen.getByTestId("portal-finances-balance")).toHaveTextContent("5,618.61"),
+      expect(screen.getByTestId("portal-finances-pay-this-period")).toBeInTheDocument(),
     );
+    expect(screen.getByTestId("portal-finances-due-now-total")).toHaveTextContent("2,490.00");
+    expect(screen.getByTestId("portal-finances-due-now-dues")).toHaveTextContent("990.00");
+    expect(screen.getByTestId("portal-finances-due-now-assessment")).toHaveTextContent("1,500.00");
+    // The this-period figure is NOT the full $18,000 assessment lump.
+    expect(screen.getByTestId("portal-finances-due-now-total")).not.toHaveTextContent("18,000");
+    // The old alarming "amount due"/"total balance" hero cards are gone.
     expect(screen.queryByTestId("portal-finances-amount-due-hero")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("portal-finances-balance")).not.toBeInTheDocument();
   });
 
-  it("MONTHLY PLAN: amount-due hero is visible with the installment", async () => {
+  it("renders the special assessment as a PLAN (total · remaining over time · progress), On track — no red", async () => {
     installFetchStub({
       "/api/portal/financial-dashboard": {
-        balance: 5618.61,
-        totalCharges: 5618.61,
-        totalPayments: 0,
-        amountDueThisPeriod: {
-          amount: 250,
-          periodLabel: "May 2026",
-          periodEnd: "2026-05-31T23:59:59.999Z",
-          frequency: "monthly",
-          reason: "due",
-        },
+        balance: 12000,
+        totalCharges: 6000,
+        totalPayments: 6000,
         byUnit: [],
+        assessmentPlans: [ROOF_PLAN],
       },
     });
     renderAt("/portal/finances", <PortalFinancesPage />);
-    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
-    await waitFor(() => expect(screen.getByTestId("portal-finances-amount-due-hero")).toBeInTheDocument());
-    expect(screen.getByTestId("portal-finances-amount-due")).toHaveTextContent("250");
-    expect(screen.getByTestId("portal-finances-amount-due-context")).toHaveTextContent(/May 2026/);
-    // Total balance is also rendered (as the secondary card).
-    expect(screen.getByTestId("portal-finances-balance")).toHaveTextContent("5,618.61");
+    await waitFor(() =>
+      expect(screen.getByTestId("portal-finances-assessment-plan-a-roof")).toBeInTheDocument(),
+    );
+    const plan = screen.getByTestId("portal-finances-assessment-plan-a-roof");
+    // Remaining "over time" is the plan remaining ($12,000), separate from the
+    // this-period amount — shown as the plan's remaining, never a "due now".
+    expect(
+      screen.getByTestId("portal-finances-assessment-plan-a-roof-remaining"),
+    ).toHaveTextContent("12,000.00");
+    expect(plan).toHaveTextContent("33% paid");
+    expect(plan).toHaveTextContent("4 of 12 installments paid");
+    expect(plan).toHaveTextContent(/On track/i);
+    // No alarming "past due" red state for an on-schedule plan.
+    expect(plan).not.toHaveTextContent(/Past due/i);
   });
 
-  it("QUARTERLY PLAN MID-QUARTER: amount-due hero is HIDDEN (server returns null)", async () => {
+  it("shows 'Total remaining — for reference' as NOT due now (context only)", async () => {
     installFetchStub({
       "/api/portal/financial-dashboard": {
-        balance: 5618.61,
-        totalCharges: 5618.61,
+        balance: 12000,
+        totalCharges: 0,
         totalPayments: 0,
-        // The server's resolver returns null when on a quarterly plan and
-        // current date is outside the grace window. The UI must respect
-        // that — do NOT show the "amount due" CTA between quarters.
-        amountDueThisPeriod: null,
-        // The plan IS active but the resolver said "not due right now."
-        paymentPlan: {
-          id: "pp-1",
-          installmentAmount: 750,
-          installmentFrequency: "quarterly",
-          status: "active",
-        },
         byUnit: [],
+        assessmentPlans: [ROOF_PLAN],
       },
     });
     renderAt("/portal/finances", <PortalFinancesPage />);
-    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
-    // Wait for the dashboard to resolve so the assertion isn't trivially
-    // true while the query is still loading.
     await waitFor(() =>
-      expect(screen.getByTestId("portal-finances-balance")).toHaveTextContent("5,618.61"),
+      expect(screen.getByTestId("portal-finances-total-remaining")).toBeInTheDocument(),
     );
-    expect(screen.queryByTestId("portal-finances-amount-due-hero")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("portal-finances-amount-due")).not.toBeInTheDocument();
+    const ctx = screen.getByTestId("portal-finances-total-remaining");
+    expect(screen.getByTestId("portal-finances-total-remaining-amount")).toHaveTextContent("12,000.00");
+    expect(ctx).toHaveTextContent(/Not due now/i);
+    expect(ctx).toHaveTextContent(/paid over time/i);
+  });
+
+  it("PAID IN FULL: shows the calm caught-up state, no red 'due' hero", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 0,
+        totalCharges: 100,
+        totalPayments: 100,
+        byUnit: [],
+        assessmentPlans: [],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("portal-finances-paid-in-full")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("portal-finances-pay-this-period")).not.toBeInTheDocument();
   });
 
   it("visible 'View full ledger' link is rendered above the fold", async () => {
@@ -421,6 +452,39 @@ describe("Portal Finances — plan-aware Amount Due This Period (2026-05-25 live
     const ledgerLink = screen.getByTestId("portal-finances-hero-ledger-link");
     expect(ledgerLink).toBeInTheDocument();
     expect(ledgerLink).toHaveAttribute("href", "/portal/finances/ledger");
+  });
+});
+
+describe("Portal Finances — non-array API bodies must not crash the page (#380)", () => {
+  // Regression for #380: several portal cards call `.length` / `.map()` on a
+  // useQuery result whose endpoint can return a non-array body (error object,
+  // auth shell) with a 200. `x.length === 0` is `false` for `{}`, so the guard
+  // falls through to `x.map(...)` → "x.map is not a function" and crashes the
+  // whole subtree. The queryFns must normalize non-array bodies to `[]`.
+  //
+  // The budget-ratification card (the #380 report) is already covered by the
+  // per-unit / amount-due tests above — they leave `/api/portal/budget-ratifications`
+  // at the default `{}` body and wait for a post-dashboard-resolve signal, so a
+  // budget-card crash tears down the subtree and fails them (that WAS the #380
+  // symptom). These two add coverage for the sibling cards that share the bug.
+
+  it("payment-methods + autopay cards survive non-array bodies", async () => {
+    installFetchStub({
+      "/api/portal/payment-methods": {},
+      "/api/portal/autopay/enrollments": {},
+    });
+    renderAt("/portal/finances/payment-methods", <PortalFinancesPage subPath="payment-methods" />);
+    // Both cards' resolved empty states only render if the queries settled to
+    // `[]` — without the guard, `{}` would fall through to `.map()` and crash.
+    await screen.findByText(/No saved payment methods yet/i);
+    await screen.findByText(/not currently enrolled in autopay/i);
+  });
+
+  it("receipts card survives a non-array receipts body", async () => {
+    installFetchStub({ "/api/portal/receipts": {} });
+    renderAt("/portal/finances/receipts", <PortalFinancesPage subPath="receipts" />);
+    // The resolved empty state renders only if `receipts` normalized to `[]`.
+    await screen.findByText(/No receipts yet/i);
   });
 });
 

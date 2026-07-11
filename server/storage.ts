@@ -6,9 +6,11 @@ import path from "path";
 import { promisify } from "util";
 import { inflateRawSync } from "zlib";
 import { db } from "./db";
+import { isPortalAccessIdleExpired } from "./portal-expiry";
 import { sendPlatformEmail } from "./email-provider";
 import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
 import {
+  agentActions,
   adminAssociationScopes,
   adminUserPreferences,
   associationMemberships,
@@ -3854,6 +3856,13 @@ export interface IStorage {
   getVendorInvoices(associationId?: string): Promise<VendorInvoice[]>;
   getVendors(associationId?: string): Promise<Vendor[]>;
   getVendorRenewalAlerts(associationId?: string): Promise<Array<{ vendorId: string; vendorName: string; associationId: string; daysUntilExpiry: number; severity: "expired" | "due-soon"; insuranceExpiresAt: Date }>>;
+  // Vendor compliance tracking (founder-os#9482). COI reuses the existing
+  // documents/document_tags substrate (no new document store) — this returns
+  // a batch vendorId->hasCurrentCoi map so a list view isn't N+1.
+  getVendorCoiOnFileMap(vendorIds: string[]): Promise<Record<string, boolean>>;
+  // Dedup check for the compliance-reminder sweep: is there already an OPEN
+  // (queued|approved) agent-action queue item for this target+type?
+  hasOpenAgentAction(targetEntityType: string, targetEntityId: string, actionType: string): Promise<boolean>;
   createVendor(data: InsertVendor): Promise<Vendor>;
   updateVendor(id: string, data: Partial<InsertVendor>): Promise<Vendor | undefined>;
   createVendorInvoice(data: InsertVendorInvoice): Promise<VendorInvoice>;
@@ -7798,6 +7807,43 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
     return alerts;
+  }
+
+  async getVendorCoiOnFileMap(vendorIds: string[]): Promise<Record<string, boolean>> {
+    const map: Record<string, boolean> = {};
+    for (const id of vendorIds) map[id] = false;
+    if (vendorIds.length === 0) return map;
+
+    const rows = await db
+      .select({ vendorId: documentTags.entityId })
+      .from(documentTags)
+      .innerJoin(documents, eq(documents.id, documentTags.documentId))
+      .where(
+        and(
+          eq(documentTags.entityType, "vendor"),
+          inArray(documentTags.entityId, vendorIds),
+          eq(documents.isCurrentVersion, 1),
+          ilike(documents.documentType, "%coi%"),
+        ),
+      );
+    for (const row of rows) map[row.vendorId] = true;
+    return map;
+  }
+
+  async hasOpenAgentAction(targetEntityType: string, targetEntityId: string, actionType: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: agentActions.id })
+      .from(agentActions)
+      .where(
+        and(
+          eq(agentActions.targetEntityType, targetEntityType),
+          eq(agentActions.targetEntityId, targetEntityId),
+          eq(agentActions.actionType, actionType),
+          inArray(agentActions.status, ["queued", "approved"]),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
   }
 
   private deriveVendorStatus(
@@ -13308,12 +13354,9 @@ export class DatabaseStorage implements IStorage {
     let access = await this.getPortalAccessById(portalAccessId);
     if (!access || access.status !== "active") return undefined;
 
-    // Enforce 30-day session expiry based on last login
-    const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-    if (access.lastLoginAt) {
-      const elapsed = Date.now() - new Date(access.lastLoginAt).getTime();
-      if (elapsed > SESSION_MAX_AGE_MS) return undefined;
-    }
+    // Enforce 30-day idle session expiry based on last login. Shared helper (A-AUTH-005,
+    // founder-os#10757) so the upload-authorization path enforces the same window.
+    if (isPortalAccessIdleExpired(access)) return undefined;
 
     let boardRole: BoardRole | null = null;
     if (access.boardRoleId) {

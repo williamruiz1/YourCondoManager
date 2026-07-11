@@ -3,9 +3,11 @@
  * detector that recovers the Expenses / Reports / Statements lazy routes from
  * the "Failed to fetch dynamically imported module" error after a deploy
  * renames content-hashed chunks (William findings #1 / #2 — stale cache).
+ *
+ * @vitest-environment jsdom
  */
-import { describe, expect, it } from "vitest";
-import { isChunkLoadError } from "./lazy-with-reload";
+import { describe, expect, it, beforeEach } from "vitest";
+import { isChunkLoadError, clearChunkReloadFlags } from "./lazy-with-reload";
 
 describe("isChunkLoadError — cross-browser stale-chunk detection", () => {
   it("matches the exact Chrome error William hit", () => {
@@ -49,5 +51,28 @@ describe("isChunkLoadError — cross-browser stale-chunk detection", () => {
     expect(isChunkLoadError(undefined)).toBe(false);
     expect(isChunkLoadError(null)).toBe(false);
     expect(isChunkLoadError("")).toBe(false);
+  });
+});
+
+describe("clearChunkReloadFlags — reset the per-route one-reload budget", () => {
+  beforeEach(() => {
+    window.sessionStorage.clear();
+  });
+
+  it("removes every ycm:chunk-reload:* flag but leaves other keys untouched", () => {
+    window.sessionStorage.setItem("ycm:chunk-reload:@/pages/financial-expenses", "1");
+    window.sessionStorage.setItem("ycm:chunk-reload:@/pages/financial-reports", "1");
+    window.sessionStorage.setItem("unrelated-key", "keep-me");
+
+    clearChunkReloadFlags();
+
+    expect(window.sessionStorage.getItem("ycm:chunk-reload:@/pages/financial-expenses")).toBeNull();
+    expect(window.sessionStorage.getItem("ycm:chunk-reload:@/pages/financial-reports")).toBeNull();
+    expect(window.sessionStorage.getItem("unrelated-key")).toBe("keep-me");
+  });
+
+  it("is a safe no-op when no flags are set", () => {
+    expect(() => clearChunkReloadFlags()).not.toThrow();
+    expect(window.sessionStorage.length).toBe(0);
   });
 });
