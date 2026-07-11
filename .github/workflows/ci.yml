@@ -17,9 +17,14 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
+    # founder-os#10824 — NO workflow-level `paths-ignore`. A path-filtered-out
+    # workflow never reports its jobs' check contexts, and those 3 contexts
+    # (tsc + lint / vitest / build) are REQUIRED by branch protection, so a
+    # docs-only PR sat forever on "3 of 4 expected" (skipped ≠ passed) — permanently
+    # unmergeable, even with --admin. Instead the required jobs ALWAYS run (so their
+    # contexts always report) but their expensive steps are gated on the `changes`
+    # job's `code_changed` output — a docs-only PR passes them instantly. Playwright
+    # (not a required check) is skipped at the job level on docs-only.
   push:
     branches: [main]
 
@@ -47,50 +52,105 @@ concurrency:
 #  - All other steps are runtime-portable (npm + node 24).
 
 jobs:
+  # founder-os#10824 — is this PR docs-only? The required jobs below run always
+  # (so their required check contexts always report) but skip their expensive
+  # steps when there is NO non-docs change, so a docs-only PR reports them green
+  # instantly. A "docs" file = matches ci's old paths-ignore (`**/*.md` or `docs/**`).
+  # push-to-main is always treated as code-changed (run everything).
+  changes:
+    name: detect code changes
+    runs-on: [self-hosted, macOS, ARM64]
+    outputs:
+      code_changed: ${{ steps.detect.outputs.code_changed }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+      - id: detect
+        run: |
+          set -uo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "code_changed=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          BASE="${{ github.base_ref }}"
+          git fetch --no-tags --depth=200 origin "$BASE" >/dev/null 2>&1 || true
+          FILES="$(git diff --name-only "origin/$BASE...HEAD" 2>/dev/null || true)"
+          if [ -z "$FILES" ]; then
+            # Couldn't compute a diff → FAIL SAFE: run the real checks (never
+            # falsely-pass a code change; never deadlock the required contexts).
+            echo "Could not compute changed files → code_changed=true (fail-safe)"
+            echo "code_changed=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          echo "Changed files:"; echo "$FILES"
+          # A non-docs change = a file that neither ends in .md nor lives under docs/.
+          NONDOCS="$(printf '%s\n' "$FILES" | grep -vE '(\.md$|^docs/)' || true)"
+          if [ -n "$NONDOCS" ]; then
+            echo "Non-docs change detected → code_changed=true"
+            echo "code_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Docs-only PR → code_changed=false (required checks pass instantly)"
+            echo "code_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
     name: tsc + lint
+    needs: changes
     runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-      - run: npm ci --legacy-peer-deps
-      - run: npm run check
-      - run: npm run lint
+      - if: needs.changes.outputs.code_changed == 'true'
+        run: npm ci --legacy-peer-deps
+      - if: needs.changes.outputs.code_changed == 'true'
+        run: npm run check
+      - if: needs.changes.outputs.code_changed == 'true'
+        run: npm run lint
       # CQ-001 (founder-os#10740): lint the server/shared trees (money/tenant/
       # webhook logic) that the client-only `lint` never touched. ADVISORY
       # (continue-on-error) for now — the initial finding count on 38.5k
       # untriaged lines is large; surface it without blocking merges, then
       # promote to a blocking gate once the backlog is triaged (do NOT
       # bulk-suppress). Type-aware rules: no-floating-promises + no-misused-promises.
-      - run: npm run lint:server
+      - if: needs.changes.outputs.code_changed == 'true'
+        run: npm run lint:server
         continue-on-error: true
 
   test:
     name: vitest
+    needs: changes
     runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-      - run: npm ci --legacy-peer-deps
-      - run: npx vitest run
+      - if: needs.changes.outputs.code_changed == 'true'
+        run: npm ci --legacy-peer-deps
+      - if: needs.changes.outputs.code_changed == 'true'
+        run: npx vitest run
 
   build:
     name: build
+    needs: changes
     runs-on: [self-hosted, macOS, ARM64]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-      - run: npm ci --legacy-peer-deps
-      - run: npm run build
+      - if: needs.changes.outputs.code_changed == 'true'
+        run: npm ci --legacy-peer-deps
+      - if: needs.changes.outputs.code_changed == 'true'
+        run: npm run build
 
   playwright:
     name: Playwright (route-mock + real-backend + axe + visual)
+    needs: changes
+    # Not a required check — skip it entirely on a docs-only PR (don't burn the
+    # single self-hosted runner on the slow browser suite for a docs change).
+    if: needs.changes.outputs.code_changed == 'true'
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
     env:
