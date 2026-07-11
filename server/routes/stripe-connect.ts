@@ -64,11 +64,35 @@ function getParam(value: string | string[] | undefined): string {
   return "";
 }
 
+// Reject a signed webhook whose `t=` timestamp is older/newer than this —
+// replay protection, mirroring Stripe SDK `constructEvent` (default 5 min) and
+// the existing Plaid verifier (`server/services/bank-feed/plaid-webhook-verify.ts`).
+// A-WEBHOOK-003.
+export const STRIPE_WEBHOOK_TOLERANCE_S = Number(
+  process.env.STRIPE_WEBHOOK_TOLERANCE_S || 5 * 60,
+);
+
+/**
+ * True when the Stripe-Signature `t=` unix timestamp is within tolerance of now.
+ * A captured, validly-signed event replayed later fails this even though its
+ * HMAC still matches. Exported for tests.
+ */
+export function isStripeTimestampFresh(
+  timestamp: string,
+  nowSeconds: number = Math.floor(Date.now() / 1000),
+): boolean {
+  const t = Number(timestamp);
+  if (!Number.isFinite(t)) return false;
+  return Math.abs(nowSeconds - t) <= STRIPE_WEBHOOK_TOLERANCE_S;
+}
+
 /**
  * Verify a Stripe webhook signature using the standard
  * `t=<unix>,v1=<hex>` format. We don't pull in the official Stripe SDK so
  * this implements the documented HMAC-SHA256-of-`${timestamp}.${rawBody}`
  * verification (same as `server/routes.ts` does for per-HOA webhooks).
+ * A-WEBHOOK-003: also enforces the replay/freshness window that Stripe's SDK
+ * applies by default — a valid HMAC alone is not sufficient.
  */
 function verifyStripeWebhookSignature(rawBody: string, header: string, secret: string): boolean {
   const parts = header.split(",").reduce<Record<string, string>>((acc, p) => {
@@ -83,11 +107,15 @@ function verifyStripeWebhookSignature(rawBody: string, header: string, secret: s
   const expBuf = Buffer.from(expected, "utf8");
   const gotBuf = Buffer.from(signature, "utf8");
   if (expBuf.length !== gotBuf.length) return false;
+  let sigOk = false;
   try {
-    return timingSafeEqual(expBuf, gotBuf);
+    sigOk = timingSafeEqual(expBuf, gotBuf);
   } catch {
     return false;
   }
+  // A-WEBHOOK-003: reject stale/replayed timestamps even when the HMAC matches.
+  if (!sigOk) return false;
+  return isStripeTimestampFresh(timestamp);
 }
 
 const ADMIN_ROLES_WRITE: AdminRole[] = ["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"];
