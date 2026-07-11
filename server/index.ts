@@ -387,7 +387,7 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
+void (async () => {
   // Init Sentry first inside the async boot so errors during the rest of
   // boot are captured. Safe across hot-reload (idempotent init).
   await initServerObservability();

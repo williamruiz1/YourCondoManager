@@ -7981,7 +7981,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // WS6.4: If closesAt was extended on an open election, notify pending voters
       if (!isDraftToOpen && result && result.status === "open" && parsed.closesAt) {
         const appBaseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
-        (async () => {
+        void (async () => {
           try {
             const pendingVoters = await storage.getPendingVoterEmailsForElection(result.id);
             const newClosesAtStr = result.closesAt ? new Date(result.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
@@ -8017,7 +8017,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const appBaseUrl = (process.env.APP_BASE_URL || "").replace(/\/$/, "");
 
         // 9.1: Auto-send ballot invitation emails
-        (async () => {
+        void (async () => {
           try {
             const voters = await storage.getVoterEmailsForElection(result.id);
             const closesAtStr = result.closesAt ? new Date(result.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
@@ -8053,7 +8053,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         })();
 
         // 9.3: Auto-create community announcement
-        (async () => {
+        void (async () => {
           try {
             const closesAtStr = result.closesAt ? new Date(result.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
             await db.insert(communityAnnouncements).values({
@@ -8237,7 +8237,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.certifyElection(getParam(req.params.id), req.adminUserEmail || "unknown", certificationSummary);
 
       // 11.1: Auto-create result certificate document in the documents table
-      (async () => {
+      void (async () => {
         try {
           const certDate = result.certifiedAt ? new Date(result.certifiedAt).toLocaleDateString("en-US", { dateStyle: "long" }) : new Date().toLocaleDateString("en-US", { dateStyle: "long" });
           const docTitle = `Election Results: ${result.title} — ${certDate}`;
@@ -8266,7 +8266,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // 9.4: Send results email on certification when resultVisibility is public (fire-and-forget)
       if (result.resultVisibility === "public") {
-        (async () => {
+        void (async () => {
           try {
             const voters = await storage.getVoterEmailsForElection(result.id);
             const isSecret = Boolean(result.isSecretBallot);
@@ -8304,7 +8304,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // WS4.2: Append election results to linked meeting minutes (fire-and-forget)
       if (result.meetingId) {
-        (async () => {
+        void (async () => {
           try {
             const meetingId = result.meetingId!;
             const [meeting] = await db.select().from(governanceMeetings).where(eq(governanceMeetings.id, meetingId));
@@ -8368,7 +8368,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const closesAtStr = election.closesAt ? new Date(election.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
 
       // Fire-and-forget email sending
-      (async () => {
+      void (async () => {
         try {
           for (const voter of pendingVoters) {
             const voteUrl = `${appBaseUrl}/vote/${voter.token}`;
@@ -8422,7 +8422,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const closesAtStr = election.closesAt ? new Date(election.closesAt).toLocaleDateString("en-US", { dateStyle: "long" }) : "TBD";
 
       // Fire-and-forget email sending
-      (async () => {
+      void (async () => {
         try {
           await sendPlatformEmail({
             to: tokenData.email,
@@ -8506,7 +8506,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await storage.createProxyDocument(parsed);
 
       // 11.2: Mirror proxy document into the documents table for governance record-keeping
-      (async () => {
+      void (async () => {
         try {
           const election = await storage.getElection(getParam(req.params.id));
           if (election) {

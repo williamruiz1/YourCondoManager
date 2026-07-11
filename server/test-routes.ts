@@ -135,6 +135,9 @@ async function handleTestLogin(req: Request, res: Response): Promise<void> {
     // req.login → passport.serializeUser → express-session, exactly as
     // the Google OAuth callback does. Only Google's identity assertion
     // is bypassed; the cookie+session roundtrip is genuine.
+    // req.login done-style callback: the async body handles the error branch and
+    // wraps its only await in try/catch, so it never rejects — safe to ignore.
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     req.login(authUser as Express.User, async (error?: unknown) => {
       if (error) {
         log(`[test-login] req.login failed err=${(error as Error).message}`, "auth");

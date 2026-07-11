@@ -209,6 +209,9 @@ function configurePassport() {
     done(null, id);
   });
 
+  // Passport done-style callback: the async body fully try/catches and always
+  // calls done(...) (never rejects), so the returned promise is safe to ignore.
+  // eslint-disable-next-line @typescript-eslint/no-misused-promises
   passport.deserializeUser(async (userId: string, done) => {
     try {
       const user = await storage.getAuthUserById(String(userId));
@@ -236,6 +239,9 @@ function configurePassport() {
         clientSecret: google.clientSecret,
         callbackURL: strategyCallbackUrl,
       },
+      // Passport verify callback: the async body fully try/catches and always
+      // calls done(...) (never rejects), so the returned promise is safe.
+      // eslint-disable-next-line @typescript-eslint/no-misused-promises
       async (_accessToken, _refreshToken, profile, done) => {
         try {
           const providerAccountId = profile.id?.trim();
@@ -491,12 +497,20 @@ export function registerAuthRoutes(app: Express) {
       return res.redirect("/pricing?auth=magic-invalid");
     }
 
+    // req.login done-style callback: the login side-effect is already applied;
+    // the bookkeeping await below is wrapped non-fatally so the async body never
+    // rejects, making the ignored return promise safe.
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     req.login(user as Express.User, async (error) => {
       if (error) {
         log(`[auth][magic] req.login failed userId=${user.id} err=${error.message}`, "auth");
         return res.redirect("/pricing?auth=magic-failed");
       }
-      await storage.touchAuthUserLogin(user.id);
+      try {
+        await storage.touchAuthUserLogin(user.id);
+      } catch (touchErr) {
+        log(`[auth][magic] touchAuthUserLogin non-fatal err=${(touchErr as Error).message}`, "auth");
+      }
       log(`[auth][magic] session established userId=${user.id} email=${user.email} adminUserId=${user.adminUserId ?? "null"}`, "auth");
 
       // WS12 — record auth event + new-IP alert.
@@ -550,6 +564,10 @@ export function registerAuthRoutes(app: Express) {
       return res.status(403).json({ message: "Auth user not found or inactive" });
     }
 
+    // req.login done-style callback: the login side-effect is already applied;
+    // the bookkeeping await below is wrapped non-fatally so the async body never
+    // rejects, making the ignored return promise safe.
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     req.login(user as Express.User, async (error) => {
       if (error) {
         clearAuthRestoreCookie(req, res);
@@ -557,7 +575,11 @@ export function registerAuthRoutes(app: Express) {
         return res.status(500).json({ message: "Failed to restore session" });
       }
       clearAuthRestoreCookie(req, res);
-      await storage.touchAuthUserLogin(user.id);
+      try {
+        await storage.touchAuthUserLogin(user.id);
+      } catch (touchErr) {
+        log(`[auth][restore] touchAuthUserLogin non-fatal err=${(touchErr as Error).message}`, "auth");
+      }
       log(`[auth][restore] session restored userId=${user.id} email=${user.email} adminUserId=${user.adminUserId ?? "null"}`, "auth");
 
       // WS12 — record session-restore event. New-IP alert NOT fired here:

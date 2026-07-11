@@ -32,15 +32,23 @@ export default [
       "attached_assets/**",
       "scripts/**",
       "script/**",
-      "server/**",
-      "shared/**",
+      // server/** and shared/** are NO LONGER globally ignored (CQ-001,
+      // founder-os#10740) — they are linted by the dedicated type-aware block
+      // at the bottom of this config. The top-level `recommended` presets below
+      // are scoped to client so server/shared get ONLY the two promise rules,
+      // not the full recommended flood on 38k+ lines of legacy code.
       "tests/**",
       "*.config.js",
       "*.config.ts",
     ],
   },
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
+  // Recommended presets — CLIENT ONLY. Scoping these keeps the server/shared
+  // block (bottom) limited to the two high-value promise rules.
+  { files: ["client/**/*.{ts,tsx}"], ...js.configs.recommended },
+  ...tseslint.configs.recommended.map((config) => ({
+    ...config,
+    files: ["client/**/*.{ts,tsx}"],
+  })),
   {
     files: ["client/**/*.{ts,tsx}"],
     plugins: {
@@ -174,6 +182,41 @@ export default [
             "Nav labels must use the zone label alone. 'Overview' is forbidden as a suffix in sidebar `label` strings (1.2 Q7). See docs/projects/platform-overhaul/implementation-artifacts/1.2-hub-contract.md §4.",
         },
       ],
+    },
+  },
+
+  // --- CQ-001 (YCM audit W1, founder-os#10740): server + shared ARE now linted. ---
+  // The entire server/ tree (routes.ts, storage.ts, payment/webhook/tenant
+  // logic) + shared/ previously received ZERO ESLint analysis. Enable the two
+  // highest-value TYPE-AWARE promise rules — no-floating-promises +
+  // no-misused-promises — which catch unawaited promises in money/tenant/auth
+  // paths. Kept intentionally minimal (just these two rules, no recommended
+  // flood) so the gate is actionable rather than noise.
+  //
+  // Test files (**/*.test.ts, **/*.spec.ts) are excluded: tsconfig.json
+  // `exclude`s them, so the type-aware parser cannot resolve them; they are
+  // covered by vitest. server/test-routes.ts (production debug routes) is NOT a
+  // test file and stays in scope.
+  {
+    files: ["server/**/*.ts", "shared/**/*.ts"],
+    ignores: ["**/*.test.ts", "**/*.spec.ts"],
+    // This block deliberately enables only two rules, so pre-existing inline
+    // `eslint-disable` directives for OTHER rules (e.g. no-explicit-any) are
+    // legitimate, not stale — do not report them as unused here.
+    linterOptions: { reportUnusedDisableDirectives: "off" },
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    plugins: {
+      "@typescript-eslint": tseslint.plugin,
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
     },
   },
 ];

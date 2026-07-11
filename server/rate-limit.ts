@@ -60,9 +60,22 @@ export function createRateLimiter(options: {
  * Use this when `app.use("/api/some-prefix", ...)` would also intercept
  * read-only GET requests that you want to leave unthrottled.
  */
+// The wrapped limiters (createPgRateLimiter) are async — they await a Postgres
+// increment before calling next()/res. Type the param + return as
+// `void | Promise<void | Response>` so the returned promise is forwarded to
+// Express (v5 awaits handler-returned promises and routes a rejection to the
+// error handler) instead of floating (@typescript-eslint/no-misused-promises).
 export function onWriteOnly(
-  limiter: (req: Request, res: Response, next: NextFunction) => void,
-): (req: Request, res: Response, next: NextFunction) => void {
+  limiter: (
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) => void | Promise<void | Response>,
+): (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => void | Promise<void | Response> {
   const WRITE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
   return (req: Request, res: Response, next: NextFunction) => {
     if (WRITE_METHODS.has(req.method)) {
