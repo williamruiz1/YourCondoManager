@@ -4,7 +4,7 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createHmac, timingSafeEqual, randomInt } from "crypto";
+import { createHmac, timingSafeEqual, randomUUID, randomInt } from "crypto";
 import { storage } from "./storage";
 import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
 import { db } from "./db";
@@ -20569,6 +20569,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         });
       }
 
+      // A-LEDGER-007 groundwork: referenceId must be a UNIQUE per-intent id,
+      // NOT the bank-connection id (which repeats across every payment on that
+      // connection and prevents idempotent dedup). Route stays default-OFF
+      // (503 above) until settlement-on-confirmation lands (A-RECON-004); the
+      // unique key is the seam that lets the future settlement matcher dedup
+      // and reconcile each intent. The DB unique constraint on
+      // (referenceType, referenceId) + settlement-only posting are deferred to
+      // that follow-on — this is additive groundwork behind the off flag.
+      const payIntentId = `plaid-pay:${randomUUID()}`;
       const [entry] = await db.insert(ownerLedgerEntries).values({
         associationId,
         personId,
@@ -20578,7 +20587,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         description: description ?? "Bank payment (pending)",
         postedAt: new Date(),
         referenceType: "plaid-pay-intent",
-        referenceId: conn.id,
+        referenceId: payIntentId,
       }).returning();
 
       res.status(201).json({
