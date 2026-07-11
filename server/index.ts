@@ -10,6 +10,7 @@ import { createServer } from "http";
 // see the import-time note further down and the dynamic `await import("./seed")`.
 import { storage } from "./storage";
 import { pool, db } from "./db";
+import { withSchedulerLock } from "./scheduler-lock";
 import { eq } from "drizzle-orm";
 import { autopayEnrollments, delinquencyEscalations } from "@shared/schema";
 import { runAutopayCollectionForAssociation } from "./routes/autopay";
@@ -20,15 +21,19 @@ import { fanOutCriticalAlerts } from "./alerts/notifications";
 import { runOnboardingReminderSweep } from "./services/onboarding-reminder-sweep";
 import { runBankFeedSweep } from "./services/bank-feed-sync";
 import { runPressingItemsSweep } from "./services/pressing-items/scanner";
+import { runUsageReconcileSweep } from "./services/usage-reconcile";
 import { sendPlatformAdminEmailNotification } from "./admin-notification-service";
 import { recoverInFlightJobs } from "./job-queue";
-import { log } from "./logger";
+import { log, formatApiLogLine } from "./logger";
 import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
-import { createRateLimiter, onWriteOnly } from "./rate-limit";
+import { startVendorComplianceScheduler } from "./vendor-compliance-scheduler";
+import { createRateLimiter, createPgRateLimiter, onWriteOnly, type RateLimitQuery } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
+import { assertPlaidEnvSafe } from "./services/bank-feed/plaid-env-guard";
+import { assertStripeFcEnvSafe } from "./services/bank-feed/stripe-fc-env-guard";
 
 // Wave 33 (5.4 Part B): seed.ts is ~120 KB of static demo-data tables. It
 // only runs once at boot, after the HTTP server has already started
@@ -44,7 +49,7 @@ dotenv.config({ path: ".env.local", override: true });
 // block below so the CJS bundle target stays compatible. No-op when
 // `SENTRY_DSN` is unset (local dev). See INSTALL-OBSERVABILITY.md for the
 // production deploy steps (Issue founder-os#1030).
-import { initServerObservability } from "./observability";
+import { initServerObservability, assertServerObservabilityConfigured } from "./observability";
 
 const app = express();
 const httpServer = createServer(app);
@@ -221,7 +226,7 @@ async function runAutomationSweep() {
   // per-subsystem functions (runDueRecurringCharges,
   // runAutomaticSpecialAssessmentInstallments) were retired alongside the
   // Q8 run-endpoint shims and no longer exist in the bundle.
-  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder, onboardingReminderResult, bankFeedSweepResult, pressingItemsResult] = await Promise.all([
+  const [scheduledResult, escalationResult, boardPackageResult, assessmentSweep, autopayResult, retryResult, noticeResult, criticalAlertFanOut, accessReviewReminder, onboardingReminderResult, bankFeedSweepResult, pressingItemsResult, usageReconcileResult] = await Promise.all([
     storage.runScheduledNotices({ actedBy: "automation@system" }),
     storage.runMaintenanceEscalationSweep({ actorEmail: "automation@system" }),
     storage.runScheduledBoardPackageGeneration({ actorEmail: "automation@system" }),
@@ -279,10 +284,20 @@ async function runAutomationSweep() {
       console.error("[pressing-items] sweep failed:", error);
       return { associationsScanned: 0, totalInserted: 0, totalUpdated: 0, totalResolved: 0 };
     }),
+    // usage-reporting (gap closed) — report current per-unit / per-door usage to
+    // the Stripe Billing Meters, once per billing period per active metered
+    // subscription. Idempotent (local ledger + deterministic Stripe identifier), so
+    // it is safe to call every sweep tick: subscriptions already reported for the
+    // current period are skipped. Returns null when Stripe is unconfigured. Wrapped
+    // so a Stripe 5xx can't jam the rest of automation.
+    runUsageReconcileSweep().catch((error: unknown) => {
+      console.error("[usage-reporting] reconcile sweep failed:", error);
+      return null;
+    }),
   ]);
 
   log(
-    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason}), onboarding-reminders scanned=${onboardingReminderResult.scanned} sent=${onboardingReminderResult.sent} failed=${onboardingReminderResult.failed} skipped=${onboardingReminderResult.skipped}, bank-feed-sync scanned=${bankFeedSweepResult.scanned} synced=${bankFeedSweepResult.synced} skipped=${bankFeedSweepResult.skipped} failed=${bankFeedSweepResult.failed} txns=${bankFeedSweepResult.totalTransactions} matches=${bankFeedSweepResult.totalMatches}, pressing-items assoc=${pressingItemsResult.associationsScanned} inserted=${pressingItemsResult.totalInserted} updated=${pressingItemsResult.totalUpdated} resolved=${pressingItemsResult.totalResolved}`,
+    `automation sweep complete :: notices processed=${scheduledResult.processed}, maintenance escalated=${escalationResult.escalated}/${escalationResult.processed}, board packages generated=${boardPackageResult.generated}/${boardPackageResult.processed}, assessment dispatched=${assessmentSweep.totalDispatched} success=${assessmentSweep.perStatus.success} failed=${assessmentSweep.perStatus.failed} skipped=${assessmentSweep.perStatus.skipped}, autopay succeeded=${autopayResult.succeeded} failed=${autopayResult.failed} skipped=${autopayResult.skipped}, retries retried=${retryResult.retried} succeeded=${retryResult.succeeded} failed=${retryResult.failed}, delinquency notices generated=${noticeResult.generated} skipped=${noticeResult.skipped}, critical-alerts scanned=${criticalAlertFanOut.scanned} sent=${criticalAlertFanOut.sentEmail + criticalAlertFanOut.sentPush} (email=${criticalAlertFanOut.sentEmail} push=${criticalAlertFanOut.sentPush}) rate-limited=${criticalAlertFanOut.rateLimited} dedup=${criticalAlertFanOut.alreadyDelivered} suppressed=${criticalAlertFanOut.suppressedPreExisting} failed=${criticalAlertFanOut.failed}, access-review-reminder fired=${accessReviewReminder.fired} (${accessReviewReminder.reason}), onboarding-reminders scanned=${onboardingReminderResult.scanned} sent=${onboardingReminderResult.sent} failed=${onboardingReminderResult.failed} skipped=${onboardingReminderResult.skipped}, bank-feed-sync scanned=${bankFeedSweepResult.scanned} synced=${bankFeedSweepResult.synced} skipped=${bankFeedSweepResult.skipped} failed=${bankFeedSweepResult.failed} txns=${bankFeedSweepResult.totalTransactions} matches=${bankFeedSweepResult.totalMatches}, pressing-items assoc=${pressingItemsResult.associationsScanned} inserted=${pressingItemsResult.totalInserted} updated=${pressingItemsResult.totalUpdated} resolved=${pressingItemsResult.totalResolved}, usage-reconcile ${usageReconcileResult ? `scanned=${usageReconcileResult.scanned} reported=${usageReconcileResult.reported} skipped=${usageReconcileResult.skipped} errors=${usageReconcileResult.errors}` : "skipped (stripe unconfigured)"}`,
     "automation",
   );
 
@@ -323,8 +338,15 @@ function startAutomationJobs() {
   }
 
   const intervalMs = Math.max(60_000, Number(process.env.AUTOMATION_SWEEPS_INTERVAL_MS || 300_000));
+  // SCALE-B-003 / A-REL-005 (founder-os#10741): the automation sweep fans out
+  // autopay charging, delinquency notices, and assessment dispatch — real money
+  // + owner-facing side effects that MUST NOT double-fire across machines. Wrap
+  // every tick in a cross-machine advisory lock so only one machine runs the
+  // sweep per interval. No-op on the current single-machine topology (the lock
+  // always acquires immediately). The in-memory __automationJobState flag still
+  // guards against overlapping runs on the SAME machine.
   const timer = setInterval(() => {
-    runAutomationSweep().catch((error) => {
+    withSchedulerLock("automation-sweep", () => runAutomationSweep()).catch((error) => {
       console.error("Automation sweep failed:", error);
     });
   }, intervalMs);
@@ -334,7 +356,7 @@ function startAutomationJobs() {
     timer,
   };
 
-  runAutomationSweep().catch((error) => {
+  withSchedulerLock("automation-sweep", () => runAutomationSweep()).catch((error) => {
     console.error("Automation sweep failed:", error);
   });
   log(`automation sweeps started (interval ${intervalMs}ms)`, "automation");
@@ -354,12 +376,11 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+      // A-SEC-001 (founder-os#10738): never serialize response bodies into
+      // production logs (PII / auth tokens leak). formatApiLogLine logs only
+      // method/path/status/duration in production; a redacted+truncated body
+      // preview is appended ONLY in non-production for local debugging.
+      log(formatApiLogLine(req.method, path, res.statusCode, duration, capturedJsonResponse));
     }
   });
 
@@ -371,57 +392,121 @@ app.use((req, res, next) => {
   // boot are captured. Safe across hot-reload (idempotent init).
   await initServerObservability();
 
-  const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
-  app.use("/api/public", publicRateLimiter);
+  // A-OPS-003 / CQ-009 — boot-time observability assertion. Makes the
+  // "Sentry silently no-ops in production" failure LOUD so it can never
+  // regress unnoticed. Non-strict by default (a missing DSN loud-warns but
+  // never bricks prod); SENTRY_STRICT=1 upgrades it to a hard boot-fail once
+  // the DSN secret is provisioned. Non-production is a silent no-op.
+  assertServerObservabilityConfigured();
 
-  // Portal login is the real brute-force surface. Apply a conservative
-  // limit to request-login (email enumeration / OTP spam) and a tighter
-  // limit to verify-login (OTP code brute-force).
-  const portalRequestLoginLimiter = createRateLimiter({
+  // BLINDSPOT F7 — Plaid production env-flip guard. Refuse to boot in
+  // PLAID_ENV=production unless webhook JWT verification is wired + the
+  // production credentials are present. This makes the safe order
+  // (verification BEFORE going live) mechanical, not a checklist a deploy can
+  // skip. Sandbox/development always passes. Throwing here aborts boot — which
+  // on Fly aborts the deploy, exactly as intended.
+  const plaidGuard = assertPlaidEnvSafe();
+  log(`Plaid env guard OK (env=${plaidGuard.env})`, "plaid");
+
+  // Stripe Financial Connections (FC) env guard — same mechanical-safety rail
+  // as Plaid's, scoped to the FC bank-feed alternative. No-op unless
+  // STRIPE_FINANCIAL_CONNECTIONS_ENABLED is ON. When ON in production, it
+  // refuses to boot without STRIPE_FC_WEBHOOK_SECRET wired (so a production
+  // FC webhook handler can never accept forged bank transactions).
+  const fcGuard = assertStripeFcEnvSafe();
+  log(
+    `Stripe FC env guard OK (enabled=${fcGuard.enabled} env=${fcGuard.env})`,
+    "stripe-fc",
+  );
+
+  // ── Rate limiting (P1-4 / YCM#211) ───────────────────────────────────────
+  //
+  // Money-mutation + auth-adjacent routes use the MULTI-MACHINE-CORRECT
+  // Postgres-backed limiter (createPgRateLimiter): one shared fixed-window
+  // counter across all Fly machines via the existing `rate_limit_counters`
+  // table. fly.toml provisions 2 machines (one auto-stopped), so a per-machine
+  // in-memory counter would let a load-balanced attacker get up to 2x the
+  // intended quota on exactly these surfaces. No Redis, no new infra service.
+  // On a Postgres blip the limiter FAILS OPEN to a per-machine in-memory
+  // limiter (abuse protection, not a security gate — a DB blip must never DoS
+  // legitimate traffic). Full strategy + route inventory: docs/rate-limiting.md.
+  //
+  // Limits are generous — an 18-unit HOA never hits them in normal use (this is
+  // abuse protection, not customer throttling). `onWriteOnly` leaves GET reads
+  // (dashboards, reports) unthrottled on the money/admin prefixes.
+  const rlQuery: RateLimitQuery = (text, params) => pool.query(text, params);
+  const rlFallbackLog = (tier: string) => (err: unknown) =>
+    log(
+      `rate-limit ${tier}: Postgres unavailable, degrading to per-machine in-memory limiter :: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      "rate-limit",
+    );
+
+  // TIER 1 — AUTH VERIFY (OTP / token verification: the tightest brute-force
+  // surface — an attacker guessing a 6-digit OTP or a ballot/verify token).
+  const authVerifyLimiter = createPgRateLimiter({
+    query: rlQuery,
+    keyPrefix: "auth-verify",
+    windowMs: 10 * 60_000,
+    max: 10,
+    message: "Too many verification attempts, please try again in a few minutes.",
+    onFallback: rlFallbackLog("auth-verify"),
+  });
+  app.use("/api/portal/verify-login", authVerifyLimiter);
+  app.use("/api/vendor-portal/verify-login", authVerifyLimiter);
+  app.use("/api/platform/email/verify", authVerifyLimiter);
+  app.use("/api/elections/ballot", authVerifyLimiter); // token-cast ballot surface
+
+  // TIER 2 — AUTH REQUEST (login request / magic-link send: email-enumeration +
+  // OTP-spam surface).
+  const authRequestLimiter = createPgRateLimiter({
+    query: rlQuery,
+    keyPrefix: "auth-request",
     windowMs: 60_000,
     max: 10,
     message: "Too many login attempts, please try again later.",
+    onFallback: rlFallbackLog("auth-request"),
   });
-  app.use("/api/portal/request-login", portalRequestLoginLimiter);
+  app.use("/api/portal/request-login", authRequestLimiter);
+  app.use("/api/vendor-portal/request-login", authRequestLimiter);
 
-  const portalVerifyLoginLimiter = createRateLimiter({
-    windowMs: 10 * 60_000,
-    max: 5,
-    message: "Too many verification attempts, please try again later.",
-  });
-  app.use("/api/portal/verify-login", portalVerifyLoginLimiter);
-
-  // P1-4 — financial-mutation + admin write rate limiting.
-  //
-  // The existing limiters above cover public surfaces and auth brute-force.
-  // Financial write routes (/api/financial/* POST/PATCH/DELETE) and general
-  // admin write routes (/api/admin/* POST/PATCH/DELETE) were previously
-  // unthrottled. Both require a valid admin session (requireAdmin middleware)
-  // so the attack surface is narrower than public, but an authenticated
-  // attacker or a runaway automated process could still generate large write
-  // volumes. These limits protect against that without impeding normal use
-  // (a treasurer recording dozens of payments in a session won't hit 60/min).
-  //
-  // Limits chosen per OWASP API Security Top 10 guidance for authenticated
-  // write surfaces: 60 requests/minute is permissive for human operators yet
-  // blocks automated write floods. The `onWriteOnly` wrapper leaves GET
-  // requests (financial dashboards, reports) unaffected.
-  //
-  // Multi-instance note: see rate-limit.ts — swap to Redis when YCM scales
-  // beyond a single Fly machine.
-  const financialWriteLimiter = createRateLimiter({
+  // TIER 3 — MONEY / ADMIN WRITE (payments, ledger, reconcile, autopay, Plaid,
+  // Stripe Connect, billing, admin writes). 60/min per IP is permissive for a
+  // treasurer recording a batch of payments yet blocks an automated write flood.
+  const moneyWriteLimiter = createPgRateLimiter({
+    query: rlQuery,
+    keyPrefix: "money-write",
     windowMs: 60_000,
     max: 60,
-    message: "Too many financial write requests, please slow down.",
+    message: "Too many financial requests, please slow down.",
+    onFallback: rlFallbackLog("money-write"),
   });
-  app.use("/api/financial", onWriteOnly(financialWriteLimiter));
+  app.use("/api/financial", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/admin", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/portal/pay", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/portal/payment-methods", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/portal/autopay", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/plaid", onWriteOnly(moneyWriteLimiter));
+  app.use("/api/portal/plaid", onWriteOnly(moneyWriteLimiter));
 
-  const adminWriteLimiter = createRateLimiter({
+  // TIER 4 — INVITE / TOKEN GENERATION (send onboarding invites — email-send
+  // abuse surface). Admin-authed but still worth a generous cap.
+  const inviteLimiter = createPgRateLimiter({
+    query: rlQuery,
+    keyPrefix: "invite-gen",
     windowMs: 60_000,
-    max: 60,
-    message: "Too many admin write requests, please slow down.",
+    max: 20,
+    message: "Too many invitations sent, please slow down.",
+    onFallback: rlFallbackLog("invite-gen"),
   });
-  app.use("/api/admin", onWriteOnly(adminWriteLimiter));
+  app.use("/api/onboarding/invites", onWriteOnly(inviteLimiter));
+
+  // General public surface — a coarse per-machine in-memory guard is acceptable
+  // here (non-money, non-auth; the exact quota need not be shared across
+  // machines). Kept in-memory deliberately.
+  const publicRateLimiter = createRateLimiter({ windowMs: 60_000, max: 20 });
+  app.use("/api/public", publicRateLimiter);
 
   await registerRoutes(httpServer, app);
 
@@ -462,18 +547,42 @@ app.use((req, res, next) => {
   // and runs once at boot. Lazy-import keeps it out of the cold-start
   // bundle and out of dist/index.cjs's main chunk.
   //
-  // founder-os#2472: the dynamic import specifier MUST include the `.js`
+  // founder-os#2472: the dynamic import specifier MUST include the file
   // extension. The production runtime is `node dist/index.cjs` (CJS), but
   // `package.json` declares `"type": "module"` and `await import()` invokes
   // Node's ESM resolver. ESM resolution requires explicit file extensions
-  // for relative paths — `await import("./seed")` throws
-  // ERR_MODULE_NOT_FOUND at boot, the error was being logged but silently
-  // swallowed, and the app continued serving empty tables. Cherry Hill data
-  // never landed in production as a direct consequence.
-  void (async () => {
+  // for relative paths — a bare `./seed` throws ERR_MODULE_NOT_FOUND at
+  // boot, the error was being logged but silently swallowed, and the app
+  // continued serving empty tables. Cherry Hill data never landed in
+  // production as a direct consequence.
+  //
+  // Site audit 2026-06-22: the seed sibling is built in `format: "cjs"`
+  // (it uses `module.exports`/`require` internally). Under
+  // `"type": "module"`, Node parses a `.js` file as ESM — so importing the
+  // CJS-format `dist/seed.js` threw `ReferenceError: module is not defined
+  // in ES module scope` on every prod boot ("[boot] Seed failed to run").
+  // The build now emits the sibling as `dist/seed.cjs`, whose `.cjs`
+  // extension forces Node's CJS loader regardless of "type": "module".
+  //
+  // Dev (tsx via `script/dev.ts`) does NOT resolve a `.cjs` specifier back
+  // to `server/seed.ts` (verified), but it DOES resolve `.js`. So the
+  // specifier branches on the runtime: `./seed.cjs` for the prod bundle,
+  // `./seed.js` for the tsx dev runner. Both are in esbuild's `external`
+  // list so neither is inlined into the main bundle.
+  const seedModuleSpecifier =
+    process.env.NODE_ENV === "production" ? "./seed.cjs" : "./seed.js";
+  // STARTUP-B-006 (founder-os#10741): seedDatabase() runs on every boot (a
+  // 4k-line seed). With Fly auto_stop/auto_start, a cold start pays the full
+  // seed before serving. Gate it behind SEED_ON_BOOT so it can be disabled once
+  // verified redundant in prod. DEFAULT = current seed-on-boot behavior (the
+  // flag must be explicitly "false" to skip) — a low-risk item, not rushed.
+  const seedOnBoot = (process.env.SEED_ON_BOOT ?? "true").toLowerCase() !== "false";
+  if (!seedOnBoot) {
+    log("[boot] seed :: SKIPPED (SEED_ON_BOOT=false)", "startup");
+  } else void (async () => {
     try {
-      log("[boot] seed :: starting lazy import of ./seed.js", "startup");
-      const { seedDatabase } = await import("./seed.js");
+      log(`[boot] seed :: starting lazy import of ${seedModuleSpecifier}`, "startup");
+      const { seedDatabase } = await import(/* @vite-ignore */ seedModuleSpecifier);
       await seedDatabase();
       log("[boot] seed :: completed", "startup");
     } catch (err) {
@@ -539,6 +648,7 @@ app.use((req, res, next) => {
     startAutomationJobs();
     startElectionScheduler();
     startDeprovisioningScheduler();
+    startVendorComplianceScheduler();
     // Wave 33 (5.4-F3): re-enqueue any background_jobs rows still in
     // queued/running state from a prior process. Best-effort; failures are
     // logged but never crash the server.

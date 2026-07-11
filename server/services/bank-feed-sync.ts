@@ -29,7 +29,7 @@
  * `bank_feed_sync_runs` row with started_at + finished_at + counts + error.
  * Sole exception is the debounced webhook bursts that never start a run.
  */
-import { and, eq, isNull, or, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, lt, sql } from "drizzle-orm";
 import { db, pool } from "../db";
 import {
   bankAccounts,
@@ -41,17 +41,18 @@ import {
 import { bankFeedProvider } from "./bank-feed";
 import { decryptPlaidToken } from "./bank-feed/token-crypto";
 import { reconcileBankTransactions } from "./plaid-reconciliation";
+import { syncBridgedFinancialAccountBalance } from "./financial-account-bank-bridge";
 import { log } from "../logger";
 
 // Connections older than this are picked up by the sweep. Webhook + manual
 // paths bypass this gate.
 const STALENESS_MS = Number(process.env.BANK_FEED_SYNC_STALENESS_MS || 15 * 60 * 1000);
 
-// Transactions horizon: how far back the sync looks when calling
-// /transactions/get. Plaid's /transactions/sync would be more efficient at
-// scale, but the existing PlaidProvider.getTransactions(since) interface is
-// what's wired today — keep that contract and pull the last 30 days.
-const SYNC_LOOKBACK_DAYS = Number(process.env.BANK_FEED_SYNC_LOOKBACK_DAYS || 30);
+// NOTE: the legacy date-window lookback (BANK_FEED_SYNC_LOOKBACK_DAYS) is gone.
+// The sync engine now uses Plaid /transactions/sync with a per-connection
+// cursor (bank_connections.transactions_cursor), so there is no time horizon:
+// the first sync backfills full history, every subsequent sync pulls only the
+// delta since the persisted cursor.
 
 // Per-item_id webhook debounce window. Plaid can fire SYNC_UPDATES_AVAILABLE
 // repeatedly in a burst; we coalesce to at most one sync per minute per item.
@@ -164,7 +165,17 @@ async function syncOneConnectionLocked(
 
   try {
     const accessToken = decryptPlaidToken(conn.accessTokenEncrypted);
-    const sinceDate = new Date(Date.now() - SYNC_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+
+    // Map providerAccountId → bank_accounts.id for this connection, so the COA
+    // bridge can key its balance refresh off the bank account id without a
+    // RETURNING clause on the balance update.
+    const connBankAccounts = await db
+      .select({ id: bankAccounts.id, providerAccountId: bankAccounts.providerAccountId })
+      .from(bankAccounts)
+      .where(eq(bankAccounts.bankConnectionId, conn.id));
+    const balanceAccountIdMap = new Map(
+      connBankAccounts.map((a) => [a.providerAccountId, a.id]),
+    );
 
     // Refresh account balances + record lastSyncedAt on each account.
     const accountSnapshots = await bankFeedProvider.getAccounts(accessToken);
@@ -182,21 +193,43 @@ async function syncOneConnectionLocked(
             eq(bankAccounts.providerAccountId, acct.providerAccountId),
           ),
         );
+
+      // Bridge: keep the mirrored Chart-of-Accounts row's balance in sync so
+      // /app/financial/foundation reflects current balances. Best-effort — a
+      // bridge update must never fail the bank-feed sync. No-op if no mirror
+      // row exists for this account.
+      const bankAccountId = balanceAccountIdMap.get(acct.providerAccountId);
+      if (bankAccountId) {
+        try {
+          await syncBridgedFinancialAccountBalance(bankAccountId, acct.currentBalanceCents);
+        } catch (bridgeErr) {
+          const msg = bridgeErr instanceof Error ? bridgeErr.message : String(bridgeErr);
+          log(`[coa-bridge] balance sync skipped for ${bankAccountId} (non-fatal): ${msg}`);
+        }
+      }
     }
 
-    // Fetch + upsert transactions.
-    const txns = await bankFeedProvider.getTransactions(accessToken, sinceDate);
+    // Fetch transaction deltas via Plaid /transactions/sync (P-3). The
+    // connection's persisted cursor is the resumption point; NULL drives an
+    // initial sync (full backfill, equivalent to the old date-window get).
+    const sync = await bankFeedProvider.syncTransactions(
+      accessToken,
+      conn.transactionsCursor ?? null,
+    );
     const dbAccounts = await db
       .select({ id: bankAccounts.id, providerAccountId: bankAccounts.providerAccountId })
       .from(bankAccounts)
       .where(eq(bankAccounts.bankConnectionId, conn.id));
     const accountIdMap = new Map(dbAccounts.map((a) => [a.providerAccountId, a.id]));
 
-    for (const txn of txns) {
+    // added + modified both upsert: insert new rows, update changed ones (e.g.
+    // a pending txn whose amount/name finalized on post). Keyed on the unique
+    // provider_transaction_id.
+    for (const txn of [...sync.added, ...sync.modified]) {
       const bankAccountId = accountIdMap.get(txn.providerAccountId);
       if (!bankAccountId) continue;
 
-      const inserted = await db
+      const upserted = await db
         .insert(bankTransactions)
         .values({
           bankAccountId,
@@ -210,18 +243,46 @@ async function syncOneConnectionLocked(
           category: txn.category,
           pending: txn.pending ? 1 : 0,
         })
-        .onConflictDoNothing()
+        .onConflictDoUpdate({
+          target: bankTransactions.providerTransactionId,
+          set: {
+            amountCents: txn.amountCents,
+            isoCurrencyCode: txn.isoCurrencyCode,
+            date: txn.date,
+            name: txn.name,
+            merchantName: txn.merchantName,
+            category: txn.category,
+            pending: txn.pending ? 1 : 0,
+          },
+        })
         .returning({ id: bankTransactions.id });
 
-      if (inserted.length > 0) transactionsImported++;
+      if (upserted.length > 0) transactionsImported++;
     }
 
-    // Stamp last_synced_at on the connection — this is the load-bearing
-    // observability signal ("did the sync engine actually run for Cherry
-    // Hill?"). Bumped on success only.
+    // removed: Plaid drops a pending txn once it posts under a new id. Delete
+    // it (association-scoped) so the ledger never reconciles a phantom. Only
+    // delete rows NOT already linked to a ledger entry — a removed txn that was
+    // somehow matched is left in place and surfaced rather than silently torn
+    // out from under a reconciliation.
+    if (sync.removed.length > 0) {
+      await db
+        .delete(bankTransactions)
+        .where(
+          and(
+            eq(bankTransactions.associationId, conn.associationId),
+            inArray(bankTransactions.providerTransactionId, sync.removed),
+          ),
+        );
+    }
+
+    // Stamp last_synced_at + persist the new cursor on the connection. The
+    // cursor is the resumption point for the next sync; last_synced_at is the
+    // load-bearing observability signal ("did the sync engine actually run for
+    // Cherry Hill?"). Both bumped on success only.
     await db
       .update(bankConnections)
-      .set({ lastSyncedAt: new Date() })
+      .set({ lastSyncedAt: new Date(), transactionsCursor: sync.nextCursor })
       .where(eq(bankConnections.id, conn.id));
 
     // Auto-reconcile: run the association-scoped matcher.
@@ -234,6 +295,47 @@ async function syncOneConnectionLocked(
       `[bank-feed-sync] connection=${conn.id} trigger=${trigger} err=${errorMessage}`,
       "bank-feed-sync",
     );
+
+    // 2026-06-30 — self-heal unrecoverable token errors. The sweep only re-runs
+    // connections with status='active', so a permanently-invalid token (e.g. a
+    // stale sandbox token after PLAID_ENV was flipped to production, or an item
+    // whose login expired) otherwise 400s on EVERY 5-min sweep forever. Mirror
+    // the webhook ITEM/ERROR pattern (routes.ts) and transition the connection
+    // out of 'active' so it (a) stops re-erroring and (b) surfaces a reconnect
+    // prompt. Plaid SDK errors carry error_code on err.response.data.
+    const plaidErrorCode: string | null =
+      err?.response?.data?.error_code ?? err?.error_code ?? null;
+    // Errors that require the owner/admin to re-link the bank (no automatic
+    // retry can ever recover them).
+    const REAUTH_CODES = new Set([
+      "INVALID_ACCESS_TOKEN", // token invalid (incl. wrong-environment sandbox token)
+      "ITEM_LOGIN_REQUIRED", // credentials changed / login expired
+      "ACCESS_NOT_GRANTED",
+      "INVALID_CREDENTIALS",
+    ]);
+    const REVOKED_CODES = new Set([
+      "USER_PERMISSION_REVOKED",
+      "USER_ACCOUNT_REVOKED",
+    ]);
+    if (plaidErrorCode && REVOKED_CODES.has(plaidErrorCode)) {
+      await db
+        .update(bankConnections)
+        .set({ status: "revoked", updatedAt: new Date() })
+        .where(eq(bankConnections.id, conn.id));
+      log(
+        `[bank-feed-sync] connection=${conn.id} marked REVOKED (${plaidErrorCode}) — owner must re-link`,
+        "bank-feed-sync",
+      );
+    } else if (plaidErrorCode && REAUTH_CODES.has(plaidErrorCode)) {
+      await db
+        .update(bankConnections)
+        .set({ status: "needs_reauth", updatedAt: new Date() })
+        .where(eq(bankConnections.id, conn.id));
+      log(
+        `[bank-feed-sync] connection=${conn.id} marked NEEDS_REAUTH (${plaidErrorCode}) — owner must reconnect`,
+        "bank-feed-sync",
+      );
+    }
   }
 
   const finishedAt = new Date();

@@ -19,16 +19,19 @@ export function SiteFooter() {
           <h3 className="uppercase tracking-widest text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-6">
             Solutions
           </h3>
+          {/* Continuity fix (site audit 2026-06-22): these were dead `href="#"`
+              placeholders. Each is a facet of the canonical Solutions page, so
+              they now route there instead of going nowhere. */}
           <ul className="space-y-4 text-sm">
-            {["Self-Managed Boards", "Enterprise Firms", "Resident Experience", "Developer API"].map(
+            {["Self-Managed Communities", "Enterprise Firms", "Resident Experience", "Developer API"].map(
               (item, idx) => (
                 <li key={idx}>
-                  <a
-                    href="#"
+                  <Link
+                    href="/solutions"
                     className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
                   >
                     {item}
-                  </a>
+                  </Link>
                 </li>
               ),
             )}
@@ -38,22 +41,34 @@ export function SiteFooter() {
           <h3 className="uppercase tracking-widest text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-6">
             Company
           </h3>
+          {/* Continuity fix (site audit 2026-06-22): "About Us" and "Careers"
+              had no destination (dead `href="#"`) and were removed. "Legal
+              Resources" now points at the live /terms page. */}
           <ul className="space-y-4 text-sm">
             {[
-              { label: "About Us", href: "#" },
-              { label: "Careers", href: "#" },
-              { label: "Legal Resources", href: "#" },
-              { label: "Contact Us", href: "mailto:contact@yourcondomanager.org" },
-            ].map((item) => (
-              <li key={item.label}>
-                <a
-                  href={item.href}
-                  className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
-                >
-                  {item.label}
-                </a>
-              </li>
-            ))}
+              { label: "Legal Resources", href: "/terms", internal: true },
+              { label: "Contact Us", href: "mailto:contact@yourcondomanager.org", internal: false },
+            ].map((item) =>
+              item.internal ? (
+                <li key={item.label}>
+                  <Link
+                    href={item.href}
+                    className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
+                  >
+                    {item.label}
+                  </Link>
+                </li>
+              ) : (
+                <li key={item.label}>
+                  <a
+                    href={item.href}
+                    className="text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
+                  >
+                    {item.label}
+                  </a>
+                </li>
+              ),
+            )}
           </ul>
         </nav>
         <div className="flex flex-col justify-between">
@@ -61,10 +76,11 @@ export function SiteFooter() {
             <h3 className="uppercase tracking-widest text-[10px] font-bold text-slate-900 dark:text-slate-100 mb-6">
               Social
             </h3>
+            {/* Continuity fix (site audit 2026-06-22): "Share" and "Podcasts"
+                had no destination (dead `href="#"`) and were removed. Only the
+                live mailto remains. */}
             <div className="flex gap-4">
               {[
-                { icon: "share", label: "Share", href: "#" },
-                { icon: "podcasts", label: "Podcasts", href: "#" },
                 { icon: "alternate_email", label: "Email", href: "mailto:contact@yourcondomanager.org" },
               ].map((item) => (
                 <a
@@ -83,6 +99,9 @@ export function SiteFooter() {
           <div className="mt-8 md:mt-0">
             <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500">
               © {new Date().getFullYear()} Your Condo Manager. The Modern Estate Excellence.
+            </p>
+            <p className="mt-1 text-[10px] tracking-wide text-slate-400 dark:text-slate-500">
+              Your Condo Manager, Inc. · 1207 Delaware Ave, # 2199, Wilmington, DE 19806
             </p>
           </div>
         </div>
@@ -106,12 +125,9 @@ export function SiteFooter() {
         >
           Terms of Service
         </Link>
-        <a
-          href="#"
-          className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-500 hover:text-primary dark:hover:text-blue-400 transition-colors focus:outline-none focus:ring-2 focus:ring-primary rounded px-1"
-        >
-          Cookie Settings
-        </a>
+        {/* Continuity fix (site audit 2026-06-22): "Cookie Settings" had no
+            destination (dead `href="#"`) and no cookie-preferences surface
+            exists yet, so it was removed rather than linking to nowhere. */}
       </div>
       {/* Marginalia Partners attribution — per founder-os D72 + spec
           `the-practice/00-strategy-and-positioning/attribution-standard-spec-v1.0.md`

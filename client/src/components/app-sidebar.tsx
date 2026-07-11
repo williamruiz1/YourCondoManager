@@ -27,6 +27,7 @@
 // Owner Portal launcher removed from Platform group per 3.1 Q11 / 2.4 Q5.
 // Association switcher lives in the top app-bar only per 3.1 Q10.
 
+import { Fragment } from "react";
 import { useLocation, Link } from "wouter";
 import { BrandMark } from "@/components/brand-mark";
 import {
@@ -93,7 +94,7 @@ function ZoneGroup({ zone, location }: ZoneGroupProps) {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="label-caps text-muted-foreground/70">
+      <SidebarGroupLabel className="label-caps text-sidebar-foreground">
         {zone.label}
       </SidebarGroupLabel>
       <SidebarGroupContent>
@@ -118,9 +119,30 @@ function ZoneGroup({ zone, location }: ZoneGroupProps) {
             </SidebarMenuButton>
             {zone.items.length > 0 ? (
               <SidebarMenuSub>
-                {zone.items.map((item) => (
-                  <ZoneSubItem key={item.url} item={item} location={location} />
-                ))}
+                {zone.items.map((item, index) => {
+                  // Financials IA restructure (2026-06-24) — render a
+                  // lightweight uppercase group sub-header when an item's
+                  // `groupLabel` opens a new contiguous group. Presentation
+                  // only; zones without `groupLabel` render unchanged.
+                  const prevGroup =
+                    index > 0 ? zone.items[index - 1].groupLabel : undefined;
+                  const showGroupHeader =
+                    item.groupLabel != null && item.groupLabel !== prevGroup;
+                  return (
+                    <Fragment key={item.url}>
+                      {showGroupHeader ? (
+                        <li
+                          className="px-2 pb-0.5 pt-2 first:pt-0 text-[10px] font-label font-semibold uppercase tracking-widest text-sidebar-foreground select-none group-data-[collapsible=icon]:hidden"
+                          data-testid={`nav-group-${slugify(zone.label)}-${slugify(item.groupLabel as string)}`}
+                          aria-hidden="true"
+                        >
+                          {item.groupLabel}
+                        </li>
+                      ) : null}
+                      <ZoneSubItem item={item} location={location} />
+                    </Fragment>
+                  );
+                })}
               </SidebarMenuSub>
             ) : null}
           </SidebarMenuItem>
@@ -191,15 +213,15 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
           href="/"
           className="px-4 pt-4 pb-3 flex items-center gap-2.5 hover:opacity-80 transition-opacity"
         >
-          <BrandMark className="h-9 w-9 flex-shrink-0" />
+          <BrandMark forceTheme="dark" className="h-9 w-9 flex-shrink-0" />
           <div className="group-data-[collapsible=icon]:hidden">
             <h2
-              className="font-headline italic font-semibold text-lg tracking-tight text-slate-900 dark:text-slate-100"
+              className="font-headline italic font-semibold text-lg tracking-tight text-sidebar-foreground"
               data-testid="text-app-title"
             >
               Your Condo Manager
             </h2>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-tight font-label">
+            <p className="text-[10px] text-sidebar-foreground uppercase tracking-widest leading-tight font-label">
               Property Operations
             </p>
           </div>
@@ -222,11 +244,11 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
               className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/60"
               data-testid="link-selected-association-overview"
             >
-              <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">
+              <span className="material-symbols-outlined text-[16px] text-sidebar-foreground flex-shrink-0">
                 domain
               </span>
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5 font-label">
+                <div className="text-[10px] uppercase tracking-wide text-sidebar-foreground leading-none mb-0.5 font-label">
                   Association
                 </div>
                 <div
@@ -243,10 +265,10 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
               className="flex items-center gap-2 rounded-lg border border-dashed border-sidebar-border px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/30"
               data-testid="link-select-association"
             >
-              <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">
+              <span className="material-symbols-outlined text-[16px] text-sidebar-foreground flex-shrink-0">
                 domain_add
               </span>
-              <span className="text-xs text-muted-foreground font-body">
+              <span className="text-xs text-sidebar-foreground font-body">
                 Select association
               </span>
             </Link>
@@ -288,7 +310,7 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
                 return (
                   <Link key={item.url} href={item.url}>
                     <button
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-on-surface transition-colors font-body"
+                      className="flex items-center gap-1.5 text-xs text-sidebar-foreground hover:text-sidebar-foreground transition-colors font-body"
                       data-testid={`link-nav-${slugify(item.title)}`}
                     >
                       <ItemIcon className="h-4 w-4" aria-hidden="true" />

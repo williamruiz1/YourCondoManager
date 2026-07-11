@@ -41,9 +41,15 @@ test.describe.configure({ mode: "serial" });
 async function forceWorkspaceDarkMode(page: import("@playwright/test").Page) {
   await page.addInitScript(() => {
     try {
-      window.localStorage.setItem("user-settings-admin-id", "playwright-dark");
+      // MUST be the auth-helper's real mock admin id ("admin-mgr-1"): once the
+      // app boots, App.tsx overwrites user-settings-admin-id from the auth
+      // session, so a settings record seeded under any OTHER id is orphaned
+      // and the default theme (now hard "light" per the brand-v2 interim) wins
+      // — which is exactly how this spec broke while the Playwright gate was
+      // dead on the port-5000 collision (founder-os#8337).
+      window.localStorage.setItem("user-settings-admin-id", "admin-mgr-1");
       window.localStorage.setItem(
-        "user-settings-playwright-dark",
+        "user-settings-admin-mgr-1",
         JSON.stringify({ theme: "dark" }),
       );
     } catch {
@@ -71,7 +77,20 @@ async function assertBodyIsDark(page: import("@playwright/test").Page, surface: 
   expect(isDark, `body background should be dark on ${surface}`).toBe(true);
 }
 
-test.describe("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
+// RE-ENABLED (YCM#352 / founder-os#8539): the brand-v2 token layer left a duplicate
+// hardcoded `background: #f8f9fa` in tailwind.config.ts that shadowed the token-driven
+// `--background`, so `.dark` <body> computed near-white (rgb(248,249,250)). That duplicate
+// key was removed, so `bg-background` now resolves to `hsl(var(--background))` (dark
+// `220 13% 9%` under `.dark`). use-user-settings.ts default is back to "system". This
+// suite asserts the fixed behavior and is live again.
+// PARKED (founder-os#9256 / YCM#415): dark mode was deliberately SHELVED
+// app-wide — forced light per William — by #399 (`c90f471`), AFTER #390 had
+// fixed the token layer and re-enabled this suite. The suite asserts a mode
+// the product intentionally no longer offers, so it fails on every run and
+// has been reddening all of main's CI. UN-PARK when dark mode is un-shelved:
+// flip `.fixme` back to `test.describe` (the forceWorkspaceDarkMode seeding
+// below is still correct for that day).
+test.describe.fixme("Wave 46 — dark-mode axe + visual smoke (workspace surfaces)", () => {
   test("Home (/app) — axe in dark", async ({ page }) => {
     const store = createSeedStore();
     await forceWorkspaceDarkMode(page);

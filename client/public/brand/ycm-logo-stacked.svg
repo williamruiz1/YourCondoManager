@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 480" role="img" aria-label="Your Condo Manager — Community Operations Platform">
+  <title>Your Condo Manager — stacked lockup</title>
+  <g transform="translate(248,40) scale(2.2)" fill="#014D4A">
+    <polygon points="10,88 34,70 34,112 10,112"/>
+    <polygon points="46,58 70,40 70,112 46,112"/>
+    <polygon points="82,26 106,8 106,112 82,112"/>
+  </g>
+  <text x="380" y="380" text-anchor="middle" font-family="-apple-system, system-ui, 'Inter Tight', sans-serif" font-size="52" font-weight="800" fill="#014D4A">YourCondoManager<tspan fill="#2DBDB0">.org</tspan></text>
+  <text x="380" y="420" text-anchor="middle" font-family="-apple-system, system-ui, 'Inter Tight', sans-serif" font-size="20" font-weight="600" letter-spacing="4" fill="#2DBDB0">COMMUNITY OPERATIONS PLATFORM</text>
+</svg>

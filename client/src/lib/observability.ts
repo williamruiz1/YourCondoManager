@@ -74,7 +74,11 @@ function loadGA4(measurementId: string, environment: string): void {
  * when the package isn't installed yet. Async because Sentry's React SDK
  * is loaded lazily via dynamic import to keep first-paint fast.
  */
-async function initSentryReact(dsn: string, environment: string): Promise<void> {
+async function initSentryReact(
+  dsn: string,
+  environment: string,
+  loader?: () => Promise<SentryReactModule>,
+): Promise<void> {
   try {
     // Indirect through a runtime variable so Vite's static import-analysis
     // cannot resolve the specifier at build / test-runner scan time. The
@@ -84,7 +88,9 @@ async function initSentryReact(dsn: string, environment: string): Promise<void> 
     // The `import()` falls through to the catch block at runtime when
     // `@sentry/react` isn't installed yet (the documented intent here).
     const sentryReactSpecifier = "@sentry/react";
-    const Sentry = (await import(/* @vite-ignore */ sentryReactSpecifier)) as SentryReactModule;
+    const Sentry = loader
+      ? await loader()
+      : ((await import(/* @vite-ignore */ sentryReactSpecifier)) as SentryReactModule);
     Sentry.init({
       dsn,
       environment,
@@ -113,10 +119,15 @@ async function initSentryReact(dsn: string, environment: string): Promise<void> 
  * Safe to call repeatedly — second-and-later calls no-op via the
  * `initialized` latch.
  */
-export async function initClientObservability(): Promise<void> {
+export async function initClientObservability(opts?: {
+  /** Override for tests — defaults to `import("@sentry/react")`. */
+  loader?: () => Promise<SentryReactModule>;
+  /** Override for tests — merged over the build-time env config. */
+  configOverride?: Partial<ClientObservabilityConfig>;
+}): Promise<void> {
   if (initialized) return;
   initialized = true;
-  const cfg = readConfig();
+  const cfg = { ...readConfig(), ...(opts?.configOverride ?? {}) };
   if (cfg.gaMeasurementId) {
     loadGA4(cfg.gaMeasurementId, cfg.environment);
   } else {
@@ -124,7 +135,7 @@ export async function initClientObservability(): Promise<void> {
     console.log("[observability] VITE_GA_MEASUREMENT_ID not set; GA4 disabled");
   }
   if (cfg.sentryDsn) {
-    await initSentryReact(cfg.sentryDsn, cfg.environment);
+    await initSentryReact(cfg.sentryDsn, cfg.environment, opts?.loader);
   } else {
     // eslint-disable-next-line no-console
     console.log("[observability] VITE_SENTRY_DSN not set; Sentry React SDK disabled");
@@ -166,4 +177,11 @@ export function trackEvent(name: string, params?: Record<string, unknown>): void
 /** Exposed for tests + smoke-test surfaces. */
 export function isClientObservabilityInitialized(): boolean {
   return initialized;
+}
+
+/** Test-only: reset the init latch + Sentry ref so each case starts clean. */
+export function __resetClientObservabilityForTest(): void {
+  initialized = false;
+  sentryRef = null;
+  ga4Loaded = false;
 }

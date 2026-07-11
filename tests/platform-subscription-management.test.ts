@@ -117,3 +117,55 @@ describe("Webhook: invoice.paid handling (founder-os#1147)", () => {
     expect(routesSource).toContain('eventType === "customer.subscription.deleted"');
   });
 });
+
+describe("Webhook: payment-succeeded receipt email (founder-os#1147)", () => {
+  // The invoice.paid / invoice.payment_succeeded branch sends a branded
+  // receipt email to the association admin. Best-effort + non-crashing,
+  // mirroring the payment-failed dunning email.
+  const anchor = 'eventType === "invoice.payment_succeeded" || eventType === "invoice.paid"';
+  // The branch runs until the next else-if (payment_failed). Slice the whole
+  // branch so long bodies aren't truncated by a fixed window.
+  function region(): string {
+    const idx = routesSource.indexOf(anchor);
+    if (idx < 0) return "";
+    const endIdx = routesSource.indexOf('eventType === "invoice.payment_failed"', idx);
+    return routesSource.substring(idx, endIdx > idx ? endIdx : idx + 3000);
+  }
+
+  it("sends a receipt email in the payment-succeeded branch", () => {
+    const r = region();
+    expect(r).toContain("sendPlatformEmail");
+    expect(r).toMatch(/Payment received/i);
+  });
+
+  it("is best-effort (does not crash the webhook on email failure)", () => {
+    const r = region();
+    expect(r).toContain("sendPlatformEmail");
+    expect(r).toMatch(/\}\)\.catch\(\(\)\s*=>\s*\{\}\)/);
+  });
+
+  it("only emails on a real charge (amountPaid > 0)", () => {
+    const r = region();
+    expect(r).toMatch(/amountPaid\s*&&\s*amountPaid\s*>\s*0/);
+  });
+});
+
+describe("Webhook: Sentry capture on failure (founder-os#1147, per #1030)", () => {
+  // The webhook catch block forwards the error to Sentry via
+  // captureServerError and records the failure on the webhook-event row.
+  it("imports captureServerError from observability", () => {
+    expect(routesSource).toMatch(/import\s*\{\s*captureServerError\s*\}\s*from\s*"\.\/observability"/);
+  });
+
+  it("calls captureServerError in the webhook catch block", () => {
+    expect(routesSource).toMatch(/captureServerError\(e,\s*\{\s*scope:\s*"platform-stripe-webhook"/);
+  });
+
+  it("records the failure on the webhook-event row (status: failed)", () => {
+    // Anchor on the webhook catch block, not the elsewhere-used table update.
+    const idx = routesSource.indexOf('captureServerError(e, { scope: "platform-stripe-webhook"');
+    const r = idx >= 0 ? routesSource.substring(idx, idx + 700) : "";
+    expect(r).toMatch(/status:\s*"failed"/);
+    expect(r).toContain("errorMessage");
+  });
+});

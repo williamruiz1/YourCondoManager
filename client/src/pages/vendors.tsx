@@ -33,7 +33,11 @@ import { InspectionsContent } from "./inspections";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
 
-const vendorDocumentTypes = ["Insurance", "Contract", "W-9", "License", "Compliance", "Other"];
+// "COI" added alongside the existing types (founder-os#9482) so a
+// Certificate of Insurance can be filed as its own recognizable category —
+// the compliance-status sweep looks for a current document whose type
+// contains "COI".
+const vendorDocumentTypes = ["Insurance", "COI", "Contract", "W-9", "License", "Compliance", "Other"];
 
 const vendorSchema = z.object({
   associationId: z.string().min(1),
@@ -45,6 +49,7 @@ const vendorSchema = z.object({
   primaryPhone: z.string().optional(),
   licenseNumber: z.string().optional(),
   insuranceExpiresAt: z.string().optional(),
+  w9ReceivedAt: z.string().optional(),
   status: z.enum(["active", "inactive", "pending-renewal"]),
   notes: z.string().optional(),
 });
@@ -61,6 +66,7 @@ const EMPTY_VALUES: VendorFormValues = {
   primaryPhone: "",
   licenseNumber: "",
   insuranceExpiresAt: "",
+  w9ReceivedAt: "",
   status: "active",
   notes: "",
 };
@@ -74,8 +80,27 @@ function toPayload(values: VendorFormValues) {
     primaryPhone: values.primaryPhone || null,
     licenseNumber: values.licenseNumber || null,
     insuranceExpiresAt: values.insuranceExpiresAt ? new Date(values.insuranceExpiresAt).toISOString() : null,
+    w9ReceivedAt: values.w9ReceivedAt ? new Date(values.w9ReceivedAt).toISOString() : null,
     notes: values.notes || null,
   };
+}
+
+type VendorComplianceRow = {
+  vendorId: string;
+  vendorName: string;
+  associationId: string;
+  w9ReceivedAt: string | null;
+  hasCurrentCoi: boolean;
+  insuranceExpiresAt: string | null;
+  complianceStatus: "compliant" | "expiring" | "lapsed";
+  daysUntilExpiry: number | null;
+  missing: Array<"w9" | "coi" | "insurance-expiry">;
+};
+
+function complianceBadgeVariant(status: VendorComplianceRow["complianceStatus"]): "default" | "secondary" | "destructive" {
+  if (status === "lapsed") return "destructive";
+  if (status === "expiring") return "secondary";
+  return "default";
 }
 
 
@@ -106,7 +131,13 @@ export function VendorsContent() {
     queryKey: ["/api/vendors/renewal-alerts"],
     enabled: Boolean(activeAssociationId),
   });
+  // Compliance status (W-9 / COI / insurance-expiry) — founder-os#9482.
+  const { data: complianceRows = [] } = useQuery<VendorComplianceRow[]>({
+    queryKey: ["/api/vendors/compliance"],
+    enabled: Boolean(activeAssociationId),
+  });
   const selectedVendor = vendors.find((vendor) => vendor.id === selectedVendorId) ?? null;
+  const selectedVendorCompliance = complianceRows.find((c) => c.vendorId === selectedVendorId) ?? null;
   type VendorMetrics = {
     totalWorkOrders: number;
     openWorkOrders: number;
@@ -152,6 +183,7 @@ export function VendorsContent() {
         primaryPhone: editingVendor.primaryPhone || "",
         licenseNumber: editingVendor.licenseNumber || "",
         insuranceExpiresAt: editingVendor.insuranceExpiresAt ? new Date(editingVendor.insuranceExpiresAt).toISOString().slice(0, 10) : "",
+        w9ReceivedAt: editingVendor.w9ReceivedAt ? new Date(editingVendor.w9ReceivedAt).toISOString().slice(0, 10) : "",
         status: editingVendor.status,
         notes: editingVendor.notes || "",
       });
@@ -174,6 +206,7 @@ export function VendorsContent() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/vendors"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendors/compliance"] });
       setOpen(false);
       setEditingVendor(null);
       form.reset({
@@ -208,6 +241,7 @@ export function VendorsContent() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/vendors", selectedVendorId, "documents"] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/vendors/compliance"] });
       setDocumentTitle("");
       setDocumentType("Insurance");
       setDocumentFile(null);
@@ -434,6 +468,17 @@ export function VendorsContent() {
                   />
                   <FormField
                     control={form.control}
+                    name="w9ReceivedAt"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>W-9 Received</FormLabel>
+                        <FormControl><Input {...field} className={isMobile ? "min-h-11" : undefined} value={field.value || ""} type="date" /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
                     name="status"
                     render={({ field }) => (
                       <FormItem>
@@ -557,6 +602,7 @@ export function VendorsContent() {
                 <TableHead>Contact</TableHead>
                 <TableHead>Insurance</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead>Compliance</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -595,6 +641,17 @@ export function VendorsContent() {
                     )}
                   </TableCell>
                   <TableCell><Badge variant={vendor.status === "active" ? "default" : "secondary"}>{vendor.status}</Badge></TableCell>
+                  <TableCell>
+                    {(() => {
+                      const compliance = complianceRows.find((c) => c.vendorId === vendor.id);
+                      if (!compliance) return <span className="text-muted-foreground text-sm">—</span>;
+                      return (
+                        <Badge variant={complianceBadgeVariant(compliance.complianceStatus)} className="text-xs">
+                          {compliance.complianceStatus}
+                        </Badge>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" onClick={() => setSelectedVendorId(vendor.id)}>View</Button>
@@ -641,6 +698,15 @@ export function VendorsContent() {
                       {alert.severity === "expired"
                         ? `Expired ${Math.abs(alert.daysUntilExpiry)}d ago`
                         : `Expires in ${alert.daysUntilExpiry}d`}
+                    </Badge>
+                  );
+                })()}
+                {(() => {
+                  const compliance = complianceRows.find((c) => c.vendorId === vendor.id);
+                  if (!compliance) return null;
+                  return (
+                    <Badge variant={complianceBadgeVariant(compliance.complianceStatus)} className="text-xs">
+                      Compliance: {compliance.complianceStatus}
                     </Badge>
                   );
                 })()}
@@ -855,6 +921,26 @@ export function VendorsContent() {
                 <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Status</div><div className="mt-1"><Badge variant={selectedVendor.status === "active" ? "default" : "secondary"}>{selectedVendor.status}</Badge></div></CardContent></Card>
                 <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Primary Contact</div><div className="mt-1 font-medium">{selectedVendor.primaryContactName || "-"}</div><div className="text-sm text-muted-foreground">{selectedVendor.primaryEmail || selectedVendor.primaryPhone || "-"}</div></CardContent></Card>
                 <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">Insurance Expires</div><div className="mt-1 font-medium">{selectedVendor.insuranceExpiresAt ? new Date(selectedVendor.insuranceExpiresAt).toLocaleDateString() : "-"}</div></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="text-sm text-muted-foreground">W-9 Received</div><div className="mt-1 font-medium">{selectedVendor.w9ReceivedAt ? new Date(selectedVendor.w9ReceivedAt).toLocaleDateString() : "-"}</div></CardContent></Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-muted-foreground">Compliance</div>
+                    <div className="mt-1 flex items-center gap-2">
+                      {selectedVendorCompliance ? (
+                        <>
+                          <Badge variant={complianceBadgeVariant(selectedVendorCompliance.complianceStatus)}>
+                            {selectedVendorCompliance.complianceStatus}
+                          </Badge>
+                          {selectedVendorCompliance.missing.length > 0 ? (
+                            <span className="text-xs text-muted-foreground">missing: {selectedVendorCompliance.missing.join(", ")}</span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="text-sm font-medium">-</span>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
               <Card>
                 <CardContent className="p-4 space-y-2">

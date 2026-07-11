@@ -358,6 +358,36 @@ describe("POST /api/financial/stripe-connect/onboarding-link", () => {
   });
 });
 
+describe("GET /api/financial/stripe-connect/callback — post-onboarding return landing", () => {
+  it("302s to the REAL client payments route (/app/financial/payments), not the 404 /financials/payments", async () => {
+    associationsById.set("assoc-1", { id: "assoc-1", name: "Cherry Hill Court Condominiums" });
+    await withApp(async (url) => {
+      // Seed an in-progress Connect account (creates the _connect connection
+      // the callback handler looks up before redirecting).
+      await fetch(`${url}/api/financial/stripe-connect/onboarding-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ associationId: "assoc-1" }),
+      });
+
+      const res = await fetch(
+        `${url}/api/financial/stripe-connect/callback?associationId=assoc-1`,
+        { method: "GET", redirect: "manual" },
+      );
+      expect(res.status).toBe(302);
+      const location = res.headers.get("location") ?? "";
+      // The corrected landing route must exist in the client router.
+      expect(location).toContain("/app/financial/payments");
+      expect(location).toContain("stripeConnect=callback");
+      expect(location).toContain("associationId=assoc-1");
+      // Guard against regression to the dead route (singular /app/financial vs
+      // the old wrong /financials/payments which renders a 404).
+      expect(location.startsWith("/financials/payments")).toBe(false);
+      expect(location).not.toMatch(/(^|[^a-z])\/financials\/payments/);
+    });
+  });
+});
+
 describe("POST /api/webhooks/stripe-connect/account-updated", () => {
   function signEventBody(rawBody: string): string {
     const ts = Math.floor(Date.now() / 1000);

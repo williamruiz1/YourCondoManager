@@ -51,6 +51,7 @@ vi.mock("../db", () => {
         return obj;
       },
       onConflictDoNothing: () => obj,
+      onConflictDoUpdate: () => obj,
       returning: () => terminalFn(),
       where: () => terminalFn(),
       set: (vals: any) => {
@@ -138,6 +139,10 @@ vi.mock("../db", () => {
         return undefined;
       });
     },
+    delete: (_table: any) => {
+      // removed-transaction deletes — terminal on .where(); no-op for the mock.
+      return chainable(async () => undefined);
+    },
   };
 
   const pool: any = {
@@ -171,9 +176,23 @@ vi.mock("../services/bank-feed", () => ({
       if (mockGetAccountsThrows) throw mockGetAccountsThrows;
       return mockAccountSnapshots;
     },
+    // Legacy date-window path (kept for any caller); the sync engine no longer
+    // uses it.
     getTransactions: async () => {
       if (mockGetTransactionsThrows) throw mockGetTransactionsThrows;
       return mockTransactions;
+    },
+    // Cursor-based path the sync engine now uses. The same mockTransactions
+    // feed the `added` delta so existing test fixtures keep working.
+    syncTransactions: async () => {
+      if (mockGetTransactionsThrows) throw mockGetTransactionsThrows;
+      return {
+        added: mockTransactions,
+        modified: [],
+        removed: [],
+        nextCursor: "cursor-next",
+        hasMore: false,
+      };
     },
   },
 }));
@@ -196,6 +215,7 @@ vi.mock("drizzle-orm", () => ({
   eq: (..._args: any[]) => ({ __op: "eq" }),
   or: (..._args: any[]) => ({ __op: "or" }),
   isNull: (..._args: any[]) => ({ __op: "isNull" }),
+  inArray: (..._args: any[]) => ({ __op: "inArray" }),
   lt: (..._args: any[]) => ({ __op: "lt" }),
   sql: (..._args: any[]) => ({ __op: "sql" }),
 }));

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>YourCondoManager — Brand Identity</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --deep-teal:#014D4A; --teal:#15A39C; --light-teal:#BFE8E4;
+    --gray:#E5E7EB; --offwhite:#F5F7F9; --ink:#0F2E2C; --muted:#6B7280; --white:#fff;
+    --maxw:1080px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter Tight',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--ink);background:var(--offwhite);line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+  h1,h2,h3,h4{font-weight:700;color:var(--deep-teal);letter-spacing:-.01em;line-height:1.2}
+  .overline{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--teal)}
+
+  /* Hero */
+  header.hero{background:var(--deep-teal);color:var(--white);padding:72px 0 64px}
+  header.hero h1{color:var(--white);font-size:44px;margin:14px 0 12px}
+  header.hero .overline{color:var(--light-teal)}
+  header.hero p.lede{font-size:19px;max-width:680px;color:#D9EDEB}
+  .hero-logo{margin-bottom:18px}
+  .hero-logo img{height:64px;background:var(--white);padding:14px 22px;border-radius:14px}
+
+  section{padding:56px 0;border-bottom:1px solid var(--gray)}
+  section h2{font-size:28px;margin-bottom:6px}
+  section > .wrap > .overline{margin-bottom:4px;display:block}
+  .sub{color:var(--muted);margin-bottom:28px;max-width:760px}
+
+  /* Pillars */
+  .pillars{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .pillar{background:var(--white);border:1px solid var(--gray);border-radius:14px;padding:22px 18px;text-align:center}
+  .pillar .dot{width:38px;height:38px;border-radius:10px;background:var(--light-teal);margin:0 auto 12px;
+    display:flex;align-items:center;justify-content:center;color:var(--deep-teal);font-weight:700}
+  .pillar h4{font-size:15px;text-transform:uppercase;letter-spacing:.06em}
+
+  /* Logo grid */
+  .logos{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .logo-card{background:var(--white);border:1px solid var(--gray);border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
+  .logo-card .canvas{flex:1;display:flex;align-items:center;justify-content:center;padding:22px;min-height:150px}
+  .logo-card .canvas.dark{background:var(--deep-teal)}
+  .logo-card .canvas.light{background:var(--offwhite)}
+  .logo-card img{max-width:100%;max-height:120px;object-fit:contain}
+  .logo-card .meta{padding:12px 16px;border-top:1px solid var(--gray)}
+  .logo-card .meta b{display:block;font-size:14px;color:var(--deep-teal)}
+  .logo-card .meta span{font-size:12px;color:var(--muted)}
+
+  /* Palette */
+  .palette{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  .swatch{border-radius:12px;border:1px solid var(--gray);overflow:hidden;background:var(--white)}
+  .swatch .chip{height:84px}
+  .swatch .info{padding:12px 14px}
+  .swatch .info b{display:block;font-size:14px}
+  .swatch .info code{font-size:12px;color:var(--muted);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .swatch .info p{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.4}
+
+  /* Migration table */
+  table{width:100%;border-collapse:collapse;background:var(--white);border:1px solid var(--gray);border-radius:12px;overflow:hidden}
+  th,td{text-align:left;padding:11px 14px;font-size:14px;border-bottom:1px solid var(--gray)}
+  th{background:var(--offwhite);color:var(--deep-teal);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  tr:last-child td{border-bottom:none}
+  code.hex{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--light-teal);color:var(--deep-teal);padding:1px 6px;border-radius:5px;font-size:13px}
+
+  /* Type scale */
+  .typerow{display:flex;align-items:baseline;gap:18px;padding:12px 0;border-bottom:1px solid var(--gray)}
+  .typerow:last-child{border-bottom:none}
+  .typerow .tag{width:120px;flex:none;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+  .typerow .sample{color:var(--deep-teal)}
+  .typerow .specs{margin-left:auto;font-size:12px;color:var(--muted);font-family:ui-monospace,Menlo,monospace}
+
+  /* Do/Don't */
+  .dd{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .dd .col{background:var(--white);border:1px solid var(--gray);border-radius:14px;padding:22px}
+  .dd .col.do{border-top:4px solid var(--teal)}
+  .dd .col.dont{border-top:4px solid #C2453D}
+  .dd h4{margin-bottom:12px}
+  .dd ul{list-style:none}
+  .dd li{font-size:14px;padding:6px 0 6px 26px;position:relative}
+  .dd .do li::before{content:"✓";position:absolute;left:0;color:var(--teal);font-weight:700}
+  .dd .dont li::before{content:"✕";position:absolute;left:0;color:#C2453D;font-weight:700}
+
+  footer{padding:36px 0;text-align:center;color:var(--muted);font-size:13px}
+  .essence{font-style:italic;color:var(--teal);font-weight:500;font-size:20px;text-align:center;max-width:640px;margin:0 auto 8px}
+
+  @media(max-width:840px){
+    .pillars,.logos,.palette{grid-template-columns:repeat(2,1fr)}
+    .dd{grid-template-columns:1fr}
+    header.hero h1{font-size:34px}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-logo"><img src="generated-assets/logo-horizontal.png" alt="YourCondoManager.org logo"></div>
+    <span class="overline">Brand Identity System · v1.0</span>
+    <h1>The operating system for better communities.</h1>
+    <p class="lede">YourCondoManager.org is the all-in-one platform that simplifies operations, strengthens communication, and elevates the living experience.</p>
+  </div>
+</header>
+
+<!-- Pillars -->
+<section>
+  <div class="wrap">
+    <span class="overline">Brand Pillars</span>
+    <h2>What we stand for</h2>
+    <p class="sub">Four promises every surface, asset, and word of copy upholds.</p>
+    <div class="pillars">
+      <div class="pillar"><div class="dot">T</div><h4>Trusted</h4></div>
+      <div class="pillar"><div class="dot">C</div><h4>Connected</h4></div>
+      <div class="pillar"><div class="dot">E</div><h4>Efficient</h4></div>
+      <div class="pillar"><div class="dot">S</div><h4>Secure</h4></div>
+    </div>
+  </div>
+</section>
+
+<!-- Logo -->
+<section>
+  <div class="wrap">
+    <span class="overline">Logo System</span>
+    <h2>The ascending-bars mark</h2>
+    <p class="sub">Four bars rising left → right — upward community performance and operational momentum. The tallest, rightmost bar carries the teal accent. Default to the horizontal lockup; drop to mark-only only when the wordmark is nearby or space is tight. Minimum clear space on all sides = the width of one bar.</p>
+    <div class="logos">
+      <div class="logo-card"><div class="canvas light"><img src="generated-assets/logo-horizontal.png" alt="Horizontal lockup"></div><div class="meta"><b>Horizontal lockup</b><span>Default · web, letterhead, email, signage</span></div></div>
+      <div class="logo-card"><div class="canvas light"><img src="generated-assets/logo-stacked.png" alt="Stacked lockup"></div><div class="meta"><b>Stacked lockup</b><span>Square / tall spaces · social, splash, posters</span></div></div>
+      <div class="logo-card"><div class="canvas light"><img src="generated-assets/logo-mark.png" alt="Mark only"></div><div class="meta"><b>Mark-only</b><span>Tight spaces · collapsed nav, spinner, avatar</span></div></div>
+      <div class="logo-card"><div class="canvas dark"><img src="generated-assets/app-icon.png" alt="App tile" style="border-radius:18px"></div><div class="meta"><b>App tile / icon</b><span>Home screen, PWA, dock · mark on deep teal</span></div></div>
+      <div class="logo-card"><div class="canvas light"><img src="generated-assets/favicon-master.png" alt="Favicon master"></div><div class="meta"><b>Favicon master</b><span>Browser tab · derive 16/32/48 ICO + apple-touch</span></div></div>
+      <div class="logo-card"><div class="canvas light"><img src="generated-assets/oauth-logo.png" alt="OAuth consent logo"></div><div class="meta"><b>OAuth consent logo</b><span>Google / Microsoft sign-in · ~120px square</span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Palette -->
+<section>
+  <div class="wrap">
+    <span class="overline">Color</span>
+    <h2>Palette</h2>
+    <p class="sub">A two-tone teal system. Deep teal is the brand ink; teal accent is the interactive layer. Light teal, gray, and off-white carry surfaces and structure.</p>
+    <div class="palette">
+      <div class="swatch"><div class="chip" style="background:#014D4A"></div><div class="info"><b>Deep Teal</b><code>#014D4A</code><p>Primary. Wordmark, headings, primary buttons, nav, dark surfaces.</p></div></div>
+      <div class="swatch"><div class="chip" style="background:#15A39C"></div><div class="info"><b>Teal Accent</b><code>#15A39C</code><p>Links, active/focus, progress, the tallest logo bar, highlights.</p></div></div>
+      <div class="swatch"><div class="chip" style="background:#BFE8E4"></div><div class="info"><b>Light Teal</b><code>#BFE8E4</code><p>Tints, hover/selected, soft badges, reversed mark, chart fills.</p></div></div>
+      <div class="swatch"><div class="chip" style="background:#E5E7EB"></div><div class="info"><b>Gray</b><code>#E5E7EB</code><p>Borders, dividers, disabled, table rules, card outlines.</p></div></div>
+      <div class="swatch"><div class="chip" style="background:#F5F7F9;border-bottom:1px solid #E5E7EB"></div><div class="info"><b>Off-White</b><code>#F5F7F9</code><p>Page background, app canvas, section fills behind white cards.</p></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Migration -->
+<section>
+  <div class="wrap">
+    <span class="overline">Migration</span>
+    <h2>From the legacy teal</h2>
+    <p class="sub">The old single in-code teal <code class="hex">#2DBDB0</code> splits into the new two-tone system <strong>by role</strong>, not by find-replace. A blanket swap would lose the interactive layer.</p>
+    <table>
+      <tr><th>Legacy <code class="hex">#2DBDB0</code> usage</th><th>New token</th><th>New hex</th></tr>
+      <tr><td>Brand color · logo · headings</td><td>Deep Teal</td><td><code class="hex">#014D4A</code></td></tr>
+      <tr><td>Primary buttons · nav · dark surfaces</td><td>Deep Teal</td><td><code class="hex">#014D4A</code></td></tr>
+      <tr><td>Links · active/hover · focus · progress</td><td>Teal Accent</td><td><code class="hex">#15A39C</code></td></tr>
+      <tr><td>Light fills · selected rows · soft badges</td><td>Light Teal</td><td><code class="hex">#BFE8E4</code></td></tr>
+      <tr><td>Faint teal background tints</td><td>Off-White</td><td><code class="hex">#F5F7F9</code></td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- Type -->
+<section>
+  <div class="wrap">
+    <span class="overline">Typography</span>
+    <h2>Inter Tight</h2>
+    <p class="sub">Two weights carry the system — Bold for headings, wordmark, buttons, and stat numbers; Regular for body. Tagline / overlines are Bold, uppercase, +0.08em tracking.</p>
+    <div>
+      <div class="typerow"><span class="tag">Display</span><span class="sample" style="font-size:42px;font-weight:700">Better communities</span><span class="specs">48 / 700</span></div>
+      <div class="typerow"><span class="tag">H1</span><span class="sample" style="font-size:32px;font-weight:700">Page title</span><span class="specs">36 / 700</span></div>
+      <div class="typerow"><span class="tag">H2</span><span class="sample" style="font-size:26px;font-weight:700">Section heading</span><span class="specs">28 / 700</span></div>
+      <div class="typerow"><span class="tag">H3</span><span class="sample" style="font-size:21px;font-weight:700">Card title</span><span class="specs">22 / 700</span></div>
+      <div class="typerow"><span class="tag">Body</span><span class="sample" style="font-size:16px;font-weight:400;color:var(--ink)">The all-in-one platform that simplifies operations.</span><span class="specs">16 / 400</span></div>
+      <div class="typerow"><span class="tag">Overline</span><span class="sample overline" style="font-size:13px">Community Operations Platform</span><span class="specs">12 / 700 · +.08em</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- Do / Don't -->
+<section>
+  <div class="wrap">
+    <span class="overline">Usage</span>
+    <h2>Do's &amp; Don'ts</h2>
+    <p class="sub">Guardrails that keep the brand consistent across every surface.</p>
+    <div class="dd">
+      <div class="col do">
+        <h4>Do</h4>
+        <ul>
+          <li>Keep one bar-width of clear space around every lockup.</li>
+          <li>Use the horizontal lockup as the default.</li>
+          <li>Reverse to white/light-teal mark on deep-teal backgrounds.</li>
+          <li>Keep the tallest bar as the teal accent.</li>
+          <li>Set all wordmarks in Inter Tight Bold.</li>
+        </ul>
+      </div>
+      <div class="col dont">
+        <h4>Don't</h4>
+        <ul>
+          <li>Recolor the mark outside the palette (no blue, no <code class="hex">#2DBDB0</code>).</li>
+          <li>Add gradients, shadows, bevels, or 3D.</li>
+          <li>Stretch, skew, rotate, or rearrange the bars.</li>
+          <li>Use accent teal for small body text on white (contrast fail).</li>
+          <li>Drop ".org" from the wordmark in formal lockups.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p class="essence">"The operating system for better communities."</p>
+  <p>YourCondoManager, Inc. · Brand Identity System v1.0 · 2026-06-16 · Internal — noindex</p>
+</footer>
+
+</body>
+</html>

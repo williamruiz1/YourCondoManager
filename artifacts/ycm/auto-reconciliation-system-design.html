@@ -1,0 +1,70 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex"/>
+<title>Auto-Reconciliation System — Design</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>:root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;--ok:#0f8a4a;--warn:#b8860b;--blue:#2c5fb3}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;margin:0}
+header{background:linear-gradient(135deg,var(--teal),#036a66);color:#fff;padding:30px 32px}
+header h1{font-size:23px;font-weight:800}header p{margin:7px 0 0;color:#cfeee9;font-size:14px}
+.wrap{max-width:920px;margin:0 auto;padding:24px 22px 60px}
+h2{font-size:18px;margin:28px 0 6px;color:var(--teal)}.sub{color:var(--mut);font-size:13.5px;margin:0 0 12px}
+.card{background:#fff;border:1px solid var(--line);border-radius:13px;padding:16px 18px;margin-bottom:12px;font-size:14px}
+.card b{color:var(--ink)}
+.good{border-left:4px solid var(--ok)}.bad{border-left:4px solid #b3261e}.work{border-left:4px solid var(--blue)}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;margin-right:6px}
+.pill.have{background:#e6f6ee;color:var(--ok)}.pill.gap{background:#fce8e6;color:#b3261e}.pill.build{background:#eef4ff;color:var(--blue)}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px;margin:6px 0 14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}th{background:#eef5f4;color:var(--teal);font-weight:700;font-size:11.5px;text-transform:uppercase}
+tr:last-child td{border-bottom:none}
+ol,ul{margin:6px 0 0;padding-left:20px;font-size:14px}li{margin-bottom:5px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:#eef5f4;padding:1px 6px;border-radius:5px;color:var(--teal)}</style></head>
+<body><header><h1>Auto-Reconciliation System — Design</h1><p>Cherry Hill as the reference build · a reusable matching system for every future client + migration</p></header>
+<div class="wrap">
+
+<h2>The headline (the important part)</h2>
+<div class="card good"><b>YourCondoManager already HAS a sophisticated auto-reconciliation engine.</b> The matching brain is built (<span class="mono">server/services/reconciliation/auto-matcher.ts</span>) and it does most of what you asked for. The problem you hit isn't a missing engine — it's that the <b>Bank Accounts page doesn't surface the engine's intelligence</b>. It shows two raw transaction lists with no identification, instead of the engine's answer. So this is <b>connect-the-brain-to-the-screen</b>, not build-a-brain.</div>
+
+<h2>What the engine already does <span class="pill have">have it</span></h2>
+<table><thead><tr><th>Capability</th><th>How</th></tr></thead><tbody>
+<tr><td>Match a bank deposit to the right owner + charge</td><td>Multi-signal score: exact amount, date proximity, fuzzy payor-name (e.g. "ZELLE FROM WILLIAM RUIZ")</td></tr>
+<tr><td>Auto-apply only when confident</td><td>Confidence 0–1; auto-matches above 0.85, everything else routes to a review queue</td></tr>
+<tr><td><b>Learns over time</b> (the automation you want)</td><td>A confirmed match writes a descriptor→owner <b>alias</b>; the next deposit with that descriptor auto-matches at 0.99 — effort drops the more it's used</td></tr>
+<tr><td>Suggest the owner for an unknown deposit</td><td>Matches the deposit against each owner's open balance + name; one-click "create + match"</td></tr>
+<tr><td>Refuse to guess wrong</td><td>Two owners owe the same amount → it does NOT auto-match; surfaces both for a human</td></tr>
+<tr><td>Safe by construction</td><td>Tenant-isolated, idempotent (re-running never double-posts)</td></tr>
+</tbody></table>
+
+<h2>What's actually broken <span class="pill gap">the gap</span></h2>
+<div class="card bad"><b>The Bank Accounts page is the problem, not the engine.</b><ul>
+<li>It shows a <b>"Connected bank → Transactions"</b> raw list <b>and</b> a separate <b>"Pending reconciliation"</b> list — the duplicate lists you saw.</li>
+<li>Its transaction rows are a thin <span class="mono">{amount, description, date}</span> — <b>no column says who the deposit is from, what it's for (dues vs assessment), or whether it's matched.</b></li>
+<li>The engine's rich output (owner, confidence, suggestions, learned aliases) <b>isn't wired to this page</b> — so it reads as a dumb dump, not reconciliation.</li>
+</ul></div>
+
+<h2>The design — one clear reconciliation surface <span class="pill build">build</span></h2>
+<p class="sub">Replace the two confusing lists with ONE table where every bank transaction is identified by the engine.</p>
+<table><thead><tr><th>Date</th><th>From (bank descriptor)</th><th>Amount</th><th>Identified as</th><th>For</th><th>Confidence</th><th>Status</th></tr></thead><tbody>
+<tr><td>5/01</td><td>ZELLE WILLIAM RUIZ</td><td>$47.14</td><td>W. Ruiz · 1421-B</td><td>Assessment</td><td>0.99 ✓</td><td><b style="color:var(--ok)">Auto-matched</b></td></tr>
+<tr><td>5/02</td><td>ACH SANCHEZ</td><td>$330.00</td><td>Sanchez · 1415-C</td><td>Dues</td><td>0.88</td><td><b style="color:var(--ok)">Auto-matched</b></td></tr>
+<tr><td>5/03</td><td>DEPOSIT 8841</td><td>$50.00</td><td>Pantoja? · 1421-D</td><td>Assessment</td><td>0.82</td><td><b style="color:var(--warn)">Suggested — confirm</b></td></tr>
+<tr><td>5/04</td><td>CHECK 1029</td><td>$565.68</td><td>—</td><td>—</td><td>—</td><td><b style="color:#b3261e">Needs you</b></td></tr>
+</tbody></table>
+<ul>
+<li><b>One table, columns that identify each item:</b> who, what for, matched-or-not, confidence. The duplicate raw list is gone (it becomes a filter, not a second tab).</li>
+<li><b>The human only touches the few that need it</b> — Suggested (one-click confirm, which teaches the alias) and Needs-you. Auto-matched rows just show the answer.</li>
+<li><b>Dues vs assessment</b> is read from the matched ledger entry (now that income is split) so each deposit lands in the right account.</li>
+</ul>
+
+<h2>Why this is reusable for every future client</h2>
+<div class="card work">The same surface is the standard onboarding path: <b>connect the bank → the engine auto-identifies the feed → the human confirms only the ambiguous few → each confirmation teaches the system.</b> By the second month per client, most deposits auto-match from learned aliases. This is the low-effort migration path you described — built once, every new association inherits it.</div>
+
+<h2>Build plan (Cherry Hill = reference)</h2>
+<ol>
+<li><b>Surface the engine on the Bank Accounts page</b> — one reconciliation table with the identification columns; kill the duplicate list. (UI; the engine already returns the data.)</li>
+<li><b>Load the assessment</b> — per-owner opening balances + chosen plan from your spreadsheet, so the engine has ledger entries to match the 91 Chase deposits against.</li>
+<li><b>Run the matcher on the 91 transactions</b> — auto-match the confident ones, surface the rest; you confirm a handful, the system learns the descriptors.</li>
+<li><b>That's the template</b> — the same three steps onboard the next client.</li>
+</ol>
+
+<p class="sub" style="margin-top:20px">Honest scope note: steps 1–3 use the existing deterministic + learning engine. A heavier statistical/ML layer (clustering recurring payers, anomaly flags) can sit on top later — but the deterministic + descriptor-alias-learning engine already gives most of the "minimal effort once integrated" you want, without the risk of a black-box guess on a live customer's money.</p>
+</div></body></html>

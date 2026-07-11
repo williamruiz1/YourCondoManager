@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { and, eq, ilike, sql } from "drizzle-orm";
+import { and, eq, ilike, isNotNull, ne, sql } from "drizzle-orm";
 import {
   adminUsers, adminAssociationScopes, analysisRuns, analysisVersions, associations, boardRoles, buildings, documents, hubPageConfigs, occupancies, ownerships, persons, roadmapProjects, roadmapTasks, roadmapWorkstreams, units,
   elections, electionOptions, electionBallotTokens, electionBallotCasts, electionProxyDesignations, electionProxyDocuments,
@@ -16,18 +16,47 @@ import {
   paymentPlans,
   hoaFeeSchedules,
   specialAssessments,
+  portalAccess,
 } from "@shared/schema";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
 
-// All associations from the dev environment. These are inserted by exact ID on every
-// server start using ON CONFLICT DO NOTHING — safe to run repeatedly, never overwrites.
-const KNOWN_ASSOCIATIONS: (typeof associations.$inferInsert)[] = [
+// ── Production-safe seed gating (YCM#prod-safe-seed) ─────────────────────────
+// The demo/sample/test associations below (Sunset Towers, Pacific Heights,
+// Lakewood, Test Towers, CHC TEST HOA, the NJ "Cherry Hill Court", and the
+// Verification/QA/Building-First-Verify rows) must NEVER be (re)created in
+// production. They were archived in the live DB; the only ACTIVE production
+// association is the real "Cherry Hill Court Condominiums". A naive
+// `onConflictDoNothing` upsert here re-created ~10 fake associations on every
+// prod boot. We split the list into PRODUCTION (always seeded) and DEMO
+// (non-prod only) and gate everything that references a demo association.
+//
+// shouldSeedDemoData() is the single signal: demo data seeds only when
+// NODE_ENV !== "production", OR when the explicit SEED_DEMO_DATA=1 escape hatch
+// is set (for someone who deliberately wants demo data in a prod-like env).
+// Production is the SAFE DEFAULT of NO demo data. The gate never touches
+// `archived_at` on existing rows — it simply skips inserting demo rows
+// entirely, so already-archived demo associations are never un-archived.
+export function shouldSeedDemoData(): boolean {
+  if (String(process.env.SEED_DEMO_DATA).trim() === "1") return true;
+  return process.env.NODE_ENV !== "production";
+}
+
+// Real production associations — ALWAYS seeded (idempotent, ON CONFLICT DO NOTHING).
+// Currently just the one real association. If the seed is what creates the real
+// Cherry Hill Court Condominiums row in prod, this keeps that behavior.
+const PRODUCTION_ASSOCIATIONS: (typeof associations.$inferInsert)[] = [
+  { id: "f301d073-ed84-4d73-84ce-3ef28af66f7a", name: "Cherry Hill Court Condominiums", associationType: "HOA", dateFormed: "1990-07-16", ein: "06-1513429", address: "1405 Quinnipiac Ave.", city: "New Haven", state: "CT", country: "USA" },
+];
+
+// Demo / sample / test associations — seeded ONLY in non-production (see
+// shouldSeedDemoData). NEVER inserted in prod; their child blocks
+// (demo-units-fresh-db, elections, chc-test-hoa) are likewise gated.
+const DEMO_ASSOCIATIONS: (typeof associations.$inferInsert)[] = [
   { id: "e60c349e-b14e-48fa-a72e-8af3c2180c74", name: "Sunset Towers", address: "1200 Ocean Drive", city: "Miami", state: "FL", country: "USA" },
   { id: "f627dc9b-cde0-44c0-a23a-405487cb0add", name: "Pacific Heights Condos", address: "789 Bay Street", city: "San Francisco", state: "CA", country: "USA" },
   { id: "7a1f216a-8ac9-4fe9-a8d2-b62b01565a42", name: "Lakewood Residences", address: "450 Lakeview Blvd", city: "Chicago", state: "IL", country: "USA" },
   { id: "1c63e35c-2ac3-4b0a-b2ab-61f873d0d938", name: "Test Towers", address: "100 Test Ave", city: "Austin", state: "TX", country: "USA" },
-  { id: "f301d073-ed84-4d73-84ce-3ef28af66f7a", name: "Cherry Hill Court Condominiums", associationType: "HOA", dateFormed: "1990-07-16", ein: "06-1513429", address: "1405 Quinnipiac Ave.", city: "New Haven", state: "CT", country: "USA" },
   { id: "c7e5t001-0000-4000-8000-000000000001", name: "CHC TEST HOA", associationType: "HOA", address: "1405 Quinnipiac Ave.", city: "New Haven", state: "CT", country: "USA" },
   { id: "628b7d4b-b052-44a5-9bcc-69784581450c", name: "Cherry Hill Court", associationType: "condo", address: "101 Cherry Hill Court", city: "Cherry Hill", state: "NJ", country: "USA" },
   { id: "7c164b67-9e3b-456a-bb49-dd698b0822c4", name: "Verification HOA 1773579706183", associationType: "condo", address: "1 Verification Way", city: "New Haven", state: "CT", country: "USA" },
@@ -36,8 +65,16 @@ const KNOWN_ASSOCIATIONS: (typeof associations.$inferInsert)[] = [
   { id: "8c579997-ec38-4389-9e78-dbf34ba80947", name: "Building First Verify B 092492", address: "200 Verify Way", city: "Austin", state: "TX", country: "USA" },
 ];
 
+// Combined list — demo entries included only when demo seeding is enabled.
+// In production this is just PRODUCTION_ASSOCIATIONS (the real CHC only).
+const KNOWN_ASSOCIATIONS: (typeof associations.$inferInsert)[] =
+  shouldSeedDemoData()
+    ? [...PRODUCTION_ASSOCIATIONS, ...DEMO_ASSOCIATIONS]
+    : [...PRODUCTION_ASSOCIATIONS];
+
 export async function seedDatabase() {
-  log(`[seed] starting :: KNOWN_ASSOCIATIONS=${KNOWN_ASSOCIATIONS.length}`, "seed");
+  const seedDemo = shouldSeedDemoData();
+  log(`[seed] starting :: KNOWN_ASSOCIATIONS=${KNOWN_ASSOCIATIONS.length} seedDemoData=${seedDemo} (NODE_ENV=${process.env.NODE_ENV ?? "undefined"})`, "seed");
 
 
   // founder-os#2472 / #2473 — block-level isolation
@@ -97,6 +134,14 @@ export async function seedDatabase() {
 
 
   await runBlock("demo-units-fresh-db", async () => {
+    // Demo units/people/ownerships for the demo associations (Sunset Towers,
+    // Lakewood, Pacific Heights) — NEVER in production. Gated by seedDemo so
+    // prod never re-creates demo data (and the `.find(...)!` lookups below
+    // can't blow up when the demo associations aren't in KNOWN_ASSOCIATIONS).
+    if (!seedDemo) {
+      log("[seed] demo-units-fresh-db :: skipped (demo seeding disabled in production)", "seed");
+      return;
+    }
     // Seed demo units/people/ownerships only on a truly fresh database (no units yet).
     const existingUnits = await db.select().from(units);
     log(`[seed] units check :: existingUnits=${existingUnits.length} (will seed demo data only if 0)`, "seed");
@@ -1608,6 +1653,13 @@ export async function seedDatabase() {
 
   await runBlock("elections", async () => {
     // ── Election Seed Data ──────────────────────────────────────────────────────
+    // Seeds three elections for Sunset Towers (a DEMO association) — NEVER in
+    // production. Gated by seedDemo: Sunset Towers doesn't exist in prod, so
+    // these elections (and their ballot tokens) would be orphaned/invalid there.
+    if (!seedDemo) {
+      log("[seed] elections :: skipped (demo seeding disabled in production)", "seed");
+      return;
+    }
     // Seeds three elections for Sunset Towers: a certified board election, an open
     // community referendum, and a draft amendment. Plus proxy data on the board election.
     // Idempotent — checks by title before inserting.
@@ -3719,6 +3771,67 @@ export async function seedDatabase() {
     log(`[seed] chc real ownerships :: ${CHC_REAL_OWNERSHIPS.length} records upserted (idempotent)`, "seed");
   });
 
+  await runBlock("portal-access-chc", async () => {
+    // ── Real CHC Owners — Section 3: Portal Access (owner login) ──────────────
+    // #386: the CHC seed provisioned units + owners + ledger entries but ZERO
+    // `portal_access` rows, so owners could not log in on a fresh seed and
+    // go-live gate B.2 (checkB2_ownerPortalBalance) returned `pending`
+    // ("no active portal_access rows — owners cannot log in"). Provision an
+    // active, owner-role portal_access row for every seeded CHC owner that has
+    // an email on file (email is NOT NULL on portal_access; owners without an
+    // email are skipped and get provisioned later via the real onboarding-invite
+    // flow). Mirrors production `storage.createPortalAccess` semantics:
+    // role "owner", status "active", acceptedAt = now, lowercased email.
+    //
+    // Driven off the already-seeded ownerships → persons → units (not a
+    // hand-copied list) so it stays in sync with the owner roster above. One row
+    // per (owner, unit); an owner with multiple units gets one row per unit, and
+    // co-owners of one unit each get their own row (distinct emails). Idempotent
+    // via onConflictDoNothing (unique index on
+    // association_id, email, COALESCE(unit_id, '')).
+    const owners = await db
+      .select({
+        personId: ownerships.personId,
+        unitId: ownerships.unitId,
+        email: persons.email,
+      })
+      .from(ownerships)
+      .innerJoin(persons, eq(persons.id, ownerships.personId))
+      .innerJoin(units, eq(units.id, ownerships.unitId))
+      .where(
+        and(
+          eq(units.associationId, CHERRY_HILL_CONDO_ID),
+          isNotNull(persons.email),
+          ne(persons.email, ""),
+        ),
+      );
+
+    const now = new Date();
+    let inserted = 0;
+    for (const o of owners) {
+      const email = (o.email ?? "").trim().toLowerCase();
+      if (!email) continue;
+      const res = await db
+        .insert(portalAccess)
+        .values({
+          associationId: CHERRY_HILL_CONDO_ID,
+          personId: o.personId,
+          unitId: o.unitId,
+          email,
+          role: "owner",
+          status: "active",
+          acceptedAt: now,
+        })
+        .onConflictDoNothing()
+        .returning({ id: portalAccess.id });
+      if (res.length > 0) inserted++;
+    }
+    log(
+      `[seed] chc portal access :: ${inserted} owner logins provisioned (of ${owners.length} owner/unit pairs with email; idempotent)`,
+      "seed",
+    );
+  });
+
 
   await runBlock("hoa-fee-schedule-chc", async () => {
     // ── HOA Fee Schedule — Cherry Hill Court Condominiums ─────────────────────
@@ -4019,6 +4132,13 @@ export async function seedDatabase() {
     // ── CHC TEST HOA — buildings, units, property manager, scope ────────────────
     // Test association for landwllc.help@gmail.com. Mirrors CHC structure but
     // maintains its own data and is not actionable on the real CHC records.
+    // This is a DEMO/TEST association — NEVER in production (gated by seedDemo).
+    // Its parent association row (CHC TEST HOA) is in DEMO_ASSOCIATIONS and is
+    // not seeded in prod, so its buildings/units/manager must not be either.
+    if (!seedDemo) {
+      log("[seed] chc-test-hoa :: skipped (demo seeding disabled in production)", "seed");
+      return;
+    }
     const CHC_TEST_HOA_ID = "c7e5t001-0000-4000-8000-000000000001";
 
     const [existingCHCTestBuilding] = await db

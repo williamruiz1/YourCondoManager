@@ -1,0 +1,147 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="robots" content="noindex"/>
+<title>New-Client Onboarding Template — YourCondoManager</title>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--teal:#014D4A;--accent:#2DBDB0;--ink:#0f2725;--mut:#5b716e;--line:#e3ecea;--bg:#f5f9f8;--ok:#0f8a4a;--warn:#b8860b;--bad:#b3261e;--blue:#2c5fb3;--card:#fff}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif;margin:0}
+header{background:linear-gradient(135deg,var(--teal),#036a66);color:#fff;padding:32px 32px 28px}
+header h1{font-size:25px;font-weight:800}
+header p{margin:8px 0 0;color:#cfeee9;font-size:14px;max-width:760px}
+.stamp{display:inline-block;margin-top:14px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#eafffb;padding:5px 12px;border-radius:999px;font-size:12.5px;font-weight:600}
+.wrap{max-width:940px;margin:0 auto;padding:26px 22px 64px}
+h2{font-size:19px;margin:30px 0 6px;color:var(--teal);display:flex;align-items:center;gap:10px}
+.sub{color:var(--mut);font-size:13.5px;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:16px 18px;margin-bottom:12px;font-size:14px}
+.card b{color:var(--ink)}
+.good{border-left:4px solid var(--ok)}.bad{border-left:4px solid var(--bad)}.work{border-left:4px solid var(--blue)}.warn{border-left:4px solid var(--warn)}
+.step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:0;margin-bottom:16px;overflow:hidden}
+.step-head{display:flex;align-items:flex-start;gap:14px;padding:16px 18px;border-bottom:1px solid var(--line);background:#f7fbfa}
+.step-num{flex:0 0 auto;width:34px;height:34px;border-radius:9px;background:var(--teal);color:#fff;font-family:'Plus Jakarta Sans';font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center}
+.step-head h3{font-size:16px;margin:0}
+.step-head p{margin:3px 0 0;color:var(--mut);font-size:13px}
+.step-body{padding:14px 18px}
+.chk{list-style:none;margin:8px 0 0;padding:0}
+.chk li{position:relative;padding:6px 0 6px 26px;font-size:13.5px;border-bottom:1px solid var(--line)}
+.chk li:last-child{border-bottom:none}
+.chk li:before{content:"\2713";position:absolute;left:0;top:6px;color:var(--ok);font-weight:800}
+.chk li b{color:var(--ink)}
+.pill{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;margin-right:6px}
+.pill.auto{background:#e6f6ee;color:var(--ok)}.pill.review{background:#fff8e8;color:var(--warn)}.pill.needs{background:#fce8e6;color:var(--bad)}.pill.learn{background:#eef4ff;color:var(--blue)}
+table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:13px;margin:8px 0 14px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line)}
+th{background:#eef5f4;color:var(--teal);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em}
+tr:last-child td{border-bottom:none}
+td.num{font-variant-numeric:tabular-nums;font-weight:600;text-align:right;white-space:nowrap}
+ol,ul{margin:6px 0 0;padding-left:20px;font-size:14px}li{margin-bottom:5px}
+.mono{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:#eef5f4;padding:1px 6px;border-radius:5px;color:var(--teal)}
+.dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:720px){.two{grid-template-columns:1fr}}
+.kv{font-size:13px;color:var(--mut)}.kv b{color:var(--ink)}
+</style></head>
+<body>
+<header>
+<h1>New-Client Onboarding Template</h1>
+<p>The repeatable, low-effort setup path for every future YourCondoManager association — connect the bank, let the engine identify the feed, confirm only the ambiguous few, and let it learn. Cherry Hill Court is the worked example throughout.</p>
+<span class="stamp">Playbook · reusable template · Cherry Hill Court = reference build</span>
+</header>
+<div class="wrap">
+
+<h2>The promise</h2>
+<div class="card good"><b>Setting up a new association should be five clean steps, not a data-entry marathon.</b> YourCondoManager already has the matching brain (<span class="mono">server/services/reconciliation/auto-matcher.ts</span>). Once the association's records are wired correctly and the bank is connected, the engine does the heavy lifting: it <b>auto-identifies confident deposits, routes the ambiguous few to a review queue, and learns from every human confirmation</b> so the effort drops every month. This template captures that path — plus a <b>data-readiness checklist</b> built from the exact bugs Cherry Hill hit, so a new client is set up clean from day one.</div>
+
+<h2>The path at a glance</h2>
+<table><thead><tr><th>Step</th><th>What you do</th><th>What the platform does</th></tr></thead><tbody>
+<tr><td><b>1 · Register</b></td><td>Association + units + owners</td><td>Scopes every owner to the community so reconciliation can "see" them</td></tr>
+<tr><td><b>2 · Dues plan</b></td><td>Per-unit assessment plan, current rate, payment reference</td><td>Creates the ledger entries the bank feed matches against</td></tr>
+<tr><td><b>3 · Connect bank</b></td><td>Link the operating account</td><td>Pulls the transaction feed (the reconciliation source)</td></tr>
+<tr><td><b>4 · Auto-match</b></td><td>Confirm the ambiguous few</td><td>Auto-credits confident deposits; learns descriptor→owner aliases</td></tr>
+<tr><td><b>5 · GL + statements</b></td><td>Enable, watch the balance banner</td><td>Parallel/forward-only GL; surfaces any out-of-balance for review</td></tr>
+</tbody></table>
+
+<!-- STEP 1 -->
+<div class="step">
+<div class="step-head"><div class="step-num">1</div><div><h3>Register the association, its units, and its owners</h3><p>The foundation. Every later step (especially reconciliation) depends on this being wired correctly.</p></div></div>
+<div class="step-body">
+<p>Create the association, add each unit, and attach the owner(s) of record to each unit. This is where the whole system either works cleanly or silently breaks later — so it carries the tightest checklist.</p>
+<div class="card bad"><b>Data-readiness checklist — get this right and reconciliation just works:</b>
+<ul class="chk">
+<li><b>Every owner has an <span class="mono">association_id</span> set (NOT NULL).</b> This is <em>the</em> bug that broke Cherry Hill: the matcher's owner-directory query filters on <span class="mono">persons.association_id</span>, so a blank association means the engine can't "see" that owner and matches nothing.</li>
+<li><b>Every unit has an active owner.</b> An ownerless unit can't be billed dues and produces no ledger entries to match against.</li>
+<li><b>No duplicate person records.</b> One real owner split across two or three person IDs splits their ledger — payments land on one ID while charges sit on another, and the balance never reconciles.</li>
+<li><b><span class="mono">primary_contact_person_id</span> is set on every unit.</b> Without it, statements, notices, and payment reminders have no addressee.</li>
+</ul></div>
+</div></div>
+
+<!-- STEP 2 -->
+<div class="step">
+<div class="step-head"><div class="step-num">2</div><div><h3>Set the dues / assessment plan and the payment reference</h3><p>This creates the expected charges — the ledger entries a bank deposit gets matched to.</p></div></div>
+<div class="step-body">
+<p>For each unit, set the assessment plan and the <b>current dues rate</b>, plus a <b>unique per-unit payment reference</b>.</p>
+<ul class="chk">
+<li><b>Current dues rate per unit.</b> Rate changes are first-class — Cherry Hill moved from <b>$280 → $330/mo</b>, so the plan carries the effective-dated rate and the matcher's amount signal tracks the current expected amount, not a stale one.</li>
+<li><b>A unique per-unit payment reference (<span class="mono">unitAccountRef</span>, e.g. <span class="mono">CHC-0007</span>).</b> When an owner puts that code on their remittance, the engine's <b>Tier-0 reference pass</b> matches the deposit to that exact unit at <b>confidence 1.0 — no review, no name-guessing.</b> This is the single highest-leverage field for hands-off reconciliation.</li>
+<li><b>Opening balances loaded</b> (if migrating mid-year) so the engine has real balances to match deposits against.</li>
+</ul>
+<p class="kv" style="margin-top:10px">The matcher compares each deposit's amount to the unit's expected/open balance within a <b>±$1</b> "exact" tolerance (and a ±$50 window for balance-based suggestions), so a clean current-rate plan is what lets confident deposits auto-apply.</p>
+</div></div>
+
+<!-- STEP 3 -->
+<div class="step">
+<div class="step-head"><div class="step-num">3</div><div><h3>Connect the bank feed</h3><p>Link the operating account; the transaction feed becomes the reconciliation source.</p></div></div>
+<div class="step-body">
+<p>On the <b>Bank Accounts</b> page, link the association's operating account (Stripe Financial Connections). The feed pulls in — for Cherry Hill this was <b>91 Chase transactions</b> (70 owner deposits + 21 debits). Owner payments arrive as credits; the engine only considers credits from the last 30 days for the live matcher (older activity is handled by the report period filter).</p>
+<div class="card work"><b>One reconciliation surface, not two lists.</b> The Bank Accounts page shows a single table where every transaction is identified by the engine — <em>who</em> it's from, <em>what for</em> (dues vs. assessment), <em>matched or not</em>, and a <em>confidence</em> — rather than a raw dump. The human works only the rows that need it.</div>
+</div></div>
+
+<!-- STEP 4 -->
+<div class="step">
+<div class="step-head"><div class="step-num">4</div><div><h3>Run the auto-matcher — confirm only the ambiguous few</h3><p>The engine identifies the confident deposits; you touch just the rest, and it learns as you go.</p></div></div>
+<div class="step-body">
+<p>The matcher scores every deposit against every open charge using a multi-signal confidence (amount exactness, date proximity, fuzzy payor-name, and the unique reference). It sorts each row into a disposition:</p>
+<table><thead><tr><th>Disposition</th><th>When</th><th>Who acts</th></tr></thead><tbody>
+<tr><td><span class="pill auto">Matched by reference</span></td><td>The unique per-unit ref (<span class="mono">CHC-0007</span>) is in the descriptor — confidence <b>1.0</b></td><td>Nobody — auto-applied</td></tr>
+<tr><td><span class="pill auto">Auto-matched</span></td><td>Confidence <b>&ge; 0.85</b> (exact amount + name, single candidate)</td><td>Nobody — auto-applied</td></tr>
+<tr><td><span class="pill review">Suggested — confirm</span></td><td>One-name match / near amount — a strong guess below the bar</td><td>One-click confirm (<b>teaches an alias</b>)</td></tr>
+<tr><td><span class="pill needs">Needs you</span></td><td>No name in the descriptor, or two owners plausibly match (ambiguous)</td><td>Human picks the owner</td></tr>
+</tbody></table>
+<div class="card learn"><b>The learning loop <span class="pill learn">this is why effort drops</span></b><br>Every human-confirmed match writes a <b>descriptor&rarr;owner alias</b>. The next deposit carrying that same bank descriptor auto-matches at <b>confidence 0.99</b> — no review needed. So a payer whose descriptor was confirmed once in month 1 flows through untouched in month 2. The system gets more hands-off the longer it runs.</div>
+<p class="kv" style="margin-top:8px"><b>It refuses to guess wrong:</b> if two owners could plausibly match the same deposit (tied confidence above the bar), <em>neither</em> auto-applies — both surface for a human. False-positive protection is built in.</p>
+<p class="kv">On Cherry Hill's 70 unapplied deposits: <b>38 name-matched, 24 would auto-match cleanly</b>, and the remaining ~32 surfaced in the review queue for a quick human pass — instead of a treasurer hand-keying all 70.</p>
+</div></div>
+
+<!-- STEP 5 -->
+<div class="step">
+<div class="step-head"><div class="step-num">5</div><div><h3>Enable the General Ledger + statements</h3><p>Forward-only, parallel, flag-gated — with a balance banner that surfaces any discrepancy.</p></div></div>
+<div class="step-body">
+<ul class="chk">
+<li><b>GL runs forward-only and in parallel</b>, behind a feature flag — it doesn't rewrite history; it accrues from the go-live point alongside the existing ledger, so switching it on is safe and reversible.</li>
+<li><b>The out-of-balance banner</b> surfaces any discrepancy between the books and the reconciled feed, so nothing drifts silently — a discrepancy becomes a visible review item, not a hidden gap.</li>
+<li><b>Statements</b> go out to each unit's primary contact (set in Step 1) — which is why that field matters.</li>
+</ul>
+</div></div>
+
+<h2><span class="dot" style="background:var(--blue)"></span>Effort over time</h2>
+<div class="two">
+<div class="card"><b>Month 1</b><p style="margin:6px 0 0;color:var(--mut);font-size:13.5px">Highest human touch. The engine auto-matches the obvious deposits (exact amount + name, or a unique ref), but first-time payers with odd descriptors land in <b>Suggested / Needs-you</b>. You confirm those once — and each confirmation writes an alias.</p></div>
+<div class="card good"><b>Month 3+</b><p style="margin:6px 0 0;color:var(--mut);font-size:13.5px">Most recurring payers now carry a learned alias, so their deposits auto-match at 0.99 with <b>zero clicks</b>. The only rows that still need you are genuinely new payers or truly opaque descriptors (e.g. <span class="mono">DEPOSIT ID NUMBER 95016</span>). <b>Effort drops sharply as aliases accumulate.</b></p></div>
+</div>
+
+<h2><span class="dot" style="background:var(--bad)"></span>What went wrong on Cherry Hill — and how this checklist prevents it</h2>
+<table><thead><tr><th>What broke</th><th>The symptom</th><th>Checklist item that prevents it</th></tr></thead><tbody>
+<tr><td><b>17 owners with a blank <span class="mono">association_id</span></b></td><td>The matcher saw only 2 of 19 owners and matched <b>0</b> deposits — $39,506 sat unapplied</td><td>Step 1 · every owner scoped to the association (NOT NULL)</td></tr>
+<tr><td><b>Duplicate "William Ruiz" (3 person records)</b></td><td>One owner's dues and payments risk splitting across IDs — the ledger won't reconcile</td><td>Step 1 · no duplicate person records</td></tr>
+<tr><td><b>16 units missing a primary contact</b></td><td>Statements and reminders have no addressee</td><td>Step 1 · <span class="mono">primary_contact_person_id</span> set per unit</td></tr>
+<tr><td><b>Ownerless real units</b></td><td>Can't be billed dues; no ledger entries to match against</td><td>Step 1 · every unit has an active owner</td></tr>
+<tr><td><b>Deposits with no name / no reference</b></td><td>Opaque descriptors (<span class="mono">DEPOSIT ID NUMBER</span>, <span class="mono">Online Transfer</span>) can't auto-match</td><td>Step 2 · unique per-unit payment reference on remittances</td></tr>
+</tbody></table>
+<div class="card warn"><b>The lesson:</b> the engine was never the problem — the <em>data wiring</em> was. Every failure above traces to a Step-1 or Step-2 field being blank or wrong. Run this checklist at onboarding and a new client starts clean: the engine sees every owner, deposits carry a reference, and reconciliation is hands-off from month one.</div>
+
+<h2>Why this is the standard path</h2>
+<div class="card good"><b>Built once, every new association inherits it.</b> The same five steps and the same data-readiness checklist onboard the next client — no per-client custom engineering. Connect the bank &rarr; the engine identifies the feed &rarr; the human confirms only the ambiguous few &rarr; the system learns. That's the low-effort, reconciliation-driven setup Cherry Hill proved, made repeatable.</div>
+
+<p class="sub" style="margin-top:18px">Scope note: this is a playbook/design artifact. It documents the existing deterministic + descriptor-alias-learning engine (<span class="mono">auto-matcher.ts</span>) and the data conditions it needs. No live database writes, code changes, or money movement are part of this document.</p>
+
+</div></body></html>
