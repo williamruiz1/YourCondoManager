@@ -32,8 +32,11 @@ export default [
       "attached_assets/**",
       "scripts/**",
       "script/**",
-      "server/**",
-      "shared/**",
+      // server/** and shared/** are NO LONGER globally ignored (founder-os#10740
+      // CQ-001) — they are linted by the dedicated server block below (the
+      // advisory `lint:server` script). Still ignore server test/story files.
+      "server/**/*.test.ts",
+      "shared/**/*.test.ts",
       "tests/**",
       "*.config.js",
       "*.config.ts",
@@ -41,6 +44,62 @@ export default [
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    // --- CQ-001 (founder-os#10740): server/ + shared/ lint. ---
+    // The entire server tree (money, tenant-isolation, webhook logic — 38.5k
+    // lines) was never linted. This block turns the recommended baseline OFF
+    // (to avoid a 10k-warning wall on legacy code) and turns ON only the two
+    // HIGH-VALUE, correctness rules the audit named — unawaited/misused promises
+    // in money paths. They are `warn` (not error) and the CI job that runs them
+    // is `continue-on-error` (advisory), so this SURFACES real bugs for
+    // incremental triage WITHOUT blocking merges. Tighten to `error` + a
+    // required check once the initial backlog is triaged (do NOT bulk-suppress).
+    files: ["server/**/*.ts", "shared/**/*.ts"],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: {
+        // Typed linting — no-floating-promises needs type information.
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      "@typescript-eslint/no-floating-promises": "warn",
+      "@typescript-eslint/no-misused-promises": "warn",
+      // Keep the legacy baseline quiet so the two promise rules stand alone as
+      // the actionable signal (mirrors the client block's off-switches). These
+      // are advisory-only for now; error-level baseline rules (e.g. prefer-const)
+      // are demoted so the initial run is warnings-only.
+      "prefer-const": "off",
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-empty-object-type": "off",
+      "@typescript-eslint/ban-ts-comment": "off",
+      "@typescript-eslint/no-require-imports": "off",
+      "@typescript-eslint/no-non-null-assertion": "off",
+      "@typescript-eslint/triple-slash-reference": "off",
+      "@typescript-eslint/no-unused-expressions": "off",
+      "no-empty": "off",
+      "no-empty-pattern": "off",
+      "no-useless-escape": "off",
+      "no-prototype-builtins": "off",
+      "no-case-declarations": "off",
+      "no-constant-condition": "off",
+      "no-async-promise-executor": "off",
+      "no-control-regex": "off",
+      "no-fallthrough": "off",
+      "no-misleading-character-class": "off",
+      "no-self-assign": "off",
+      "no-undef": "off",
+      "no-unused-vars": "off",
+      "no-redeclare": "off",
+      "no-cond-assign": "off",
+      "no-func-assign": "off",
+      "no-unsafe-optional-chaining": "off",
+      "no-extra-boolean-cast": "off",
+      "no-unused-expressions": "off",
+    },
+  },
   {
     files: ["client/**/*.{ts,tsx}"],
     plugins: {

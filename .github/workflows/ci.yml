@@ -58,6 +58,15 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm run check
       - run: npm run lint
+      # CQ-001 (founder-os#10740) — server/ + shared/ lint is ADVISORY for now:
+      # surfaces unawaited/misused promises in the (previously-unlinted) money/
+      # tenant/webhook code WITHOUT blocking merges, so the 38.5k-line backlog is
+      # triaged incrementally. Promote to blocking (drop continue-on-error, make
+      # it a required check) once the initial findings are triaged — do NOT
+      # bulk-suppress.
+      - name: lint server (advisory)
+        continue-on-error: true
+        run: npm run lint:server
 
   test:
     name: vitest
