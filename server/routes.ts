@@ -7,6 +7,7 @@ import fs from "fs";
 import { createHmac, timingSafeEqual } from "crypto";
 import { storage } from "./storage";
 import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
+import { generateOtpCode } from "./otp-code";
 import { db } from "./db";
 import { debug } from "./logger";
 import { captureServerError } from "./observability";
@@ -965,10 +966,17 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
 
     if (missingAssociationIds.length > 0) {
       for (const associationId of missingAssociationIds) {
+        // A-AUTH-004 — least privilege: an association auto-hydrated from an
+        // active portal_access row (rather than an explicit admin grant) gets
+        // READ-ONLY, not read-write. Write authority must come from an explicit
+        // admin/platform-admin grant. (Scope VALUE is not yet consumed to gate
+        // writes — mutation endpoints are a later wave — so this is the correct
+        // least-privilege default for when that enforcement lands, and is a
+        // no-op for current behavior.) Every auto-grant is audit-logged below.
         await storage.upsertAdminAssociationScope({
           adminUserId: adminUser.id,
           associationId,
-          scope: "read-write",
+          scope: "read-only",
         });
       }
       scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
@@ -976,6 +984,8 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
         adminUserId: adminUser.id,
         email: adminUser.email,
         hydratedAssociationIds: missingAssociationIds,
+        grantedScope: "read-only",
+        source: "portal_access",
         resultingScopeCount: scopes.length,
       });
     } else if (scopes.length === 0) {
@@ -13595,7 +13605,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       }
 
       // Generate a 6-digit OTP (one token covers all associations for this email)
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otp = generateOtpCode();
       const otpHash = createHmac("sha256", portalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
@@ -18001,7 +18011,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         return res.json({ message: "If an account exists for this email, a login code has been sent." });
       }
 
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      const otp = generateOtpCode();
       const otpHash = createHmac("sha256", vendorPortalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
       const vendorId = allCredentials[0].vendorId;
