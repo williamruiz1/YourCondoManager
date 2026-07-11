@@ -185,8 +185,12 @@ vi.mock("../../services/stripe-connect-storage", () => ({
 // server/services/__tests__/stripe-reconciliation.test.ts.
 const reconcileCalls: Array<Record<string, unknown>> = [];
 const chargeWriteCalls: Array<Record<string, unknown>> = [];
+const reversalWriteCalls: Array<Record<string, unknown>> = [];
 let reconciliationReportFixture: unknown[] = [];
 vi.mock("../../services/stripe-reconciliation", () => ({
+  REFUND_REVERSAL_REFERENCE_TYPE: "stripe_refund",
+  DISPUTE_REVERSAL_REFERENCE_TYPE: "stripe_dispute",
+  DISPUTE_FEE_REFERENCE_TYPE: "stripe_dispute_fee",
   writeLedgerEntryForCharge: vi.fn(async (input: Record<string, unknown>) => {
     chargeWriteCalls.push(input);
     // Simulate idempotency: first time a charge id is seen → created; repeat → skipped.
@@ -197,6 +201,17 @@ vi.mock("../../services/stripe-reconciliation", () => ({
     return seen
       ? { created: false, ledgerEntryId: `led_${input.chargeId}`, skipped: "already_exists" }
       : { created: true, ledgerEntryId: `led_${input.chargeId}`, skipped: undefined };
+  }),
+  writeReversalLedgerEntry: vi.fn(async (input: Record<string, unknown>) => {
+    reversalWriteCalls.push(input);
+    // Simulate idempotency keyed on (referenceType, reversalId): first → created; repeat → skipped.
+    const seen =
+      reversalWriteCalls.filter(
+        (c) => c.referenceType === input.referenceType && c.reversalId === input.reversalId,
+      ).length > 1;
+    return seen
+      ? { created: false, ledgerEntryId: `rev_${input.reversalId}`, skipped: "already_exists" }
+      : { created: true, ledgerEntryId: `rev_${input.reversalId}`, skipped: undefined };
   }),
   reconcilePayout: vi.fn(async (input: Record<string, unknown>) => {
     reconcileCalls.push(input);
@@ -277,6 +292,7 @@ beforeEach(() => {
   stripeFetchCalls = [];
   reconcileCalls.length = 0;
   chargeWriteCalls.length = 0;
+  reversalWriteCalls.length = 0;
   reconciliationReportFixture = [];
   stripeMockAccount = {
     id: "acct_test_001",
@@ -551,6 +567,130 @@ describe("platform Connect webhook — charge.succeeded (Gap C)", () => {
         body: JSON.stringify({ type: "charge.succeeded", data: { object: { id: "ch_z" } } }),
       });
       expect(res.status).toBe(400);
+    });
+  });
+});
+
+// A-RECON-006 — refund/dispute reversal wiring (route layer). The reversal
+// service is mocked; these prove the webhook handler iterates refunds, only
+// reverses lost disputes, and posts the fee, keyed idempotently.
+describe("platform Connect webhook — charge.refunded / dispute.closed (A-RECON-006)", () => {
+  function signEventBody(rawBody: string): string {
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = createHmac("sha256", PLATFORM_WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest("hex");
+    return `t=${ts},v1=${sig}`;
+  }
+  const post = (url: string, event: unknown) => {
+    const rawBody = JSON.stringify(event);
+    return fetch(`${url}/api/webhooks/stripe-connect/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+      body: rawBody,
+    });
+  };
+
+  it("full refund posts one reversing entry (keyed on refund id)", async () => {
+    await withApp(async (url) => {
+      const res = await post(url, {
+        id: "evt_r1",
+        type: "charge.refunded",
+        account: "acct_test_001",
+        data: { object: { id: "ch_1", refunds: { data: [{ id: "re_1", amount: 35000, status: "succeeded" }] } } },
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { action: string; reversals: unknown[] };
+      expect(payload.action).toBe("refund-reversed");
+      expect(reversalWriteCalls).toHaveLength(1);
+      expect(reversalWriteCalls[0].chargeId).toBe("ch_1");
+      expect(reversalWriteCalls[0].reversalId).toBe("re_1");
+      expect(reversalWriteCalls[0].referenceType).toBe("stripe_refund");
+      expect(reversalWriteCalls[0].amountCents).toBe(35000);
+    });
+  });
+
+  it("partial refund posts a partial reversal", async () => {
+    await withApp(async (url) => {
+      await post(url, {
+        id: "evt_r2",
+        type: "charge.refunded",
+        account: "acct_test_001",
+        data: { object: { id: "ch_2", refunds: { data: [{ id: "re_2", amount: 12000, status: "succeeded" }] } } },
+      });
+      expect(reversalWriteCalls).toHaveLength(1);
+      expect(reversalWriteCalls[0].amountCents).toBe(12000);
+    });
+  });
+
+  it("duplicate refund webhook is idempotent (no double-reversal)", async () => {
+    await withApp(async (url) => {
+      const event = {
+        id: "evt_r3",
+        type: "charge.refunded",
+        account: "acct_test_001",
+        data: { object: { id: "ch_3", refunds: { data: [{ id: "re_3", amount: 5000, status: "succeeded" }] } } },
+      };
+      const first = (await (await post(url, event)).json()) as { reversals: Array<{ created: boolean; skipped?: string }> };
+      const second = (await (await post(url, event)).json()) as { reversals: Array<{ created: boolean; skipped?: string }> };
+      expect(first.reversals[0].created).toBe(true);
+      expect(second.reversals[0].created).toBe(false);
+      expect(second.reversals[0].skipped).toBe("already_exists");
+    });
+  });
+
+  it("dispute lost posts reversal + fee", async () => {
+    await withApp(async (url) => {
+      const res = await post(url, {
+        id: "evt_d1",
+        type: "charge.dispute.closed",
+        account: "acct_test_001",
+        data: {
+          object: {
+            id: "dp_1",
+            charge: "ch_4",
+            amount: 35000,
+            status: "lost",
+            balance_transactions: [{ fee: 1500 }],
+          },
+        },
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { action: string; fee: { created: boolean } | null };
+      expect(payload.action).toBe("dispute-reversed");
+      // one reversal (disputed amount) + one fee = 2 calls
+      expect(reversalWriteCalls).toHaveLength(2);
+      const reversal = reversalWriteCalls.find((c) => c.referenceType === "stripe_dispute");
+      const fee = reversalWriteCalls.find((c) => c.referenceType === "stripe_dispute_fee");
+      expect(reversal?.amountCents).toBe(35000);
+      expect(fee?.amountCents).toBe(1500);
+      expect(payload.fee?.created).toBe(true);
+    });
+  });
+
+  it("dispute won/closed (not lost) does not reverse — just acknowledged", async () => {
+    await withApp(async (url) => {
+      const res = await post(url, {
+        id: "evt_d2",
+        type: "charge.dispute.closed",
+        account: "acct_test_001",
+        data: { object: { id: "dp_2", charge: "ch_5", amount: 35000, status: "won" } },
+      });
+      const payload = (await res.json()) as { action: string };
+      expect(payload.action).toBe("acknowledged");
+      expect(reversalWriteCalls).toHaveLength(0);
+    });
+  });
+
+  it("dispute.created is acknowledged, not reversed (funds not yet lost)", async () => {
+    await withApp(async (url) => {
+      const res = await post(url, {
+        id: "evt_d3",
+        type: "charge.dispute.created",
+        account: "acct_test_001",
+        data: { object: { id: "dp_3", charge: "ch_6", amount: 35000, status: "needs_response" } },
+      });
+      const payload = (await res.json()) as { action: string };
+      expect(payload.action).toBe("acknowledged");
+      expect(reversalWriteCalls).toHaveLength(0);
     });
   });
 });

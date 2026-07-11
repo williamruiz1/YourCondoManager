@@ -91,7 +91,34 @@ export interface WriteLedgerEntryResult {
   created: boolean;
   ledgerEntryId: string | null;
   /** Reason a write was skipped (idempotent hit or missing metadata). */
-  skipped?: "already_exists" | "missing_metadata" | "non_positive_amount";
+  skipped?:
+    | "already_exists"
+    | "missing_metadata"
+    | "non_positive_amount"
+    | "no_original_charge_entry";
+}
+
+/** Reference-type discriminators for reversing ledger entries (A-RECON-006). */
+export const REFUND_REVERSAL_REFERENCE_TYPE = "stripe_refund";
+export const DISPUTE_REVERSAL_REFERENCE_TYPE = "stripe_dispute";
+export const DISPUTE_FEE_REFERENCE_TYPE = "stripe_dispute_fee";
+
+export interface WriteReversalLedgerEntryInput {
+  /** The original charge whose payment entry is being reversed. */
+  chargeId: string;
+  /**
+   * The Stripe object id that makes this reversal idempotent — a refund id
+   * (`re_…`) or a dispute id (`dp_…`). Used as `referenceId`.
+   */
+  reversalId: string;
+  /** Discriminator stored in `referenceType` (refund vs dispute vs dispute-fee). */
+  referenceType: string;
+  /** POSITIVE magnitude (in cents) to reverse — restores the owner's balance. */
+  amountCents: number;
+  /** Where this write originated, for the audit log. */
+  source: "charge.refunded" | "charge.dispute.closed";
+  description?: string | null;
+  postedAt?: Date;
 }
 
 export interface WriteLedgerEntryInput {
@@ -168,6 +195,98 @@ export async function writeLedgerEntryForCharge(
 
   log(
     `[${input.source}] wrote ledger entry id=${created.id} key=${idempotencyKey} amount=${-(input.amountCents / 100)} at=${new Date().toISOString()}`,
+    AUDIT_SOURCE,
+  );
+  return { created: true, ledgerEntryId: created.id, skipped: undefined };
+}
+
+/**
+ * A-RECON-006 — idempotently write a POSITIVE reversing `owner_ledger_entries`
+ * row when money is returned to the owner (refund) or clawed back (dispute
+ * lost). The original `charge.succeeded` handler posts a NEGATIVE "payment"
+ * entry; without this reversal a refund/chargeback leaves the owner's YCM
+ * balance reduced as if they had paid, overstating collected payments.
+ *
+ * Sign convention: payments are NEGATIVE (reduce what the owner owes), so a
+ * reversal is POSITIVE (restores the owed balance) — the negative-of-the-payment.
+ * Recorded as an `adjustment` (a correcting entry, not a new charge).
+ *
+ * Idempotency key: (referenceType, referenceId=reversalId) — the refund/dispute
+ * id — mirroring the charge-id idempotency of `writeLedgerEntryForCharge`, so a
+ * webhook re-delivery never double-reverses.
+ *
+ * FK safety: the association/unit/person are inherited from the ORIGINAL charge
+ * ledger entry (looked up by charge id). If we never recorded the original
+ * payment (legacy / non-YCM charge), there is nothing to reverse — skip safely
+ * rather than fabricate a reversal against unknown references.
+ */
+export async function writeReversalLedgerEntry(
+  input: WriteReversalLedgerEntryInput,
+): Promise<WriteLedgerEntryResult> {
+  const idempotencyKey = `${input.referenceType}:${input.reversalId}`;
+
+  if (!Number.isFinite(input.amountCents) || input.amountCents <= 0) {
+    log(`[${input.source}] skip reversal (non-positive amount) key=${idempotencyKey}`, AUDIT_SOURCE);
+    return { created: false, ledgerEntryId: null, skipped: "non_positive_amount" };
+  }
+
+  // Idempotency: a prior delivery of this same refund/dispute may have posted it.
+  const existing = await db
+    .select({ id: ownerLedgerEntries.id })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.referenceType, input.referenceType),
+        eq(ownerLedgerEntries.referenceId, input.reversalId),
+      ),
+    )
+    .limit(1);
+  if (existing[0]) {
+    log(`[${input.source}] reversal already exists key=${idempotencyKey} id=${existing[0].id}`, AUDIT_SOURCE);
+    return { created: false, ledgerEntryId: existing[0].id, skipped: "already_exists" };
+  }
+
+  // Inherit the FK references from the original charge's payment entry. We only
+  // reverse charges we actually recorded.
+  const original = await db
+    .select({
+      associationId: ownerLedgerEntries.associationId,
+      unitId: ownerLedgerEntries.unitId,
+      personId: ownerLedgerEntries.personId,
+    })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.referenceType, CHARGE_REFERENCE_TYPE),
+        eq(ownerLedgerEntries.referenceId, input.chargeId),
+      ),
+    )
+    .limit(1);
+  if (!original[0]) {
+    log(
+      `[${input.source}] skip reversal (no original charge entry) key=${idempotencyKey} charge=${input.chargeId}`,
+      AUDIT_SOURCE,
+    );
+    return { created: false, ledgerEntryId: null, skipped: "no_original_charge_entry" };
+  }
+
+  const [created] = await db
+    .insert(ownerLedgerEntries)
+    .values({
+      associationId: original[0].associationId,
+      unitId: original[0].unitId,
+      personId: original[0].personId,
+      entryType: "adjustment",
+      amount: input.amountCents / 100, // POSITIVE — reverses the negative payment
+      postedAt: input.postedAt ?? new Date(),
+      description: input.description?.trim() || "Stripe reversal",
+      referenceType: input.referenceType,
+      referenceId: input.reversalId,
+    })
+    .returning({ id: ownerLedgerEntries.id });
+
+  log(
+    `[${input.source}] wrote reversal id=${created.id} key=${idempotencyKey} amount=${input.amountCents / 100} at=${new Date().toISOString()}`,
     AUDIT_SOURCE,
   );
   return { created: true, ledgerEntryId: created.id, skipped: undefined };

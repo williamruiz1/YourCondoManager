@@ -36,6 +36,10 @@ import {
   getReconciliationReport,
   reconcilePayout,
   writeLedgerEntryForCharge,
+  writeReversalLedgerEntry,
+  REFUND_REVERSAL_REFERENCE_TYPE,
+  DISPUTE_REVERSAL_REFERENCE_TYPE,
+  DISPUTE_FEE_REFERENCE_TYPE,
 } from "../services/stripe-reconciliation";
 import { getPlatformKeyMode } from "../services/stripe-connect";
 import { getSecret } from "../platform-secrets-store";
@@ -436,14 +440,104 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
           });
         }
 
-        case "charge.refunded":
-        case "charge.dispute.created":
-        case "charge.dispute.closed": {
-          // Subscribed + acknowledged so Stripe stops retrying; full dispute
-          // lifecycle accounting is a follow-on. Acknowledging here means the
-          // endpoint is registered for these events (R3.1) without taking an
-          // unsafe money action.
+        case "charge.refunded": {
+          // A-RECON-006 — money returned to the owner. Post a POSITIVE reversing
+          // ledger entry per REFUND so the owner's balance stops overstating a
+          // payment that was refunded. Idempotent on refund id, so a webhook
+          // re-delivery (or a second partial refund's event, which re-lists the
+          // earlier refunds) never double-reverses.
+          const charge = event.data?.object as
+            | {
+                id?: string;
+                refunds?: { data?: Array<{ id?: string; amount?: number; status?: string }> };
+              }
+            | undefined;
+          if (!charge?.id) {
+            return res.status(400).json({ message: "Event missing charge payload" });
+          }
+          const refunds = charge.refunds?.data ?? [];
+          const results: Array<{ refundId: string; created: boolean; skipped?: string }> = [];
+          for (const refund of refunds) {
+            if (!refund?.id) continue;
+            // A refund with an explicit non-succeeded status has not returned
+            // money yet; only reverse succeeded (or status-absent legacy) refunds.
+            if (refund.status && refund.status !== "succeeded") continue;
+            const r = await writeReversalLedgerEntry({
+              chargeId: charge.id,
+              reversalId: refund.id,
+              referenceType: REFUND_REVERSAL_REFERENCE_TYPE,
+              amountCents: typeof refund.amount === "number" ? refund.amount : 0,
+              source: "charge.refunded",
+              description: "Stripe refund reversal",
+            });
+            results.push({ refundId: refund.id, created: r.created, skipped: r.skipped });
+          }
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: "refund-reversed",
+            reversals: results,
+          });
+        }
+
+        case "charge.dispute.created": {
+          // Funds are held pending the dispute outcome but NOT yet lost — no
+          // ledger reversal here. Reversal happens on dispute.closed (lost).
           return res.status(200).json({ received: true, type: event.type, action: "acknowledged" });
+        }
+
+        case "charge.dispute.closed": {
+          // A-RECON-006 — only a LOST dispute claws money back from the owner's
+          // balance. On won/warning_closed the funds return to the platform and
+          // no owner-ledger reversal is due.
+          const dispute = event.data?.object as
+            | {
+                id?: string;
+                charge?: string;
+                amount?: number;
+                status?: string;
+                balance_transactions?: Array<{ fee?: number }>;
+              }
+            | undefined;
+          if (!dispute?.id || !dispute.charge) {
+            return res.status(400).json({ message: "Event missing dispute payload" });
+          }
+          if (dispute.status !== "lost") {
+            return res.status(200).json({ received: true, type: event.type, action: "acknowledged" });
+          }
+          // Reverse the disputed amount (keyed on dispute id).
+          const reversal = await writeReversalLedgerEntry({
+            chargeId: dispute.charge,
+            reversalId: dispute.id,
+            referenceType: DISPUTE_REVERSAL_REFERENCE_TYPE,
+            amountCents: typeof dispute.amount === "number" ? dispute.amount : 0,
+            source: "charge.dispute.closed",
+            description: "Stripe dispute (lost) reversal",
+          });
+          // Plus the chargeback fee, as a separate idempotent adjustment.
+          const feeCents = (dispute.balance_transactions ?? []).reduce(
+            (sum, bt) => sum + (typeof bt?.fee === "number" ? bt.fee : 0),
+            0,
+          );
+          let fee: { created: boolean; skipped?: string } | null = null;
+          if (feeCents > 0) {
+            const f = await writeReversalLedgerEntry({
+              chargeId: dispute.charge,
+              reversalId: dispute.id,
+              referenceType: DISPUTE_FEE_REFERENCE_TYPE,
+              amountCents: feeCents,
+              source: "charge.dispute.closed",
+              description: "Stripe dispute (lost) fee",
+            });
+            fee = { created: f.created, skipped: f.skipped };
+          }
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: "dispute-reversed",
+            reversal: { created: reversal.created, skipped: reversal.skipped },
+            fee,
+          });
         }
 
         default:
