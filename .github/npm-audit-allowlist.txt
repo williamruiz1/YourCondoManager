@@ -1,0 +1,21 @@
+# npm-audit allowlist — accepted (triaged) advisories the security gate ignores.
+# founder-os#10740 CQ-003: the gate now FAILS on high+critical CVEs. Any high-
+# severity advisory whose vulnerable package is listed here (one package name
+# per line) is treated as accepted and does NOT fail the gate — so the gate
+# flips to high without being blocked by a pre-existing, triaged finding.
+#
+# RULES: each entry MUST carry a dated reason + a re-review trigger. Keep this
+# list minimal — it is an accept-the-risk decision, not a convenience. Prefer
+# fixing (bump the dep) over allowlisting whenever a non-breaking fix exists.
+#
+# Format: a bare package name (matches the npm-audit `.vulnerabilities` key).
+# Lines beginning with `#` and blank lines are ignored.
+
+# vite — 2026-07-11 (CQ-003 triage). Two HIGH advisories via the dev toolchain:
+#   * launch-editor: NTLMv2 hash disclosure via UNC path handling — Windows only.
+#   * vite: `server.fs.deny` bypass via Windows alternate data-stream paths.
+# Both are WINDOWS-ONLY dev-server attack vectors; YCM builds/deploys on
+# macOS (CI) + Linux (Fly) and never runs the vite dev server in prod. A fix is
+# available (`npm audit fix` bumps vite) — RE-REVIEW: bump vite in a dedicated
+# dependency PR and REMOVE this entry; do not let it persist past the next dep sweep.
+vite
