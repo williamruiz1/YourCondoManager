@@ -91,7 +91,11 @@ export interface WriteLedgerEntryResult {
   created: boolean;
   ledgerEntryId: string | null;
   /** Reason a write was skipped (idempotent hit or missing metadata). */
-  skipped?: "already_exists" | "missing_metadata" | "non_positive_amount";
+  skipped?:
+    | "already_exists"
+    | "missing_metadata"
+    | "non_positive_amount"
+    | "original_payment_not_found";
 }
 
 export interface WriteLedgerEntryInput {
@@ -168,6 +172,122 @@ export async function writeLedgerEntryForCharge(
 
   log(
     `[${input.source}] wrote ledger entry id=${created.id} key=${idempotencyKey} amount=${-(input.amountCents / 100)} at=${new Date().toISOString()}`,
+    AUDIT_SOURCE,
+  );
+  return { created: true, ledgerEntryId: created.id, skipped: undefined };
+}
+
+// ─── A-RECON-006 (founder-os#10754) — refund / dispute ledger reversal ────────
+
+/** referenceType for a refund-reversal ledger entry (idempotency grain). */
+export const REFUND_REVERSAL_REFERENCE_TYPE = "stripe_refund";
+/** referenceType for a lost-dispute reversal ledger entry. */
+export const DISPUTE_REVERSAL_REFERENCE_TYPE = "stripe_dispute";
+
+export interface WriteReversalInput {
+  /** The distinct reversal id (a Stripe refund id `re_…` or dispute id `dp_…`). */
+  reversalId: string;
+  /** The original charge id (for FK-ref inheritance + audit). */
+  chargeId: string;
+  /** The amount RETURNED to the owner, in cents (positive). */
+  amountCents: number;
+  kind: "refund" | "dispute";
+  source: "charge.refunded" | "charge.dispute.closed" | "manual";
+  postedAt?: Date;
+  description?: string | null;
+}
+
+/**
+ * Idempotently post a REVERSING owner-ledger entry when money is returned to an
+ * owner — a Stripe refund (`charge.refunded`) or a LOST dispute
+ * (`charge.dispute.closed`, status=lost). `writeLedgerEntryForCharge` records a
+ * payment as a NEGATIVE amount (reduces the balance); a refund returns that
+ * money, so the reversal is a POSITIVE `credit` that restores the balance —
+ * otherwise the ledger overstates collected payments and understates what the
+ * owner owes (A-RECON-006).
+ *
+ * Idempotency reuses the SAME (referenceType, referenceId) scheme as the payment
+ * write (no second idempotency scheme): keyed on the refund/dispute id, so a
+ * duplicate/retried webhook never double-reverses. A partial refund fires its
+ * own `charge.refunded` with its own refund id → its own partial reversal.
+ * Additive-only: never alters an existing row.
+ */
+export async function writeReversalLedgerEntry(
+  input: WriteReversalInput,
+): Promise<WriteLedgerEntryResult> {
+  const referenceType =
+    input.kind === "dispute" ? DISPUTE_REVERSAL_REFERENCE_TYPE : REFUND_REVERSAL_REFERENCE_TYPE;
+  const idempotencyKey = `${referenceType}:${input.reversalId}`;
+
+  if (!Number.isFinite(input.amountCents) || input.amountCents <= 0) {
+    log(`[${input.source}] skip reversal (non-positive amount) key=${idempotencyKey}`, AUDIT_SOURCE);
+    return { created: false, ledgerEntryId: null, skipped: "non_positive_amount" };
+  }
+
+  // Idempotency FIRST: a prior delivery of this refund/dispute event may have
+  // posted it. (Check before the payment lookup so a duplicate is cheap.)
+  const existing = await db
+    .select({ id: ownerLedgerEntries.id })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.referenceType, referenceType),
+        eq(ownerLedgerEntries.referenceId, input.reversalId),
+      ),
+    )
+    .limit(1);
+  if (existing[0]) {
+    log(`[${input.source}] reversal already exists key=${idempotencyKey} id=${existing[0].id}`, AUDIT_SOURCE);
+    return { created: false, ledgerEntryId: existing[0].id, skipped: "already_exists" };
+  }
+
+  // Resolve the owner refs from the ORIGINAL payment entry we wrote for this
+  // charge — the authoritative source. If we never recorded the payment there
+  // is nothing to reverse (avoids reversing an untracked/foreign charge), and
+  // it works for dispute events too (which do not carry charge metadata).
+  const [origin] = await db
+    .select({
+      associationId: ownerLedgerEntries.associationId,
+      unitId: ownerLedgerEntries.unitId,
+      personId: ownerLedgerEntries.personId,
+    })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.referenceType, CHARGE_REFERENCE_TYPE),
+        eq(ownerLedgerEntries.referenceId, input.chargeId),
+      ),
+    )
+    .limit(1);
+  if (!origin) {
+    log(
+      `[${input.source}] skip reversal (no original payment entry for charge=${input.chargeId}) key=${idempotencyKey}`,
+      AUDIT_SOURCE,
+    );
+    return { created: false, ledgerEntryId: null, skipped: "original_payment_not_found" };
+  }
+
+  const [created] = await db
+    .insert(ownerLedgerEntries)
+    .values({
+      associationId: origin.associationId,
+      unitId: origin.unitId,
+      personId: origin.personId,
+      entryType: "credit",
+      // POSITIVE — reverses the negative payment, restoring what the owner owes
+      // now that the money has been returned to them.
+      amount: input.amountCents / 100,
+      postedAt: input.postedAt ?? new Date(),
+      description:
+        input.description?.trim() ||
+        (input.kind === "dispute" ? "Stripe dispute reversal (lost)" : "Stripe refund reversal"),
+      referenceType,
+      referenceId: input.reversalId,
+    })
+    .returning({ id: ownerLedgerEntries.id });
+
+  log(
+    `[${input.source}] wrote reversal id=${created.id} key=${idempotencyKey} amount=+${input.amountCents / 100} charge=${input.chargeId} at=${new Date().toISOString()}`,
     AUDIT_SOURCE,
   );
   return { created: true, ledgerEntryId: created.id, skipped: undefined };

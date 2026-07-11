@@ -36,6 +36,7 @@ import {
   getReconciliationReport,
   reconcilePayout,
   writeLedgerEntryForCharge,
+  writeReversalLedgerEntry,
 } from "../services/stripe-reconciliation";
 import { getPlatformKeyMode } from "../services/stripe-connect";
 import { getSecret } from "../platform-secrets-store";
@@ -436,13 +437,69 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
           });
         }
 
-        case "charge.refunded":
-        case "charge.dispute.created":
+        case "charge.refunded": {
+          // A-RECON-006 (founder-os#10754): a refund returns money to the owner,
+          // so post a POSITIVE reversing owner-ledger entry — otherwise the
+          // ledger keeps the owner's balance reduced as if they had paid. The
+          // event's charge carries its refunds; the NEWEST (`refunds.data[0]`)
+          // is the one this delivery is for → key the reversal on that refund id
+          // so a partial refund posts its own partial reversal and a retried
+          // webhook is idempotent (dedup on referenceType+referenceId).
+          const charge = event.data?.object as
+            | { id?: string; refunds?: { data?: Array<{ id?: string; amount?: number }> } | null }
+            | undefined;
+          const refund = charge?.refunds?.data?.[0];
+          if (!charge?.id || !refund?.id || typeof refund.amount !== "number") {
+            return res.status(200).json({ received: true, type: event.type, action: "acknowledged:no-refund-payload" });
+          }
+          const result = await writeReversalLedgerEntry({
+            reversalId: refund.id,
+            chargeId: charge.id,
+            amountCents: refund.amount,
+            kind: "refund",
+            source: "charge.refunded",
+          });
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: result.created ? "ledger-reversed" : `skipped:${result.skipped ?? "unknown"}`,
+            ledgerEntryId: result.ledgerEntryId,
+          });
+        }
+
         case "charge.dispute.closed": {
-          // Subscribed + acknowledged so Stripe stops retrying; full dispute
-          // lifecycle accounting is a follow-on. Acknowledging here means the
-          // endpoint is registered for these events (R3.1) without taking an
-          // unsafe money action.
+          // A-RECON-006: a LOST dispute (chargeback) removes money from the HOA
+          // permanently → post the reversal, keyed on the dispute id. A
+          // won/warning-closed dispute returns the money to the HOA, so no
+          // reversal. (The dispute FEE reversal needs a balance-transaction
+          // lookup and remains the documented follow-on.)
+          const dispute = event.data?.object as
+            | { id?: string; status?: string; amount?: number; charge?: string | null }
+            | undefined;
+          if (dispute?.status !== "lost") {
+            return res.status(200).json({ received: true, type: event.type, action: `acknowledged:dispute-${dispute?.status ?? "unknown"}` });
+          }
+          if (!dispute.id || !dispute.charge || typeof dispute.amount !== "number") {
+            return res.status(200).json({ received: true, type: event.type, action: "acknowledged:no-dispute-payload" });
+          }
+          const result = await writeReversalLedgerEntry({
+            reversalId: dispute.id,
+            chargeId: dispute.charge,
+            amountCents: dispute.amount,
+            kind: "dispute",
+            source: "charge.dispute.closed",
+          });
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: result.created ? "ledger-reversed" : `skipped:${result.skipped ?? "unknown"}`,
+            ledgerEntryId: result.ledgerEntryId,
+          });
+        }
+
+        case "charge.dispute.created": {
+          // Money is not yet returned on dispute-created (only on close-lost).
+          // Acknowledge so Stripe stops retrying; the reversal fires on close.
           return res.status(200).json({ received: true, type: event.type, action: "acknowledged" });
         }
 

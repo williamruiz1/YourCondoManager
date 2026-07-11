@@ -167,6 +167,7 @@ import {
   extractChargeMetadata,
   summarizePayoutTransactions,
   writeLedgerEntryForCharge,
+  writeReversalLedgerEntry,
   reconcilePayout,
   getReconciliationReport,
   type PayoutTransactionSummary,
@@ -392,5 +393,97 @@ describe("reconcilePayout + getReconciliationReport (spec §4.1)", () => {
     // Owners sorted gross desc — the $350 charge leads.
     expect(payout.owners[0].grossAmountCents).toBe(35000);
     expect(payout.owners.every((o) => o.reconciled)).toBe(true);
+  });
+});
+
+// ─── A-RECON-006 (founder-os#10754) — refund / dispute ledger reversal ────────
+describe("writeReversalLedgerEntry (A-RECON-006 — refund/dispute reversal)", () => {
+  // Seed the ORIGINAL negative payment entry the reversal inherits refs from.
+  function seedPayment(chargeId: string) {
+    rowsFor(ownerLedgerEntries).push({
+      id: `pay-${chargeId}`,
+      associationId: "assoc_1",
+      unitId: "unit_1",
+      personId: "person_1",
+      entryType: "payment",
+      amount: -100,
+      referenceType: "stripe_charge",
+      referenceId: chargeId,
+    });
+  }
+
+  it("full refund posts ONE positive reversing credit keyed on the refund id", async () => {
+    seedPayment("ch_1");
+    const res = await writeReversalLedgerEntry({
+      reversalId: "re_1",
+      chargeId: "ch_1",
+      amountCents: 10000,
+      kind: "refund",
+      source: "charge.refunded",
+    });
+    expect(res.created).toBe(true);
+    const rows = rowsFor(ownerLedgerEntries);
+    const entry = rows.find((r) => r.referenceType === "stripe_refund" && r.referenceId === "re_1");
+    expect(entry).toBeTruthy();
+    expect(entry!.entryType).toBe("credit");
+    expect(entry!.amount).toBe(100); // POSITIVE reversal of the -100 payment
+    expect(entry!.associationId).toBe("assoc_1"); // refs inherited from the payment
+    expect(entry!.personId).toBe("person_1");
+  });
+
+  it("partial refund posts a partial reversal (amount = the refunded amount)", async () => {
+    seedPayment("ch_2");
+    const res = await writeReversalLedgerEntry({
+      reversalId: "re_2",
+      chargeId: "ch_2",
+      amountCents: 2500,
+      kind: "refund",
+      source: "charge.refunded",
+    });
+    expect(res.created).toBe(true);
+    const entry = rowsFor(ownerLedgerEntries).find((r) => r.referenceId === "re_2");
+    expect(entry!.amount).toBe(25);
+  });
+
+  it("duplicate refund webhook is idempotent — no double reversal", async () => {
+    seedPayment("ch_3");
+    const first = await writeReversalLedgerEntry({
+      reversalId: "re_3", chargeId: "ch_3", amountCents: 5000, kind: "refund", source: "charge.refunded",
+    });
+    expect(first.created).toBe(true);
+    const retry = await writeReversalLedgerEntry({
+      reversalId: "re_3", chargeId: "ch_3", amountCents: 5000, kind: "refund", source: "charge.refunded",
+    });
+    expect(retry.created).toBe(false);
+    expect(retry.skipped).toBe("already_exists");
+    expect(rowsFor(ownerLedgerEntries).filter((r) => r.referenceId === "re_3").length).toBe(1);
+  });
+
+  it("dispute lost posts a reversal keyed on the dispute id (referenceType stripe_dispute)", async () => {
+    seedPayment("ch_4");
+    const res = await writeReversalLedgerEntry({
+      reversalId: "dp_4", chargeId: "ch_4", amountCents: 8000, kind: "dispute", source: "charge.dispute.closed",
+    });
+    expect(res.created).toBe(true);
+    const entry = rowsFor(ownerLedgerEntries).find((r) => r.referenceType === "stripe_dispute" && r.referenceId === "dp_4");
+    expect(entry).toBeTruthy();
+    expect(entry!.amount).toBe(80);
+  });
+
+  it("skips when no original payment entry exists (never reverse an untracked charge)", async () => {
+    const res = await writeReversalLedgerEntry({
+      reversalId: "re_orphan", chargeId: "ch_never_recorded", amountCents: 5000, kind: "refund", source: "charge.refunded",
+    });
+    expect(res.created).toBe(false);
+    expect(res.skipped).toBe("original_payment_not_found");
+  });
+
+  it("skips a non-positive amount", async () => {
+    seedPayment("ch_5");
+    const res = await writeReversalLedgerEntry({
+      reversalId: "re_5", chargeId: "ch_5", amountCents: 0, kind: "refund", source: "charge.refunded",
+    });
+    expect(res.created).toBe(false);
+    expect(res.skipped).toBe("non_positive_amount");
   });
 });
