@@ -1210,10 +1210,39 @@ async function readAssessmentRulesWriteToggle(
   return canAssessmentRulesWrite("assisted-board", associationId);
 }
 
-async function assertResourceScope(req: AdminRequest, resourceType: string, id: string) {
+/**
+ * A-AUTHZ-001 (founder-os#10750) — fail CLOSED on an unresolved association.
+ *
+ * Previously this returned (ALLOW) whenever the resolver gave back a falsy
+ * association id. 9 of the ~48 scoped resource types have a NULLABLE
+ * `association_id`, so a row with `association_id = NULL` — or a not-found id,
+ * or a typo'd resourceType hitting the resolver's `default` — was reachable and
+ * MUTABLE from ANY tenant's admin (cross-tenant IDOR; concrete write:
+ * `PATCH /api/governance/templates/:id`). Now: an unresolved association DENIES.
+ *
+ * The one legitimate exception is a genuinely-GLOBAL, platform-owned row (a
+ * state-library governance/notice template, a shared clause record) with a
+ * null association BY DESIGN. Such a row belongs to no tenant, so READING it is
+ * not a cross-tenant leak — a non-platform admin may read it. The handful of
+ * read routes for those types pass `{ allowGlobalRead: true }`; every WRITE
+ * keeps the fail-closed default, so a non-platform admin can never MUTATE a
+ * global/orphan row. platform-admin is unrestricted as before.
+ */
+async function assertResourceScope(
+  req: AdminRequest,
+  resourceType: string,
+  id: string,
+  opts?: { allowGlobalRead?: boolean },
+) {
   if (req.adminRole === "platform-admin") return;
   const associationId = await storage.getAssociationIdForScopedResource(resourceType, id);
-  if (!associationId) return;
+  if (!associationId) {
+    // Fail-closed: unresolved association (null-association row / not-found /
+    // unknown resourceType) is a DENY for a non-platform admin — except a
+    // read of a genuinely-global row, which has no owning tenant to leak.
+    if (opts?.allowGlobalRead) return;
+    throw new Error("Resource not found or outside admin scope");
+  }
   assertAssociationScope(req, associationId);
 }
 
@@ -9136,7 +9165,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
-      await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId));
+      await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId), { allowGlobalRead: true });
       const result = await storage.getGovernanceTemplateItems(getParam(req.params.templateId));
       res.json(result);
     } catch (error: any) {
@@ -10062,7 +10091,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/ai/ingestion/clauses/:id/tags", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
-      await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
+      await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id), { allowGlobalRead: true });
       const result = await storage.getClauseTags(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
@@ -10086,7 +10115,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/ai/ingestion/clauses/:id/suggested-links", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
-      await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id));
+      await assertResourceScope(req as AdminRequest, "clause-record", getParam(req.params.id), { allowGlobalRead: true });
       const result = await storage.getSuggestedLinks(getParam(req.params.id));
       res.json(result);
     } catch (error: any) {
