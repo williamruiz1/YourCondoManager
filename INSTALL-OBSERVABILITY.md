@@ -107,11 +107,29 @@ Edit `fly.toml` under `[build.args]`:
 
 ```toml
 [build.args]
-    VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"
+    # VITE_GOOGLE_MAPS_API_KEY stays "" here — the live key is injected at
+    # build time from the CI secret (see below), NOT committed to fly.toml.
+    VITE_GOOGLE_MAPS_API_KEY = ""
     VITE_SENTRY_DSN = "<paste-from-step-1-ycm-client-DSN>"
     VITE_GA_MEASUREMENT_ID = "G-XXXXXXXXXX"  # from step 2
     VITE_APP_ENV = "production"
 ```
+
+**Google Maps key — do NOT paste a live key into `fly.toml`** (founder-os audit
+A-SEC-002 / COST-B-004 / CQ-012). It is a client-visible key by design, but
+committing it to git makes rotation a code+redeploy operation and leaves the
+value permanently in history. Instead, set it once as a repo secret; the Fly
+deploy workflow injects it as a build-arg:
+
+```bash
+gh secret set VITE_GOOGLE_MAPS_API_KEY -R williamruiz1/YourCondoManager
+# paste the RESTRICTED, ROTATED key from Google Cloud Console when prompted
+```
+
+Restrict the key in Google Cloud Console before use: (a) HTTP-referrer →
+`app.yourcondomanager.org` (+ any legitimate prod/preview origins), and (b) API
+restriction → only the Maps JS / Places APIs actually used. Add a billing/quota
+alert as defense-in-depth.
 
 Commit the `fly.toml` change as a separate small PR if you prefer audit
 clarity, OR roll it into the `chore(deps)` PR from Step 3.

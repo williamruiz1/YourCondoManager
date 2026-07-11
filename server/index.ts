@@ -50,8 +50,26 @@ dotenv.config({ path: ".env.local", override: true });
 // `SENTRY_DSN` is unset (local dev). See INSTALL-OBSERVABILITY.md for the
 // production deploy steps (Issue founder-os#1030).
 import { initServerObservability, assertServerObservabilityConfigured } from "./observability";
+import { outboundSideEffectsDisabled } from "./staging-guard";
 
 const app = express();
+
+// founder-os#10193 F0 — staging review environment: keep it out of search
+// indexes and mark it visibly as non-production. Fires ONLY when the outbound
+// kill-switch is on (i.e. the yourcondomanager-staging app), so prod is
+// untouched. Serves a disallow-all robots.txt and stamps X-Robots-Tag +
+// X-YCM-Environment on every response.
+if (outboundSideEffectsDisabled()) {
+  app.get("/robots.txt", (_req, res) => {
+    res.type("text/plain").send("User-agent: *\nDisallow: /\n");
+  });
+  app.use((_req, res, next) => {
+    res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive, nosnippet");
+    res.setHeader("X-YCM-Environment", "staging");
+    next();
+  });
+}
+
 const httpServer = createServer(app);
 const PgStore = connectPgSimple(session);
 

@@ -11,6 +11,7 @@ import { emailEvents, emailLogs, type EmailEvent, type EmailLog } from "@shared/
 // and the /api/__test/last-otp consumer.
 import { captureTestEmail } from "./test-routes";
 import { resolveTenantSender } from "./email/tenant-sender.js";
+import { outboundSideEffectsDisabled, logSuppressedOutbound } from "./staging-guard";
 
 type EmailAddressLike = string | string[] | null | undefined;
 
@@ -451,6 +452,22 @@ export async function sendPlatformEmail(payload: SendEmailPayload): Promise<Send
     text: text || "",
     html: html || "",
   });
+
+  // founder-os#10193 F0 — staging kill-switch: never email a real Cherry Hill owner
+  // from the cloned-real-data review environment. emailLog row already written
+  // above, so the send is recorded as "simulated" (staging-sink) for audit.
+  if (outboundSideEffectsDisabled()) {
+    logSuppressedOutbound("email", { to, subject: payload.subject });
+    const simMessageId = `staging-sink-${Date.now()}`;
+    await updateEmailLog(emailLog.id, {
+      status: "simulated",
+      provider: "staging-sink",
+      providerMessageId: simMessageId,
+      errorMessage: null,
+      sentAt: new Date(),
+    });
+    return { status: "simulated", messageId: simMessageId, logId: emailLog.id, provider: "staging-sink" };
+  }
 
   if (!isSmtpConfigured(config)) {
     console.warn("[email][simulation-mode] Email not sent — no provider configured", { to, subject: payload.subject });

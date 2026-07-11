@@ -748,6 +748,83 @@ export const disbursements = pgTable("disbursements", {
   ),
 }));
 
+// ── Architectural Review Committee (ARC) workflow (founder-os dispatch #9481) ──
+// Owner architectural-change-request lifecycle: intake → committee routing →
+// decision capture → records → appeal path. The agent moves a request through
+// the WORKFLOW steps (intake, routing, recording an appeal) — those are L2
+// plumbing. The APPROVE/DENY decision stays a HUMAN committee decision, and a
+// DENIAL is member-affecting (L4): the service refuses any decision from a
+// non-human actor, so an agent alone can never actuate a denial.
+//
+// NET-NEW / ADDITIVE: one new table + one enum + one index. Touches no
+// existing table, column, money path, or governance record.
+//
+// Status flow:
+//   submitted → under-review → approved
+//                            → denied → appealed → appeal-approved
+//                                                 → appeal-denied
+export const arcRequestStatusEnum = pgEnum("arc_request_status", [
+  "submitted",
+  "under-review",
+  "approved",
+  "denied",
+  "appealed",
+  "appeal-approved",
+  "appeal-denied",
+]);
+
+export const arcRequests = pgTable("arc_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // The unit the proposed change affects (optional — an owner may hold multiple
+  // units; the request is still association-scoped either way).
+  unitId: varchar("unit_id").references(() => units.id),
+  // What the owner wants to change.
+  title: text("title").notNull(),
+  // Free-text category (e.g. "fence", "deck", "exterior-paint"). Kept as text
+  // (not an enum) so associations aren't boxed into a fixed taxonomy.
+  category: text("category"),
+  description: text("description").notNull(),
+  // Supporting files as a JSON array of { name, url } objects. Additive metadata;
+  // the workflow does not depend on any file being present.
+  attachments: jsonb("attachments").$type<{ name: string; url: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  status: arcRequestStatusEnum("status").notNull().default("submitted"),
+  // ── Submitter identity ──
+  // "owner" = portal owner (identity from the portal session), "admin" = an
+  // admin submitting on the owner's behalf, "agent" = an automated actor.
+  submittedByType: text("submitted_by_type").notNull().default("owner"),
+  submittedByEmail: text("submitted_by_email").notNull(),
+  submittedByPersonId: varchar("submitted_by_person_id"),
+  submittedByAdminUserId: varchar("submitted_by_admin_user_id").references(() => adminUsers.id),
+  // ── Routing to committee (L2 workflow step) ──
+  routedByAdminUserId: varchar("routed_by_admin_user_id").references(() => adminUsers.id),
+  routedByEmail: text("routed_by_email"),
+  routedAt: timestamp("routed_at"),
+  committeeNote: text("committee_note"),
+  // ── Decision capture (HUMAN committee decision; denial = L4) ──
+  decidedByAdminUserId: varchar("decided_by_admin_user_id").references(() => adminUsers.id),
+  decidedByEmail: text("decided_by_email"),
+  decidedAt: timestamp("decided_at"),
+  decisionReason: text("decision_reason"),
+  // ── Appeal path ──
+  appealReason: text("appeal_reason"),
+  appealedByEmail: text("appealed_by_email"),
+  appealedAt: timestamp("appealed_at"),
+  appealDecidedByAdminUserId: varchar("appeal_decided_by_admin_user_id").references(() => adminUsers.id),
+  appealDecidedByEmail: text("appeal_decided_by_email"),
+  appealDecidedAt: timestamp("appeal_decided_at"),
+  appealDecisionReason: text("appeal_decision_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  // Tenant-scoped list index: an association's ARC requests by status + recency.
+  arcRequestsAssocStatusIdx: index("arc_requests_assoc_status_created_idx").on(
+    table.associationId,
+    table.status,
+    table.createdAt,
+  ),
+}));
+
 export const paymentMethodConfigs = pgTable("payment_method_configs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
@@ -2370,6 +2447,27 @@ export const insertDisbursementSchema = createInsertSchema(disbursements).omit({
   createdAt: true,
   updatedAt: true,
 });
+export const insertArcRequestSchema = createInsertSchema(arcRequests).omit({
+  id: true,
+  status: true,
+  routedByAdminUserId: true,
+  routedByEmail: true,
+  routedAt: true,
+  committeeNote: true,
+  decidedByAdminUserId: true,
+  decidedByEmail: true,
+  decidedAt: true,
+  decisionReason: true,
+  appealReason: true,
+  appealedByEmail: true,
+  appealedAt: true,
+  appealDecidedByAdminUserId: true,
+  appealDecidedByEmail: true,
+  appealDecidedAt: true,
+  appealDecisionReason: true,
+  createdAt: true,
+  updatedAt: true,
+});
 export const insertUtilityPaymentSchema = createInsertSchema(utilityPayments).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentMethodConfigSchema = createInsertSchema(paymentMethodConfigs).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertPaymentGatewayConnectionSchema = createInsertSchema(paymentGatewayConnections).omit({ id: true, createdAt: true, updatedAt: true, lastValidatedAt: true });
@@ -2574,6 +2672,9 @@ export type InsertVendorInvoice = z.infer<typeof insertVendorInvoiceSchema>;
 export type Disbursement = typeof disbursements.$inferSelect;
 export type InsertDisbursement = z.infer<typeof insertDisbursementSchema>;
 export type DisbursementStatus = (typeof disbursementStatusEnum.enumValues)[number];
+export type ArcRequest = typeof arcRequests.$inferSelect;
+export type InsertArcRequest = z.infer<typeof insertArcRequestSchema>;
+export type ArcRequestStatus = (typeof arcRequestStatusEnum.enumValues)[number];
 export type UtilityPayment = typeof utilityPayments.$inferSelect;
 export type InsertUtilityPayment = z.infer<typeof insertUtilityPaymentSchema>;
 export type PaymentMethodConfig = typeof paymentMethodConfigs.$inferSelect;
@@ -3544,6 +3645,12 @@ export const amenityReservations = pgTable("amenity_reservations", {
   depositRefundedCents: integer("deposit_refunded_cents").notNull().default(0),
   /** Portion of the held deposit forfeited (kept as income), in cents. */
   depositForfeitedCents: integer("deposit_forfeited_cents").notNull().default(0),
+  // A-STRIPE-003 (founder-os#10752, migration 0058): the deposit-hold
+  // PaymentIntent id (pi_…) persisted at hold time. ADDITIVE / nullable —
+  // legacy reservations stay null and fall back to Stripe Search. Refund/forfeit
+  // look this up DIRECTLY (strongly consistent) instead of the eventually-
+  // consistent Search API, so a resolution issued right after the hold resolves.
+  depositHoldIntentId: varchar("deposit_hold_intent_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

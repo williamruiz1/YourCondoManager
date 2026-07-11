@@ -22,6 +22,7 @@
  *   disabled    — requirements.disabled_reason present, or account marked disabled
  */
 
+import { assertStripeKeySafe } from "../staging-guard";
 import { getSecret } from "../platform-secrets-store";
 import { stripeFetch } from "./stripe-fetch";
 
@@ -193,6 +194,7 @@ export async function callPlatformStripe<T = Record<string, unknown>>(
   opts: StripeApiCallOptions,
 ): Promise<T> {
   const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+  assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
   if (!secretKey) {
     throw new Error("Platform Stripe secret key not configured");
   }
@@ -300,6 +302,7 @@ export function getYcmBaseUrl(): string {
  */
 export async function getPlatformKeyMode(): Promise<"test" | "live" | "unknown"> {
   const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+  assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
   if (!secretKey) return "unknown";
   if (secretKey.startsWith("sk_live_") || secretKey.startsWith("rk_live_")) return "live";
   if (secretKey.startsWith("sk_test_") || secretKey.startsWith("rk_test_")) return "test";

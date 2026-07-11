@@ -18,6 +18,7 @@ import {
   specialAssessments,
   portalAccess,
 } from "@shared/schema";
+import { slugifyCommunityName } from "@shared/community-slug";
 import { log } from "./logger";
 import { randomBytes } from "crypto";
 
@@ -4215,18 +4216,42 @@ export async function seedDatabase() {
       .from(hubPageConfigs)
       .where(eq(hubPageConfigs.associationId, CHERRY_HILL_CONDO_ID));
 
+    // Trustworthy community vanity URL (founder-os #8151): derive Cherry Hill's
+    // public slug from the canonical helper so it matches every other community's
+    // rule — "Cherry Hill Court Condominiums" -> "cherryhill", giving the clean,
+    // recognizable yourcondomanager.org/community/cherryhill. Only the REAL CHC
+    // gets a hub config, so the NJ decoy "Cherry Hill Court" can't collide here.
+    const chcSlug = slugifyCommunityName("Cherry Hill Court Condominiums"); // "cherryhill"
     if (!existingCHCHub) {
       await db.insert(hubPageConfigs).values({
         id: "chcfg001-0000-4000-8000-000000000001",
         associationId: CHERRY_HILL_CONDO_ID,
         isEnabled: 1,
-        slug: "cherry-hill-court",
+        slug: chcSlug,
         communityDescription: "Cherry Hill Court Condominiums — New Haven, CT. A vibrant 18-unit community.",
         themeColor: "#0F1E3C",
         enabledSections: ["notices", "quick-actions", "info-blocks", "map", "buildings", "contacts"],
         sectionOrder: ["notices", "quick-actions", "info-blocks", "map", "buildings", "contacts"],
       }).onConflictDoNothing();
-      log(`[seed] chc hub page config :: enabled with slug 'cherry-hill-court'`, "seed");
+      log(`[seed] chc hub page config :: enabled with slug '${chcSlug}'`, "seed");
+    } else if (existingCHCHub.slug === "cherry-hill-court" && existingCHCHub.slug !== chcSlug) {
+      // Idempotent backfill: adopt the clean derived slug on an already-seeded DB
+      // that still carries the legacy hyphenated form. Guarded to the exact known
+      // legacy value + a not-taken check so it never clobbers a deliberate custom
+      // slug and never collides with another community. Fully reversible.
+      const [clash] = await db
+        .select()
+        .from(hubPageConfigs)
+        .where(eq(hubPageConfigs.slug, chcSlug));
+      if (!clash) {
+        await db
+          .update(hubPageConfigs)
+          .set({ slug: chcSlug })
+          .where(eq(hubPageConfigs.id, existingCHCHub.id));
+        log(`[seed] chc hub page config :: slug migrated 'cherry-hill-court' -> '${chcSlug}'`, "seed");
+      } else {
+        log(`[seed] chc hub page config :: keeping legacy slug (clean slug '${chcSlug}' already taken)`, "seed");
+      }
     } else {
       log("[seed] chc hub page config :: already exists, skipping", "seed");
     }

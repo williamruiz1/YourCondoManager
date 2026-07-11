@@ -45,6 +45,11 @@ export default {
           gray: "#E5E7EB",         // borders / dividers / disabled
           ink: "#0F2E2C",          // body text on light
           muted: "#6B7280",        // secondary text / tagline
+          "teal-700": "#0A6A63",   // hover / secondary teal (redesign F1 #10187)
+          ok: "#0F7A4C",           // status: current / good
+          warn: "#8A6D00",         // status: past-due / warn
+          bad: "#C0392B",          // status: delinquent / bad
+          info: "#014D4A",         // status: info (deep teal on light)
         },
         // Flat / base colors (regular buttons)
         background: "hsl(var(--background) / <alpha-value>)",

@@ -1,0 +1,250 @@
+/* ──────────────────────────────────────────────────────────────────────────
+ * YCM Redesign — Shared Design System (F1, founder-os#10187)
+ *
+ * Canonical brand tokens + primitive styles, lifted pixel-for-pixel from the
+ * signed-off redesign prototype (artifacts/ycm-redesign-prototype-r1.html,
+ * commit ffefa14 — "YCM product redesign Round 1"). Consumed by the shared
+ * React primitives in components/redesign/ so Manager app, Owner portal, and
+ * Owner app render identically.
+ *
+ * All classes are prefixed `.ds-` to guarantee ZERO collision with the existing
+ * shadcn/Tailwind app shell. Tokens are exposed as `--ds-*` CSS variables and
+ * mirrored into tailwind.config `theme.colors.brand` for utility-class use.
+ *
+ * LIGHT-FIRST: this layer is intentionally light-only. Dark mode stays SHELVED
+ * (per use-user-settings force-light default) — no `.dark` overrides here.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap");
+
+:root {
+  /* Brand core */
+  --ds-teal: #014d4a;        /* primary brand + active state */
+  --ds-teal-700: #0a6a63;    /* hover / secondary teal */
+  --ds-accent: #15a39c;      /* accent CTA + links (old #2DBDB0 RETIRED) */
+  --ds-light: #bfe8e4;       /* light teal — chips, info pill, active rail bg */
+  --ds-ink: #0f2e2c;         /* body text */
+  --ds-muted: #5b7572;       /* muted / secondary text */
+  --ds-sub: #4a6b68;         /* sub text (labels) */
+
+  /* Neutrals */
+  --ds-gray: #e5e7eb;        /* borders */
+  --ds-off: #f5f7f9;         /* page background */
+  --ds-hairline: #f0f2f2;    /* row separators */
+
+  /* Status */
+  --ds-good: #0f7a4c;  --ds-goodsoft: #e0f5e9;   /* ok */
+  --ds-bad: #c0392b;   --ds-badsoft: #fbe9e7;    /* bad */
+  --ds-warn: #8a6d00;  --ds-warnsoft: #fff4d6;   /* warn */
+  --ds-info: #014d4a;  --ds-infosoft: #bfe8e4;   /* info */
+  --ds-gold: #f0b400;  --ds-goldsoft: #fff4d6; --ds-goldtext: #8a6d00;
+
+  /* Shape */
+  --ds-radius: 12px;
+  --ds-radius-sm: 8px;
+  --ds-shadow: 0 1px 3px rgba(1, 77, 74, 0.04);
+  --ds-font: "Inter Tight", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Scope root — every DS surface wraps content in .ds-scope ─────────────── */
+.ds-scope {
+  font-family: var(--ds-font);
+  color: var(--ds-ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.ds-scope h1, .ds-scope h2, .ds-scope h3, .ds-scope h4 {
+  font-family: var(--ds-font);
+  margin: 0;
+  color: var(--ds-teal);
+}
+.ds-scope a { color: var(--ds-accent); text-decoration: none; }
+
+/* ── AppShell + Sidebar ──────────────────────────────────────────────────── */
+.ds-shell { display: flex; min-height: 100vh; background: var(--ds-off); }
+
+.ds-sidebar {
+  width: 216px; flex-shrink: 0; background: var(--ds-teal);
+  color: #cfeae7; padding: 16px 10px; align-self: stretch;
+}
+.ds-sidebar .ds-brand {
+  display: flex; align-items: center; gap: 8px; padding: 0 8px 14px;
+  margin-bottom: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+.ds-sidebar .ds-brand .ds-mk { width: 24px; height: 24px; flex-shrink: 0; display: block; }
+.ds-sidebar .ds-brand .ds-tt { font-weight: 800; font-size: 12.5px; color: #fff; line-height: 1.2; }
+.ds-sidebar .ds-brand .ds-st {
+  font-size: 8.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #7fc4bd;
+}
+.ds-sidebar .ds-grouplabel {
+  font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;
+  color: #7fc4bd; margin: 14px 8px 4px; font-weight: 700;
+}
+.ds-sidebar .ds-navitem {
+  display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 7px;
+  color: #e3f4f1; text-decoration: none; font-size: 12.5px; font-weight: 600;
+  border-left: 3px solid transparent; margin-bottom: 1px;
+}
+.ds-sidebar .ds-navitem:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.ds-sidebar .ds-navitem.ds-active {
+  background: rgba(255, 255, 255, 0.15); color: #fff;
+  box-shadow: inset 3px 0 0 var(--ds-accent);
+}
+.ds-sidebar .ds-navitem .ds-count {
+  margin-left: auto; background: rgba(255, 255, 255, 0.14); color: #fff;
+  font-size: 10px; font-weight: 800; border-radius: 999px; padding: 1px 7px;
+}
+
+/* ── TopBar ──────────────────────────────────────────────────────────────── */
+.ds-main { flex: 1; min-width: 0; background: var(--ds-off); padding: 20px 24px; }
+.ds-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px; gap: 16px;
+}
+.ds-topbar .ds-title { font-size: 19px; color: var(--ds-teal); font-weight: 700; }
+.ds-topbar .ds-search {
+  flex: 1; max-width: 360px; background: #fff; border: 1px solid var(--ds-gray);
+  border-radius: var(--ds-radius-sm); padding: 8px 12px; font-size: 12.5px;
+  color: var(--ds-ink); font-family: var(--ds-font);
+}
+.ds-topbar .ds-actions { display: flex; align-items: center; gap: 8px; }
+.ds-topbar .ds-who { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ds-sub); }
+.ds-topbar .ds-avatar {
+  width: 26px; height: 26px; border-radius: 50%; background: var(--ds-light);
+  color: var(--ds-teal); font-weight: 800; font-size: 11px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+
+/* ── PageHead ────────────────────────────────────────────────────────────── */
+.ds-pagehead { margin-bottom: 18px; }
+.ds-pagehead .ds-eyebrow {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ds-accent); margin-bottom: 4px;
+}
+.ds-pagehead h1 { font-size: 22px; margin-bottom: 4px; color: var(--ds-teal); }
+.ds-pagehead .ds-lede { color: var(--ds-sub); font-size: 13.5px; max-width: 760px; }
+
+/* ── Card ────────────────────────────────────────────────────────────────── */
+.ds-card {
+  background: #fff; border: 1px solid var(--ds-gray); border-radius: var(--ds-radius);
+  padding: 16px 18px; margin-bottom: 14px; box-shadow: var(--ds-shadow);
+}
+.ds-card > .ds-card-head {
+  font-size: 13.5px; color: var(--ds-teal); font-weight: 700; margin-bottom: 10px;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.ds-card > .ds-card-head .ds-more { font-size: 11px; font-weight: 600; color: var(--ds-accent); }
+
+/* ── Stat (KPI tile) ─────────────────────────────────────────────────────── */
+.ds-statrow {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 18px;
+}
+@media (max-width: 760px) { .ds-statrow { grid-template-columns: repeat(2, 1fr); } }
+.ds-stat {
+  background: #fff; border: 1px solid var(--ds-gray); border-radius: 11px; padding: 13px 15px;
+}
+.ds-stat .ds-l {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--ds-sub); margin-bottom: 5px; font-weight: 700;
+}
+.ds-stat .ds-v { font-size: 19px; font-weight: 800; color: var(--ds-teal); }
+.ds-stat .ds-d { font-size: 11px; margin-top: 3px; font-weight: 600; }
+.ds-stat .ds-d.ds-good { color: var(--ds-good); }
+.ds-stat .ds-d.ds-bad { color: var(--ds-bad); }
+.ds-stat .ds-d.ds-warn { color: var(--ds-warn); }
+
+/* ── DataTable (.tbl) ────────────────────────────────────────────────────── */
+.ds-tbl { width: 100%; border-collapse: collapse; font-size: 12.3px; }
+.ds-tbl th {
+  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ds-sub); font-weight: 700; padding: 6px 8px; border-bottom: 1px solid var(--ds-gray);
+}
+.ds-tbl td { padding: 8px 8px; border-bottom: 1px solid var(--ds-hairline); color: #2c4442; }
+.ds-tbl tr:last-child td { border-bottom: none; }
+
+/* ── Pill (ok/warn/bad/info/muted) ───────────────────────────────────────── */
+.ds-pill {
+  display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.03em;
+  padding: 2px 8px; border-radius: 999px;
+}
+.ds-pill.ds-ok   { background: var(--ds-goodsoft); color: var(--ds-good); }
+.ds-pill.ds-bad  { background: var(--ds-badsoft);  color: var(--ds-bad); }
+.ds-pill.ds-warn { background: var(--ds-warnsoft); color: var(--ds-warn); }
+.ds-pill.ds-info { background: var(--ds-infosoft); color: var(--ds-teal); }
+.ds-pill.ds-muted { background: #eef1f1; color: var(--ds-muted); }
+
+/* ── Button (primary/accent/ghost) ───────────────────────────────────────── */
+.ds-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  background: var(--ds-teal); color: #fff; border: 0; border-radius: var(--ds-radius-sm);
+  padding: 8px 16px; font-size: 12.5px; font-weight: 700; text-decoration: none;
+  cursor: pointer; font-family: var(--ds-font); line-height: 1.1;
+}
+.ds-btn:hover { background: var(--ds-teal-700); }
+.ds-btn.ds-accent { background: var(--ds-accent); }
+.ds-btn.ds-accent:hover { background: #0c8b84; }
+.ds-btn.ds-ghost { background: #fff; border: 1px solid var(--ds-gray); color: var(--ds-teal); }
+.ds-btn.ds-ghost:hover { background: var(--ds-off); }
+.ds-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Field ───────────────────────────────────────────────────────────────── */
+.ds-field { display: block; margin-bottom: 12px; }
+.ds-field .ds-flabel {
+  display: block; font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--ds-sub); margin-bottom: 5px;
+}
+.ds-field .ds-fcontrol {
+  width: 100%; background: #fff; border: 1px solid var(--ds-gray);
+  border-radius: var(--ds-radius-sm); padding: 8px 11px; font-size: 12.8px;
+  color: var(--ds-ink); font-family: var(--ds-font);
+}
+.ds-field .ds-fcontrol:focus {
+  outline: none; border-color: var(--ds-accent); box-shadow: 0 0 0 3px rgba(21, 163, 156, 0.15);
+}
+.ds-field .ds-fhint { font-size: 11px; color: var(--ds-sub); margin-top: 4px; }
+
+/* ── Bar (progress meter) ────────────────────────────────────────────────── */
+.ds-bar { background: var(--ds-gray); border-radius: 999px; height: 8px; overflow: hidden; }
+.ds-bar > i { display: block; height: 100%; background: var(--ds-accent); border-radius: 999px; }
+.ds-bar.ds-teal > i { background: var(--ds-teal); }
+.ds-bar.ds-good > i { background: var(--ds-good); }
+.ds-bar.ds-warn > i { background: var(--ds-gold); }
+.ds-bar.ds-bad > i  { background: var(--ds-bad); }
+
+/* ── Chart helpers (CSS-only) ────────────────────────────────────────────── */
+/* Vertical bar chart */
+.ds-chart-bars { display: flex; align-items: flex-end; gap: 8px; height: 120px; padding-top: 6px; }
+.ds-chart-bars .ds-cb { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.ds-chart-bars .ds-cb > i {
+  width: 100%; background: linear-gradient(180deg, var(--ds-accent), var(--ds-teal));
+  border-radius: 6px 6px 0 0; min-height: 3px;
+}
+.ds-chart-bars .ds-cb .ds-cl { font-size: 9.5px; color: var(--ds-sub); font-weight: 600; }
+/* Donut (conic) */
+.ds-chart-donut {
+  width: 96px; height: 96px; border-radius: 50%;
+  background: conic-gradient(var(--ds-accent) var(--_p, 60%), var(--ds-light) 0);
+  display: flex; align-items: center; justify-content: center; position: relative;
+}
+.ds-chart-donut::after {
+  content: ""; position: absolute; inset: 14px; background: #fff; border-radius: 50%;
+}
+.ds-chart-donut .ds-dv {
+  position: relative; z-index: 1; font-size: 16px; font-weight: 800; color: var(--ds-teal);
+}
+/* Sparkline strip */
+.ds-spark { display: flex; align-items: flex-end; gap: 3px; height: 34px; }
+.ds-spark > i { flex: 1; background: var(--ds-light); border-radius: 2px; min-height: 2px; }
+.ds-spark > i.ds-peak { background: var(--ds-accent); }
+
+/* ── Utility rows ────────────────────────────────────────────────────────── */
+.ds-cols2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .ds-cols2 { grid-template-columns: 1fr; } }
+.ds-tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.ds-tile {
+  background: #fff; border: 1px solid var(--ds-gray); border-radius: var(--ds-radius);
+  padding: 16px; text-align: center;
+}
+.ds-tile .ds-ic { font-size: 22px; margin-bottom: 8px; }
+.ds-tile .ds-tt { font-weight: 800; color: var(--ds-teal); font-size: 13px; margin-bottom: 2px; }
+.ds-tile .ds-ss { font-size: 11px; color: var(--ds-sub); }

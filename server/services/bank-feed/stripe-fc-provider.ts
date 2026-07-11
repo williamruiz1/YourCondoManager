@@ -81,6 +81,7 @@
  * transactions ONLY.
  */
 
+import { assertStripeKeySafe } from "../../staging-guard";
 import { createHmac, timingSafeEqual } from "crypto";
 import { debug } from "../../logger";
 import { getSecret } from "../../platform-secrets-store";
@@ -104,6 +105,7 @@ import { stripeFetch } from "../stripe-fetch";
 
 async function getPlatformSecretKey(): Promise<string> {
   const key = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+  assertStripeKeySafe(key); // founder-os#10193 F0 — refuse live Stripe key in staging
   if (!key) {
     throw new Error(
       "PLATFORM_STRIPE_SECRET_KEY (platform_stripe_secret_key) must be set before using Stripe Financial Connections",

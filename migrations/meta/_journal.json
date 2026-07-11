@@ -407,6 +407,20 @@
       "when": 1780400001008,
       "tag": "0057_vendor_w9_compliance",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1780400001009,
+      "tag": "0058_amenity_deposit_hold_intent_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1780400001010,
+      "tag": "0059_arc_requests",
+      "breakpoints": true
     }
   ]
 }

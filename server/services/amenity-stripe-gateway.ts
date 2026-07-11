@@ -32,6 +32,7 @@ import { db } from "../db";
 import { savedPaymentMethods } from "@shared/schema";
 import { resolveConnectChargeRouting } from "./stripe-connect-resolver";
 import { storage } from "../storage";
+import { amenityForfeitKey, amenityRefundKey } from "./stripe-idempotency";
 import type { AmenityMoneyGateway, AmenityGatewayResult } from "./amenity-money-service";
 
 const STRIPE_API = "https://api.stripe.com/v1";
@@ -106,8 +107,19 @@ async function stripePost(
   return { ok: res.ok && !!body && typeof body.id === "string", body };
 }
 
-/** Find the deposit-hold PaymentIntent id for a reservation via Stripe search. */
-async function findDepositHoldIntent(ctx: StripeContext, reservationId: string): Promise<string | null> {
+/**
+ * Resolve the deposit-hold PaymentIntent id for a reservation.
+ *
+ * A-STRIPE-003: prefer the id PERSISTED at hold time (passed in by the caller) —
+ * a strongly-consistent, direct reference. Fall back to the eventually-consistent
+ * Stripe Search API only for legacy reservations that predate the stored column.
+ */
+async function resolveDepositHoldIntent(
+  ctx: StripeContext,
+  reservationId: string,
+  storedIntentId?: string | null,
+): Promise<string | null> {
+  if (storedIntentId) return storedIntentId;
   const query = encodeURIComponent(
     `metadata['amenityReservationId']:'${reservationId}' AND metadata['amenityDepositHold']:'true'`,
   );
@@ -176,27 +188,40 @@ export function createStripeAmenityGateway(opts: {
         : { ok: false, intentId: (body?.id as string) ?? null, reason: `deposit-status-${status}` };
     },
 
-    async refundDeposit({ reservationId }): Promise<AmenityGatewayResult> {
+    async refundDeposit({ reservationId, amountCents, holdIntentId }): Promise<AmenityGatewayResult> {
       const ctx = await resolveStripeContext(associationId, personId);
       if (!ctx) return UNAVAILABLE;
-      const holdId = await findDepositHoldIntent(ctx, reservationId);
+      const holdId = await resolveDepositHoldIntent(ctx, reservationId, holdIntentId);
       if (!holdId) return { ok: false, reason: "deposit-hold-not-found" };
       // Clean checkout: cancel the uncaptured auth-hold — releases the money,
       // never captured, nothing leaves the resident's account.
-      const { ok, body } = await stripePost(`/payment_intents/${holdId}/cancel`, ctx, new URLSearchParams());
+      // A-STRIPE-001: stable Idempotency-Key so a retry re-reads the release
+      // rather than error-looping on an already-canceled intent.
+      const { ok, body } = await stripePost(
+        `/payment_intents/${holdId}/cancel`,
+        ctx,
+        new URLSearchParams(),
+        amenityRefundKey({ reservationId, amountCents }),
+      );
       if (!ok) return { ok: false, reason: "deposit-refund-failed" };
       return { ok: true, intentId: body!.id as string };
     },
 
-    async forfeitDeposit({ reservationId, amountCents }): Promise<AmenityGatewayResult> {
+    async forfeitDeposit({ reservationId, amountCents, holdIntentId }): Promise<AmenityGatewayResult> {
       const ctx = await resolveStripeContext(associationId, personId);
       if (!ctx) return UNAVAILABLE;
-      const holdId = await findDepositHoldIntent(ctx, reservationId);
+      const holdId = await resolveDepositHoldIntent(ctx, reservationId, holdIntentId);
       if (!holdId) return { ok: false, reason: "deposit-hold-not-found" };
       // Damage/violation: capture (some/all of) the hold → income.
+      // A-STRIPE-001: stable Idempotency-Key so a retry does not double-capture.
       const params = new URLSearchParams();
       params.set("amount_to_capture", String(amountCents));
-      const { ok, body } = await stripePost(`/payment_intents/${holdId}/capture`, ctx, params);
+      const { ok, body } = await stripePost(
+        `/payment_intents/${holdId}/capture`,
+        ctx,
+        params,
+        amenityForfeitKey({ reservationId, amountCents }),
+      );
       if (!ok) return { ok: false, reason: "deposit-forfeit-failed" };
       return { ok: true, intentId: body!.id as string };
     },

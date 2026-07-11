@@ -1,10 +1,11 @@
+import { assertStripeKeySafe, appEnvironment } from "./staging-guard";
 import { z } from "zod";
 import type { Express, NextFunction, Request, Response } from "express";
 import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createHmac, timingSafeEqual, randomInt } from "crypto";
+import { createHmac, timingSafeEqual, randomUUID, randomInt } from "crypto";
 import { storage } from "./storage";
 import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
 import { db } from "./db";
@@ -286,7 +287,7 @@ import {
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { checkAmenitiesToggleAuth } from "@shared/amenities-toggle-auth";
 import { normalizeHubVisibility } from "@shared/hub-visibility";
-import { slugifyCommunityName, ensureUniqueSlug } from "@shared/community-slug";
+import { slugifyCommunityName, ensureUniqueSlug, normalizeSlugKey } from "@shared/community-slug";
 import {
   resolveAmountDue,
   toAmountDueThisPeriod,
@@ -302,6 +303,7 @@ import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAgentActionRoutes } from "./routes/agent-actions";
+import { registerArcRoutes } from "./routes/arc";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
 import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
@@ -739,6 +741,41 @@ function renderPaymentLinkPage(params: {
 function getParam(value: string | string[] | undefined): string {
   if (!value) return "";
   return Array.isArray(value) ? value[0] : value;
+}
+
+/**
+ * Resolve a community-hub config from a `/community/:identifier` URL segment
+ * (founder-os #8151 — trustworthy community vanity URLs). Match priority,
+ * most-specific first:
+ *   1. exact stored slug          — e.g. /community/cherryhill
+ *   2. association id             — legacy / back-compat deep links
+ *   3. tolerant slug key          — case- & separator-insensitive match of the
+ *      stored slug, so /community/Cherry-Hill or /community/CHERRYHILL still
+ *      resolve to stored "cherryhill".
+ * The tolerant step (3) runs ONLY after (1) and (2) miss, so an exact slug or id
+ * always wins — this can never change a URL that already resolves; it only
+ * rescues one that would otherwise 404. If two slugs normalize to the same key
+ * (rare — ensureUniqueSlug prevents exact dupes, not normalized ones) the match
+ * is made deterministic by ordering on the slug. Returns undefined on no match.
+ */
+async function resolveHubConfigByIdentifier(identifier: string) {
+  if (!identifier) return undefined;
+  let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
+  if (!config) {
+    config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
+  }
+  if (!config) {
+    const key = normalizeSlugKey(identifier);
+    if (key) {
+      config = (await db
+        .select()
+        .from(hubPageConfigs)
+        .where(sql`regexp_replace(lower(${hubPageConfigs.slug}), '[^a-z0-9]+', '', 'g') = ${key}`)
+        .orderBy(hubPageConfigs.slug)
+        .limit(1))[0];
+    }
+  }
+  return config;
 }
 
 function normalizeBaseUrl(value: string | null | undefined): string | null {
@@ -1499,6 +1536,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   registerAdminDisbursementRoutes(app, {
     requireAdmin,
     requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // Architectural Review Committee (ARC) workflow (founder-os#9481, W2). Owner
+  // architectural-change-request lifecycle: intake → committee routing →
+  // decision capture → records → appeal. The APPROVE/DENY decision is L4
+  // (member-affecting) — an agent alone can never actuate a denial (enforced in
+  // the service via the canonical permission ladder). NET-NEW / ADDITIVE.
+  //   Admin:  /api/admin/arc/requests[/:id/{route,decision,appeal,appeal-decision}]
+  //   Portal: /api/portal/arc/requests[/:id/appeal]  (owner submit + appeal)
+  registerArcRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    requirePortal,
     getAssociationIdQuery,
     assertAssociationScope,
   });
@@ -6171,7 +6223,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ledgerEntryId: primaryEntry?.id ?? "",
         chargeType,
         period: periodFromDate(),
-        environment: process.env.NODE_ENV ?? "development",
+        environment: appEnvironment(),
         paymentLinkToken: link.token,
       });
 
@@ -6385,6 +6437,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const providedBuf = Buffer.from(signature, "utf8");
         if (expectedBuf.length !== providedBuf.length || !timingSafeEqual(expectedBuf, providedBuf)) {
           return res.status(403).json({ message: "Invalid Stripe webhook signature" });
+        }
+        // A-WEBHOOK-003: reject stale/replayed timestamps even when the HMAC
+        // matches — mirrors Stripe SDK constructEvent's default 5-min tolerance
+        // and the Plaid verifier's replay window. A captured valid webhook must
+        // not be replayable indefinitely.
+        const stripeToleranceS = Number(process.env.STRIPE_WEBHOOK_TOLERANCE_S || 5 * 60);
+        const eventTs = Number(timestamp);
+        if (!Number.isFinite(eventTs) || Math.abs(Math.floor(Date.now() / 1000) - eventTs) > stripeToleranceS) {
+          return res.status(403).json({ message: "Stripe webhook timestamp outside tolerance (replay rejected)" });
         }
 
         const result = await storage.processPaymentWebhookEvent({
@@ -16241,15 +16302,32 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
   // ── Platform Billing / Subscription Routes ──────────────────────────────────
 
-  // Helper: make a Stripe API call using the platform secret key
-  async function stripeRequest(method: string, path: string, body?: URLSearchParams): Promise<Record<string, unknown>> {
+  // Helper: make a Stripe API call using the platform secret key.
+  // A-STRIPE-004: platform Stripe calls carry a stable Idempotency-Key on money-
+  // moving / create POSTs (so a retry collapses to one object) and retry 429/5xx
+  // with backoff. That idempotency + retry contract lives in `stripeFetch`
+  // (CQ-008, founder-os#10780 — the one canonical Stripe transport, unit-tested);
+  // this thin wrapper only resolves the secret and threads the idempotency key.
+  async function stripeRequest(
+    method: string,
+    path: string,
+    body?: URLSearchParams,
+    opts?: { idempotencyKey?: string },
+  ): Promise<Record<string, unknown>> {
     const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+    assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
     if (!secretKey) throw new Error("Platform Stripe key not configured");
+    // CQ-008 (founder-os#10780) routes this platform-billing helper through the
+    // canonical `stripeFetch` transport. A-STRIPE-004 (founder-os#10752) money-
+    // safety is PRESERVED by threading `opts.idempotencyKey` — stripeFetch sets
+    // the Idempotency-Key on POSTs and only retries a POST that carries one, so
+    // a retry can never double-create a customer/subscription/checkout.
     const { ok, status, data } = await stripeFetch({
       secretKey,
       method: method as "GET" | "POST" | "DELETE",
       path,
       body,
+      idempotencyKey: opts?.idempotencyKey,
     });
     if (!ok) {
       const errMsg = (data.error as any)?.message ?? `Stripe error ${status}`;
@@ -16628,7 +16706,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           customerParams.set("metadata[associationId]", assoc.id);
           customerParams.set("metadata[plan]", parsed.plan);
           customerParams.set("metadata[source]", "admin-platform-billing-create");
-          const customer = await stripeRequest("POST", "/customers", customerParams);
+          // A-STRIPE-004: stable key so a retry of this create reuses the customer
+          // instead of forking a second one (the DB existence check is TOCTOU).
+          const customer = await stripeRequest("POST", "/customers", customerParams, {
+            idempotencyKey: `plat-cust:${assoc.id}:${parsed.plan}`,
+          });
           customerId = customer.id as string;
         }
 
@@ -16644,7 +16726,13 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         subParams.set("metadata[source]", "admin-platform-billing-create");
         subParams.set("payment_behavior", "default_incomplete");
         subParams.set("expand[]", "latest_invoice.payment_intent");
-        const stripeSub = await stripeRequest("POST", "/subscriptions", subParams);
+        // A-STRIPE-004: stable key so a network retry of THIS subscribe collapses
+        // to one subscription (closes the TOCTOU where a retry, seeing the local
+        // row still unwritten, would issue a second subscription). A genuine
+        // re-subscribe after a cancel carries the existing row id → distinct key.
+        const stripeSub = await stripeRequest("POST", "/subscriptions", subParams, {
+          idempotencyKey: `plat-sub:${assoc.id}:${parsed.plan}:${existing?.id ?? "new"}`,
+        });
 
         // Map Stripe status → local enum.
         const statusMap: Record<string, "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete"> = {
@@ -16765,6 +16853,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       if (resolved.track === "enterprise") return res.json({ enterpriseContact: true });
 
       const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+      assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
       if (!secretKey) return res.status(503).json({ message: "Billing not configured" });
 
       // Resolve the plan_catalog row whose Stripe price the subscription uses.
@@ -16812,7 +16901,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       customerParams.set("metadata[organizationName]", organizationName);
       customerParams.set("metadata[plan]", plan);
       customerParams.set("metadata[planKey]", tier.planKey);
-      const customer = await stripeRequest("POST", "/customers", customerParams);
+      // A-STRIPE-004: stable key so a retry of this signup reuses the customer.
+      const customer = await stripeRequest("POST", "/customers", customerParams, {
+        idempotencyKey: `plat-signup-cust:${email.toLowerCase().trim()}:${tier.planKey}`,
+      });
       const customerId = customer.id as string;
 
       // Create stub association + admin user
@@ -16860,7 +16952,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       sessionParams.set("metadata[plan]", plan);
       sessionParams.set("metadata[planKey]", tier.planKey);
 
-      const session = await stripeRequest("POST", "/checkout/sessions", sessionParams);
+      // A-STRIPE-004: stable key so a retry of this signup collapses to one session.
+      const session = await stripeRequest("POST", "/checkout/sessions", sessionParams, {
+        idempotencyKey: `plat-signup-co:${email.toLowerCase().trim()}:${tier.planKey}`,
+      });
       res.json({ checkoutUrl: session.url, sessionId: session.id });
     } catch (e: any) {
       res.status(500).json({ message: e.message });
@@ -17065,6 +17160,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         // internally; the explicit guard here surfaces a clean 503 instead of
         // a generic 500 when the platform isn't configured.
         const platformSecretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+        assertStripeKeySafe(platformSecretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
         if (!platformSecretKey) return res.status(503).json({ message: "Billing not configured" });
         // Resolve the Stripe price from plan_catalog by the entered unit count —
         // same canonical path as the public signup route (closes the stale
@@ -17089,7 +17185,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         customerParams.set("metadata[plan]", "self-managed");
         customerParams.set("metadata[adminUserId]", adminUserId);
         customerParams.set("metadata[source]", "add-hoa-authenticated");
-        const customer = await stripeRequest("POST", "/customers", customerParams);
+        // A-STRIPE-004: stable key so a retry reuses the customer (one per admin
+        // add-hoa action + association name).
+        const customer = await stripeRequest("POST", "/customers", customerParams, {
+          idempotencyKey: `plat-addhoa-cust:${adminUserId}:${parsed.data.associationName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 60)}`,
+        });
         const customerId = customer.id as string;
 
         // Create stub association + scope binding. NO new adminUsers row —
@@ -17147,7 +17247,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         sessionParams.set("metadata[adminUserId]", adminUserId);
         sessionParams.set("metadata[plan]", "self-managed");
         sessionParams.set("metadata[source]", "add-hoa-authenticated");
-        const checkoutSession = await stripeRequest("POST", "/checkout/sessions", sessionParams);
+        // A-STRIPE-004: stable key so a retry collapses to one checkout session.
+        const checkoutSession = await stripeRequest("POST", "/checkout/sessions", sessionParams, {
+          idempotencyKey: `plat-addhoa-co:${assoc.id}`,
+        });
 
         // Pending platform_subscriptions row keyed by the new associationId.
         // The unique-index on (associationId) is exercised here — if the
@@ -17346,6 +17449,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     async (_req, res) => {
       try {
         const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+        assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
         if (!secretKey) return res.status(503).json({ message: "Billing not configured" });
         const summary = await reconcileAllSubscriptionUsage(stripeMeterPost);
         return res.json(summary);
@@ -19328,11 +19432,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
     try {
       const identifier = getParam(req.params.identifier);
-      // Try slug first, then ID
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -19431,10 +19531,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
     try {
       const identifier = getParam(req.params.identifier);
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -19481,10 +19578,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     try {
       const identifier = getParam(req.params.identifier);
       const buildingId = getParam(req.params.buildingId);
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -19516,10 +19610,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     }
     try {
       const identifier = getParam(req.params.identifier);
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -19562,12 +19653,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   app.get("/api/hub/:identifier/static-map", async (req, res) => {
     try {
       const identifier = getParam(req.params.identifier);
-
-      // Same lookup pattern as /api/hub/:identifier/map
-      let config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.slug, identifier)))[0];
-      if (!config) {
-        config = (await db.select().from(hubPageConfigs).where(eq(hubPageConfigs.associationId, identifier)))[0];
-      }
+      const config = await resolveHubConfigByIdentifier(identifier);
       if (!config || !config.isEnabled) {
         return res.status(404).json({ message: "Community hub not found or not enabled" });
       }
@@ -20513,6 +20599,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         });
       }
 
+      // A-LEDGER-007 groundwork: referenceId must be a UNIQUE per-intent id,
+      // NOT the bank-connection id (which repeats across every payment on that
+      // connection and prevents idempotent dedup). Route stays default-OFF
+      // (503 above) until settlement-on-confirmation lands (A-RECON-004); the
+      // unique key is the seam that lets the future settlement matcher dedup
+      // and reconcile each intent. The DB unique constraint on
+      // (referenceType, referenceId) + settlement-only posting are deferred to
+      // that follow-on — this is additive groundwork behind the off flag.
+      const payIntentId = `plaid-pay:${randomUUID()}`;
       const [entry] = await db.insert(ownerLedgerEntries).values({
         associationId,
         personId,
@@ -20522,7 +20617,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         description: description ?? "Bank payment (pending)",
         postedAt: new Date(),
         referenceType: "plaid-pay-intent",
-        referenceId: conn.id,
+        referenceId: payIntentId,
       }).returning();
 
       res.status(201).json({

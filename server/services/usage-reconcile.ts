@@ -27,6 +27,7 @@
  * this never relies on a denormalized planKey that could drift.
  */
 
+import { assertStripeKeySafe } from "../staging-guard";
 import { db } from "../db";
 import { units, associations, adminAssociationScopes, adminUsers, platformSubscriptions } from "@shared/schema";
 import { eq, count, inArray } from "drizzle-orm";
@@ -57,6 +58,7 @@ import { stripeFetch } from "./stripe-fetch";
  */
 export async function createPlatformStripeMeterPoster(): Promise<MeterPoster | null> {
   const secretKey = await getSecret("PLATFORM_STRIPE_SECRET_KEY", "platform_stripe_secret_key");
+  assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
   if (!secretKey?.trim()) return null;
   return async (path, body) => {
     const { ok, status, data } = await stripeFetch({
