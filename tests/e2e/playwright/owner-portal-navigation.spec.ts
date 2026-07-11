@@ -33,6 +33,7 @@
 // trail) that fails loudly when only the shell renders.
 
 import fs from "node:fs";
+import { gotoStable } from "./helpers/nav-helper";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect, type Page } from "@playwright/test";
@@ -103,6 +104,10 @@ type ZoneAssertion = {
   headingTextPattern: RegExp;
   breadcrumbLast: string;
   extraTestId?: string;
+  /** Like extraTestId, but the zone is healthy if ANY of these is visible —
+   *  for zones whose data-driven element legitimately branches by state
+   *  (e.g. finances: balance card at balance>0, paid-in-full card at 0). */
+  extraTestIdAnyOf?: string[];
 };
 
 const ZONES: readonly ZoneAssertion[] = [
@@ -124,8 +129,14 @@ const ZONES: readonly ZoneAssertion[] = [
     headingTestId: "portal-finances-heading",
     headingTextPattern: /My Finances/,
     breadcrumbLast: "My Finances",
-    // Always rendered (`balance ?? 0` → "$0.00") regardless of seed data.
-    extraTestId: "portal-finances-balance",
+    // The finances hero BRANCHES on `paidInFull` (portal-finances.tsx ~639):
+    // balance>0 renders the "Pay this period" hero (`portal-finances-pay-this-period`);
+    // balance===0 renders the paid-in-full card (`portal-finances-paid-in-full-headline`).
+    // Either proves data reached the DOM. NOTE (founder-os#10808): the #436
+    // "Pay this period" redesign removed the old `portal-finances-balance`
+    // testid — the seed owner carries a balance, so this must match the
+    // current balance>0 hero or the whole route-mock gate times out here.
+    extraTestIdAnyOf: ["portal-finances-pay-this-period", "portal-finances-paid-in-full-headline"],
   },
   {
     path: "/portal/requests",
@@ -228,6 +239,14 @@ async function assertZoneRendered(page: Page, zone: ZoneAssertion): Promise<void
       `${zone.extraTestId} not visible at ${zone.path}`,
     ).toBeVisible();
   }
+  if (zone.extraTestIdAnyOf?.length) {
+    let anyOf = page.getByTestId(zone.extraTestIdAnyOf[0]);
+    for (const id of zone.extraTestIdAnyOf.slice(1)) anyOf = anyOf.or(page.getByTestId(id));
+    await expect(
+      anyOf.first(),
+      `none of [${zone.extraTestIdAnyOf.join(", ")}] visible at ${zone.path}`,
+    ).toBeVisible();
+  }
 }
 
 test.describe.configure({ mode: "serial" });
@@ -269,7 +288,10 @@ test.describe("Wave 16a/26 — owner portal navigation", () => {
       await loginAsOwner(page);
       await installSeedRoutes(page, store);
 
-      await page.goto("/portal?tab=financials");
+      // plain goto ON PURPOSE: this test asserts the legacy-tab client-side
+    // redirect itself, so gotoStable's "land on the requested path" check
+    // would fight the behavior under test.
+    await page.goto("/portal?tab=financials");
       await page.waitForURL(/\/portal\/finances($|\?|#)/, { timeout: 10_000 });
       expect(new URL(page.url()).pathname).toBe("/portal/finances");
     });
@@ -331,6 +353,7 @@ test.describe("Wave 16a/26 — owner portal navigation", () => {
   test("legacy /portal?tab=financials redirects to /portal/finances (real backend)", async ({ page }) => {
     await backend.installOwnerSession(page, { associationId: ASSOCIATION_ID });
 
+    // plain goto ON PURPOSE: asserts the legacy-tab redirect itself.
     await page.goto("/portal?tab=financials");
     await page.waitForURL(/\/portal\/finances($|\?|#)/, { timeout: 10_000 });
     expect(new URL(page.url()).pathname).toBe("/portal/finances");

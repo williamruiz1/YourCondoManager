@@ -1,0 +1,244 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<title>Project Statecraft</title>
+<style>
+  body{margin:0;font-family:'Inter Tight',system-ui,sans-serif;color:#0f2e2c;background:#fff;line-height:1.55}
+  .wrap{max-width:900px;margin:0 auto;padding:26px}
+  .chip{display:inline-block;font-size:12px;background:#e8f5f3;color:#014D4A;border-radius:6px;padding:3px 9px;font-weight:700;margin-right:8px}
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;margin:18px 0;border-bottom:2px solid #014D4A;padding-bottom:8px}
+  .tab{border:0;background:#f2f6f5;color:#014D4A;border-radius:8px 8px 0 0;padding:8px 12px;font:600 13px/1 inherit;cursor:pointer}
+  .tab .n{display:inline-block;background:#014D4A;color:#fff;border-radius:5px;font-size:10px;padding:1px 5px;margin-right:6px}
+  .panel{display:none}.panel.active{display:block}
+  h2{color:#014D4A;font-size:21px;margin:6px 0 10px;border-bottom:1px solid #cfe3e0;padding-bottom:5px}
+  h3{color:#014D4A;font-size:15px;margin:18px 0 6px}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:12.5px}
+  th,td{border:1px solid #d7e3e1;padding:6px 9px;text-align:left;vertical-align:top}th{background:#e8f5f3;color:#014D4A}
+  code{background:#eef5f4;padding:1px 5px;border-radius:4px;font-size:12px}
+  .box{border:1px solid #cfe3e0;border-radius:10px;padding:12px 14px;margin:10px 0;background:#f7fbfa}
+  .flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:10px 0}
+  .node{background:#014D4A;color:#fff;border-radius:8px;padding:8px 12px;font-size:12px;font-weight:600;text-align:center}
+  .node.alt{background:#15A39C}.node.lite{background:#fff;color:#014D4A;border:1.5px solid #15A39C}
+  .arrow{color:#15A39C;font-weight:800;font-size:16px}
+  ul{margin:6px 0 6px 18px;padding:0}li{margin:3px 0}
+  .scope-out{color:#9a3b3b}
+
+  /* ---- canonical single-page project layout (left = SECTIONS, top-left = round dropdown) ---- */
+  .appwrap{display:flex;align-items:stretch;max-width:none;margin:0;min-height:100vh}
+  .projnav{flex:0 0 260px;position:sticky;top:0;align-self:flex-start;height:100vh;overflow-y:auto;
+    border-right:1px solid var(--line);background:var(--card);padding:18px 12px 40px}
+  .projbrand{font-weight:800;font-size:15px;color:var(--ink);letter-spacing:-.01em;line-height:1.2;padding:0 8px 12px}
+  .projbrand span{display:block;font-size:11px;color:var(--mute);font-weight:600;margin-top:3px}
+  /* compact round dropdown — the ROUND switcher */
+  .rounddd{margin:0 6px 14px;padding:0 0 14px;border-bottom:1px solid var(--line)}
+  .rounddd label{display:block;font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);font-weight:800;margin:0 0 5px 2px}
+  .rounddd select{width:100%;font:600 13px/1.3 inherit;color:var(--ink);background:#fff;
+    border:1px solid var(--line);border-radius:9px;padding:8px 10px;cursor:pointer;-webkit-appearance:menulist}
+  .rounddd select:focus{outline:none;border-color:var(--accent)}
+  /* section links — the LEFT PANEL nav = SECTIONS of the selected round */
+  .secnav{display:flex;flex-direction:column;gap:2px}
+  .slink{width:100%;text-align:left;border:none;background:none;cursor:pointer;font-size:13px;font-weight:600;
+    color:var(--ink-soft,#475569);padding:8px 10px;border-radius:8px;display:flex;gap:9px;align-items:center;border-left:2px solid transparent}
+  .slink .sn{flex:0 0 auto;width:18px;height:18px;border-radius:5px;background:#eef1f4;color:var(--mute);display:grid;place-items:center;font-size:10.5px;font-weight:800}
+  .slink:hover{background:#f1f5f9}
+  .slink.on{background:var(--accent);color:#fff;font-weight:700;border-left:2px solid var(--accent)}
+  .slink.on .sn{background:rgba(255,255,255,.24);color:#fff}
+  .secgroup{display:none}.secgroup.on{display:flex;flex-direction:column;gap:2px}
+  .projmain{flex:1 1 auto;min-width:0;padding:26px 46px 90px;max-width:1010px}
+  .crumb{font-size:12px;color:var(--mute);font-weight:600;letter-spacing:.02em;margin-bottom:6px}
+  .crumb b{color:var(--accent)}
+  .ppanel{display:none;animation:fade .18s ease}.ppanel.on{display:block}
+  .protowrap{border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow);background:#fff;margin-top:6px}
+  .protowrap iframe{width:100%;height:78vh;border:none;display:block}
+  @media(max-width:820px){.appwrap{flex-direction:column}.projnav{flex:0 0 auto;position:static;height:auto;width:100%;border-right:none;border-bottom:1px solid var(--line)}.projmain{padding:22px 18px 70px}}
+</style></head><body>
+<div class="appwrap">
+  <aside class="projnav">
+    <div class="projbrand">Project Statecraft<span>1 rounds · opens on latest</span></div>
+    <div class="rounddd"><label>Round</label><select id="roundsel" onchange="selectRound(this.value)"><option value="1" selected>R1 (latest) · 2026-06-19 · 12:58 EDT</option></select></div>
+    <nav class="secnav"><div class="secgroup on" data-r="1"><button class="slink on" data-key="1-brief"><span class="sn">0</span>Brief &amp; Charter</button><button class="slink" data-key="1-target"><span class="sn">1</span>Target Architecture</button><button class="slink" data-key="1-states"><span class="sn">2</span>50-State Model</button><button class="slink" data-key="1-edge"><span class="sn">3</span>White-Space Edge</button><button class="slink" data-key="1-audit"><span class="sn">4</span>Gap Audit (first move)</button><button class="slink" data-key="1-roadmap"><span class="sn">5</span>Roadmap</button><button class="slink" data-key="1-diagrams"><span class="sn">6</span>Workflows &amp; Diagrams</button></div></nav>
+  </aside>
+  <main class="projmain">
+    <div class="ppanel on" data-key="1-brief"><div class="crumb">R1 &nbsp;›&nbsp; <b>Brief &amp; Charter</b></div>
+  <h2>Brief &amp; Charter</h2>
+  <p>Three source briefs were handed in and untangled here. They are not three projects — they are the three layers of <b>one</b>: where the platform must get to, where it can beat incumbents, and how we measure the distance from today.</p>
+  <table>
+    <tr><th>Source brief</th><th>Layer it supplies</th></tr>
+    <tr><td><b>YCMCore</b> — Core Architecture Blueprint &amp; 50-State Roadmap</td><td><b>The destination.</b> The financial-core spine, the 9-capability feature set, the 50-state compliance grid, the 4 state clusters, the phased build order.</td></tr>
+    <tr><td><b>YCMGap</b> — Innovative &amp; White-Space Features</td><td><b>The edge.</b> Where the market frontier moved (agentic AI = table stakes) and the richest under-served gaps (fraud, insurance, structural transparency, STR, sentiment, ADR).</td></tr>
+    <tr><td><b>Gap1</b> — AUDIT-HOA-001 assignment</td><td><b>The measuring instrument.</b> A capability audit (Designed / Live / Working / Absent) of the <i>current</i> codebase vs. the target, producing a ranked gap list. This is the project's first action.</td></tr>
+  </table>
+
+  <h3>[PROJECT CHARTER]</h3>
+  <div class="box">
+    <p><b>Mission.</b> Take YourCondoManager from its current state to "<i>any HOA/COA, confidently and smoothly managed, in any of the 50 states</i>" — a financial-core-first platform driven by a <b>configurable compliance rules engine</b>, at feature parity with incumbents (PayHOA / CINC / Vantaca / Buildium / FRONTSTEPS) and winning on the trust/money/risk white space, expanded one state-cluster at a time.</p>
+    <p><b>Scope IN.</b></p>
+    <ul>
+      <li>The financial-operations core (fund-accounting GL, bank reconciliation, dues collection, AP, 1099) and its external rails.</li>
+      <li>The <b>configurable compliance rules engine</b> (per-state requirements as data, not code) — the architectural keystone.</li>
+      <li>State-cluster expansion in sequence: <b>B (baseline) → A (UCIOA reserve) → C (structural-integrity) → D (Florida + California)</b>.</li>
+      <li>White-space differentiators layered on parity (fraud/dual-control first).</li>
+      <li>The AUDIT-HOA-001 gap audit that baselines current-vs-target and feeds the roadmap.</li>
+    </ul>
+    <p><b>Scope OUT</b> <span class="scope-out">(explicit — routed elsewhere)</span>.</p>
+    <ul>
+      <li class="scope-out">The marketing website + brand redesign — that's the separate redesign effort. → YCM redesign track.</li>
+      <li class="scope-out">Day-to-day live-tenant ops (CHC dues, the in-flight Plaid production sign-up, support). → YCM GM / CoS.</li>
+      <li class="scope-out">Asserting specific state-law rules as settled fact. → counsel owns the legal verification; the platform carries a "verify with counsel" disclaimer.</li>
+      <li class="scope-out">Pricing / GTM / banking revenue-share strategy. → founder + GM decision, not this build track.</li>
+    </ul>
+    <p><b>Success criteria.</b></p>
+    <ul>
+      <li>AUDIT-HOA-001 baseline complete with an honest current-state scorecard.</li>
+      <li>A clear <b>E1 verdict</b>: does a configurable rules engine exist? If Absent, it is the #1 build (it caps the platform at one cluster).</li>
+      <li>The make-or-break financial trio — <b>F1 fund-accounting GL, F2 bank reconciliation, F3 dues collection</b> — reach <b>Working</b> (reconcile &gt;95% of transactions; dues end-to-end).</li>
+      <li>Cluster B serveable, then Cluster A.</li>
+      <li>≥1 white-space differentiator shipped (fraud dual-control safeguards).</li>
+    </ul>
+    <p><b>Deliverable shape.</b> This versioned project artifact + the <code>AUDIT-HOA-001-results.md</code> baseline + a cluster-gated build roadmap that feeds dispatches.</p>
+    <p><b>Owner-routing map.</b> Legal specifics → counsel · brand/site → redesign track · live ops → YCM GM/CoS · pricing → founder.</p>
+    <p><b>Charter date.</b> 2026-06-19.</p>
+  </div>
+</div><div class="ppanel" data-key="1-target"><div class="crumb">R1 &nbsp;›&nbsp; <b>Target Architecture</b></div>
+  <h2>Target Architecture — the destination</h2>
+  <p>Every leading platform is built around the same spine: a community-association-aware <b>fund-accounting general ledger</b> (operating vs. reserve money separated) wired into external rails. Money never flows through the vendor's own accounts — Stripe/Plaid route bank-to-bank (the correct compliance posture).</p>
+  <h3>The 9 core capability blocks</h3>
+  <table>
+    <tr><th>#</th><th>Capability</th><th>Why it's the center / what it needs</th></tr>
+    <tr><td>1</td><td><b>Financial &amp; accounting</b> (the gravitational center)</td><td>Fund-accounting GL, bank feeds + auto-reconcile, dues/ACH+card, AP/vendor pay, budgeting + reserves, 1099/tax, revenue-aware reporting</td></tr>
+    <tr><td>2</td><td>Member / homeowner directory &amp; CRM</td><td>System of record; owner-vs-tenant; role-based access (board/manager/owner/vendor)</td></tr>
+    <tr><td>3</td><td>Communication hub</td><td>Email/SMS/voice/mass/mail + statutory notice-timeline enforcement</td></tr>
+    <tr><td>4</td><td>Document management</td><td>Governing docs, versioning, retention, e-signature, public-doc website (some states)</td></tr>
+    <tr><td>5</td><td>Meeting &amp; voting</td><td>Configurable election engine (secret ballot / inspector / no-proxy by state)</td></tr>
+    <tr><td>6</td><td>Maintenance &amp; work orders</td><td>Intake → dispatch → tracking; converts to AP on billing</td></tr>
+    <tr><td>7</td><td>Violations &amp; ARC</td><td>Enforcement workflow, fine schedules — rules-configurable per state</td></tr>
+    <tr><td>8</td><td>Reserve study &amp; capital planning</td><td>Most state-differentiated; %-funded, 30-yr plan, SIRS for structural states</td></tr>
+    <tr><td>9</td><td>Back-office integrations</td><td>QuickBooks/Xero sync, banking APIs, tax, 1099, AP automation</td></tr>
+  </table>
+  <h3>Must-have integration stack (synthesis)</h3>
+  <p class="box">Plaid + a community-association bank direct API (Alliance Association Bank / Pacific Premier / CIT) + Stripe + a lockbox + AvidXchange-class AP + Twilio + SendGrid + Lob + DocuSign + an e-voting provider + a reserve-study data feed — all on a fund-accounting GL hosted SOC 2 / PCI-compliant, multi-region.</p>
+  <p><b>Make-or-break trio:</b> fund-accounting GL (F1), bank reconciliation (F2), dues collection (F3). Without these <b>Working</b>, the platform is pre-MVP no matter how many other features exist.</p>
+</div><div class="ppanel" data-key="1-states"><div class="crumb">R1 &nbsp;›&nbsp; <b>50-State Model</b></div>
+  <h2>50-State Compliance Model</h2>
+  <p><b>The keystone decision:</b> per-state requirements must be <b>configuration, not code</b>. Adding a state = data entry + legal review, not an engineering change. If state logic is hard-coded, the platform is capped at one cluster regardless of feature completeness — so the rules engine is the highest-leverage architectural bet.</p>
+  <h3>The 4 natural state clusters (the expansion order)</h3>
+  <table>
+    <tr><th>Cluster</th><th>States</th><th>What it takes</th></tr>
+    <tr><td><b>B — Minimal baseline</b><br>(largest market, easiest — start here)</td><td>TX, AZ, GA, NC, SC + ~25 light-statute states</td><td>Core feature blocks + configurable notice/fine rules. No reserve-study mandate.</td></tr>
+    <tr><td><b>A — UCIOA 5-yr reserve</b><br>(best second step)</td><td>DE, CT, NV, VA, WA, CO, MD</td><td>Reserve module + budget-disclosure generator + election engine + reserve-cadence/funding parameters. NV adds Form 609.</td></tr>
+    <tr><td><b>C — Structural-integrity condo</b><br>(hard)</td><td>FL, NJ (+ DE/New Castle, CA SB 326)</td><td>SIRS support + milestone-inspection deadline tracking + non-waivable funding logic.</td></tr>
+    <tr><td><b>D — Prescriptive governance</b><br>(hardest — own squad each)</td><td>CA (Davis-Stirling), FL (Ch. 718/720)</td><td>Estoppel/resale generators, §5570 summary, prescriptive election engine, fine caps, revenue-tiered audit, website mandate.</td></tr>
+  </table>
+  <p><b>Reserve mandates overlay</b> (verify with counsel): ~13 states require reserve <i>studies</i> (CA, CO, DE, FL, HI, MD, NV, OR, TN, UT, VA, WA, +NJ); ~12 mandate reserve <i>funding</i>. Cadence varies 3 / 5 / 6 yr. The post-Surfside (2021 Champlain Towers) wave makes the structural/reserve rules the biggest 2024–2026 risk <i>and</i> opportunity — treat them as frequently-updated data, never hard-code.</p>
+</div><div class="ppanel" data-key="1-edge"><div class="crumb">R1 &nbsp;›&nbsp; <b>White-Space Edge</b></div>
+  <h2>White-Space Edge — where to beat incumbents</h2>
+  <p>The frontier moved from "software that records work" to "<b>agentic AI that does the work</b>" (Vantaca HOAi, CINC Cephai, AppFolio Realm-X). An AI assistant is now <b>table stakes</b>, not a differentiator. The real white space is in <b>trust, money, and risk</b>:</p>
+  <table>
+    <tr><th>Rank</th><th>Opportunity (pain × scarcity)</th><th>Status in market</th></tr>
+    <tr><td>1</td><td><b>Fraud / financial controls</b> — real-time anomaly detection, ghost-vendor/duplicate-invoice flagging, enforced dual-control disbursement, Positive Pay/ACH-block</td><td>Endemic problem ($58M Las Vegas scheme; $11M Hammocks). Essentially <b>no software-native solution.</b> → market as "embezzlement-proof"</td></tr>
+    <tr><td>2</td><td><b>Insurance-crisis tooling</b> — coverage-vs-replacement-cost, gap/non-renewal alerts, renewal packaging, deductible-shift modeling</td><td>89% of HOAs saw premium hikes in 2024; near-empty in software</td></tr>
+    <tr><td>3</td><td><b>Structural / reserve transparency</b> (post-Surfside) — SIRS/milestone deadline tracking, reserve-health vs. baseline, auto resale disclosure</td><td>Regulatory tailwind; thin coverage</td></tr>
+    <tr><td>4</td><td><b>Sentiment / at-risk-resident</b> detection + ADR/dispute tooling</td><td>Confirmed empty in HOA software</td></tr>
+    <tr><td>5</td><td><b>Landlord-owner &amp; STR compliance</b> — lease/tenant tracking, rental-cap enforcement, embedded Airbnb monitoring</td><td>Only standalone govtech tools; embed opportunity</td></tr>
+    <tr><td>6–8</td><td>Cross-network benchmarking · embedded fintech (insured reserve sweeps + controls) · open hardware API ecosystem</td><td>Platform moats (need data scale)</td></tr>
+  </table>
+  <p><b>Lead with #1.</b> Dual-control approval workflows + duplicate/ghost-vendor flagging are low-effort, high board-trust payoff, and directly attack the biggest gap — a strong Stage-1 differentiator that pairs with the financial core.</p>
+</div><div class="ppanel" data-key="1-audit"><div class="crumb">R1 &nbsp;›&nbsp; <b>Gap Audit (first move)</b></div>
+  <h2>Gap Audit — AUDIT-HOA-001 (the first move)</h2>
+  <p>Before any roadmap is real, baseline the <b>current</b> codebase against the target. The audit is evidence-based (file path / route / migration / Issue — never marketing copy) and reuse-first (a capability that exists undiscovered is a <i>documentation</i> gap, not a feature gap).</p>
+  <h3>Three-state capability model</h3>
+  <table>
+    <tr><th>State</th><th>Bar</th></tr>
+    <tr><td><b>Designed</b></td><td>Specced/stubbed — intent exists, doesn't run</td></tr>
+    <tr><td><b>Live</b></td><td>Runs in some environment, happy-path only, not proven end-to-end</td></tr>
+    <tr><td><b>Working</b></td><td>Does the real job end-to-end with real data, incl. unhappy paths — an HOA could rely on it</td></tr>
+    <tr><td><b>Absent</b></td><td>None of the above (legitimate, common — most compliance layer expected Absent)</td></tr>
+  </table>
+  <h3>What the audit must verdict</h3>
+  <ul>
+    <li><b>E1 — is there a configurable rules engine?</b> (Adding a state = data, not code?) The single most important finding; it caps the ceiling.</li>
+    <li><b>F1 / F2 / F3</b> — fund-accounting GL, bank reconciliation, dues collection: trace a real transaction end-to-end; rate strictly. Confirm money never touches platform accounts.</li>
+    <li><b>Rails, not just features</b> — none / stub / sandbox / one-real / all-wired for each integration. A feature can't be Working on a stubbed rail.</li>
+    <li><b>Cluster readiness</b> — which of B/A/C/D can we serve today, and what specific feature unlocks the next.</li>
+  </ul>
+  <h3>Output</h3>
+  <p>A report at <code>audits/AUDIT-HOA-001-results.md</code>: headline findings → capability scorecard → rails readiness → cluster verdict → ranked gap list (worst-impact first) → smallest set of next builds, each tied to a benchmark. Plus appendices for unmapped/extra capabilities and documentation gaps.</p>
+  <p class="box"><b>Recommended first action:</b> run AUDIT-HOA-001 against the current YourCondoManager codebase. Everything downstream (roadmap sequencing, cluster claims) depends on this honest baseline.</p>
+</div><div class="ppanel" data-key="1-roadmap"><div class="crumb">R1 &nbsp;›&nbsp; <b>Roadmap</b></div>
+  <h2>Sequenced Roadmap (synthesized)</h2>
+  <p>Merges YCMCore's build phases with YCMGap's differentiation stages, gated on the audit + state clusters. Effort framing only — no calendar dates.</p>
+  <table>
+    <tr><th>Phase</th><th>Build</th><th>Cluster / edge</th><th>Advance benchmark</th></tr>
+    <tr><td><b>0 — Baseline</b></td><td><b>Run AUDIT-HOA-001.</b> Establish current-state scorecard + E1 verdict.</td><td>—</td><td>Honest scorecard + ranked gap list exist</td></tr>
+    <tr><td><b>1 — Financial core + baseline states</b></td><td>Harden F1/F2/F3 to Working; directory/CRM, comms, docs, work orders, configurable violations. Ship fraud dual-control (white-space #1).</td><td>Cluster B</td><td>Reconcile &gt;95% of transactions; dues end-to-end Working</td></tr>
+    <tr><td><b>2 — Reserve + rules engine</b></td><td>Reserve-study tracking, budget-disclosure generator, configurable election/notice engine (E1 proven). NV Form 609.</td><td>Cluster A</td><td>Compliant disclosure summary for ≥3 states from config alone</td></tr>
+    <tr><td><b>3 — Structural integrity + risk edge</b></td><td>SIRS + milestone deadline tracking + non-waivable funding. Insurance command center + structural/reserve transparency.</td><td>Cluster C (NJ first, then FL condo)</td><td>≥3 paying mgmt-co references validate the workflow</td></tr>
+    <tr><td><b>4 — Prescriptive governance</b></td><td>Estoppel/resale generators, §5570 summary, prescriptive elections, fine caps, revenue-tiered audit, website mandate.</td><td>Cluster D (CA + FL — squad each)</td><td>State counsel sign-off per state</td></tr>
+    <tr><td><b>Cross-cutting</b></td><td>Versioned compliance rules DB (quarterly legal review + "verify with counsel" disclaimer); SOC 2 Type II + PCI early; multi-region.</td><td>all</td><td>—</td></tr>
+  </table>
+</div><div class="ppanel" data-key="1-diagrams"><div class="crumb">R1 &nbsp;›&nbsp; <b>Workflows &amp; Diagrams</b></div>
+  <h2>Workflows &amp; Diagrams</h2>
+
+  <h3>A. Financial core — money never touches platform accounts</h3>
+  <div class="flow">
+    <span class="node lite">Owner pays dues</span><span class="arrow">→</span>
+    <span class="node alt">Stripe / lockbox</span><span class="arrow">→</span>
+    <span class="node">Fund-accounting GL<br>(operating vs reserve)</span><span class="arrow">→</span>
+    <span class="node alt">Plaid / bank API</span><span class="arrow">→</span>
+    <span class="node lite">Auto-reconcile &gt;95%</span>
+  </div>
+  <div class="flow">
+    <span class="node">GL</span><span class="arrow">→</span>
+    <span class="node lite">AP / AvidXchange</span><span class="arrow">→</span>
+    <span class="node lite">1099 / IRS e-file</span><span class="arrow">→</span>
+    <span class="node lite">Revenue-aware reporting</span>
+  </div>
+  <p style="font-size:12px;color:#5a7d78">Funds route bank-to-bank; the platform orchestrates but never holds money (compliance posture).</p>
+
+  <h3>B. Configurable compliance rules engine (the keystone)</h3>
+  <div class="flow">
+    <span class="node alt">Per-state rules DB<br>(data, not code)</span><span class="arrow">→</span>
+    <span class="node">Rules engine</span><span class="arrow">→</span>
+    <span class="node lite">Reserve cadence</span>
+    <span class="node lite">Notice windows</span>
+    <span class="node lite">Fine caps</span>
+    <span class="node lite">Election rules</span>
+    <span class="node lite">Audit threshold</span>
+  </div>
+  <div class="flow">
+    <span class="node lite">Add a new state</span><span class="arrow">=</span>
+    <span class="node alt">data entry + legal review</span><span class="arrow">≠</span>
+    <span class="node" style="background:#9a3b3b">code change</span>
+  </div>
+  <p style="font-size:12px;color:#5a7d78">If "add a state" requires a code change, the platform is capped at one cluster — this is the #1 thing the audit must verdict.</p>
+
+  <h3>C. Cluster-gated expansion sequence</h3>
+  <div class="flow">
+    <span class="node">B · baseline<br>TX/AZ/GA/NC/SC</span><span class="arrow">→</span>
+    <span class="node">A · UCIOA reserve<br>DE/CT/NV/VA/WA/CO/MD</span><span class="arrow">→</span>
+    <span class="node">C · structural<br>NJ → FL condo</span><span class="arrow">→</span>
+    <span class="node alt">D · prescriptive<br>CA + FL</span>
+  </div>
+  <p style="font-size:12px;color:#5a7d78">Each cluster unlocks the next once its gating features hit ≥Live; white-space differentiators (fraud, insurance, transparency) layer on across all.</p>
+</div>
+  </main>
+</div>
+<script>
+  var groups=document.querySelectorAll('.secgroup'),
+      links=document.querySelectorAll('.slink'),
+      panels=document.querySelectorAll('.ppanel');
+  function showKey(k){
+    links.forEach(function(x){x.classList.toggle('on',x.dataset.key===k);});
+    panels.forEach(function(p){p.classList.toggle('on',p.dataset.key===k);});
+    document.querySelector('.projmain').scrollTo({top:0,behavior:'instant'});
+    window.scrollTo({top:0,behavior:'instant'});
+  }
+  function selectRound(n){
+    // swap which round's section nav is visible; default to its first section
+    groups.forEach(function(g){g.classList.toggle('on',g.dataset.r===String(n));});
+    var g=document.querySelector('.secgroup[data-r="'+n+'"]');
+    var first=g?g.querySelector('.slink'):null;
+    if(first) showKey(first.dataset.key);
+  }
+  links.forEach(function(l){l.addEventListener('click',function(){showKey(l.dataset.key);});});
+</script></body></html>

@@ -25,7 +25,15 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # founder-os#8337 R2 — cancel redundant PR runs (rapid pushes to the same PR
+  # branch), but NEVER cancel a push-to-main run. All jobs share ONE self-hosted
+  # runner and run serialized; the Playwright job (slowest, last) was being
+  # cancelled mid-flight by the next main push before it could finish, so `main`
+  # never reached a green CI run and EVERY PR was admin-merged past branch
+  # protection (branch protection became theater). Letting a main run always
+  # complete is what makes a green main CI run — R1 (docs-only PR all-green) and
+  # R2 (green main run) — actually achievable.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Migrated 2026-05-24 from `ubuntu-latest` (GitHub-hosted, METERED) to the
 # mac-ycm self-hosted runner. Per founder-os perseverance-protocol.md Hard
@@ -47,7 +55,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-          cache: "npm"
       - run: npm ci --legacy-peer-deps
       - run: npm run check
       - run: npm run lint
@@ -60,7 +67,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-          cache: "npm"
       - run: npm ci --legacy-peer-deps
       - run: npx vitest run
 
@@ -72,7 +78,6 @@ jobs:
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-          cache: "npm"
       - run: npm ci --legacy-peer-deps
       - run: npm run build
 
@@ -80,26 +85,66 @@ jobs:
     name: Playwright (route-mock + real-backend + axe + visual)
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
+    env:
+      # NOT 5000 (founder-os#8337 root cause): on the self-hosted macOS runner,
+      # macOS AirPlay Receiver (the ControlCenter process) permanently LISTENS
+      # on port 5000 — so every webServer bind failed with "already used" on
+      # every run, including docs-only commits. Worse, the free-port step below
+      # was kill -9'ing ControlCenter each run (same user → kill succeeds;
+      # launchd respawns it and re-binds 5000, so the failure persisted anyway).
+      # 5013 is unclaimed on the runner (lsof-probed 2026-07-02); the config +
+      # server are fully parameterized so nothing else changes.
+      PLAYWRIGHT_PORT: "5013"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
-          cache: "npm"
       - run: npm ci --legacy-peer-deps
       # `--with-deps` is Debian/Ubuntu only (uses apt-get). macOS has the
       # system libs already; install browsers only.
-      - run: npx playwright install chromium firefox webkit
-      # Self-hosted-runner hygiene (fix/ci-greenup): the Playwright webServer
-      # binds PLAYWRIGHT_PORT (default 5000), and `reuseExistingServer` is
-      # FALSE in CI — so a stale process left on port 5000 by a previously
-      # CANCELLED run (the workflow uses `cancel-in-progress: true`) makes
-      # Playwright fail with "http://localhost:5000 is already used". Free the
-      # port before starting. Idempotent + never fails the job (no listener =
-      # lsof prints nothing → the `|| true` no-ops).
-      - name: Free port 5000 (stale webServer from a cancelled run)
+      #
+      # founder-os#10095 — bounded retry with exponential backoff. The browser
+      # download from Google's Chrome-for-Testing CDN (storage.googleapis.com)
+      # intermittently times out (ETIMEDOUT / socket hang up) from the
+      # self-hosted runner, which never reaches a test and BLOCKED every YCM PR
+      # merge (proven on PR #423, 3× on this same step). A transient CDN blip now
+      # self-heals instead of failing the required check. `playwright install` is
+      # idempotent — a retry re-uses already-downloaded browsers and only
+      # re-fetches the ones still missing. All 3 browsers stay (chromium/firefox/
+      # webkit are intentional cross-browser projects, playwright.config Wave 45).
+      - name: Install Playwright browsers (retry on CDN flake)
         run: |
-          PORT="${PLAYWRIGHT_PORT:-5000}"
+          set -o pipefail
+          attempts=5
+          delay=10
+          for i in $(seq 1 "$attempts"); do
+            echo "::group::playwright install (attempt $i/$attempts)"
+            if npx playwright install chromium firefox webkit; then
+              echo "::endgroup::"
+              echo "Playwright browsers installed on attempt $i."
+              exit 0
+            fi
+            echo "::endgroup::"
+            if [ "$i" -lt "$attempts" ]; then
+              echo "Install failed (likely CDN timeout) — retrying in ${delay}s…"
+              sleep "$delay"
+              delay=$(( delay * 2 ))
+            fi
+          done
+          echo "Playwright browser install failed after ${attempts} attempts." >&2
+          exit 1
+      # Self-hosted-runner hygiene: the Playwright webServer binds
+      # PLAYWRIGHT_PORT (5013 — see the job env above for why NOT 5000), and
+      # `reuseExistingServer` is FALSE in CI — so a stale webServer left by a
+      # previously CANCELLED run (the workflow uses `cancel-in-progress: true`)
+      # would make Playwright fail with "already used". Free the port before
+      # starting. Safe on 5013: only a stale test webServer can hold it (unlike
+      # 5000, where this step was killing macOS ControlCenter). Idempotent +
+      # never fails the job (no listener = lsof prints nothing → `|| true`).
+      - name: Free the Playwright port (stale webServer from a cancelled run)
+        run: |
+          PORT="${PLAYWRIGHT_PORT:-5013}"
           PIDS="$(lsof -ti tcp:"$PORT" || true)"
           if [ -n "$PIDS" ]; then
             echo "Killing stale process(es) on port $PORT: $PIDS"

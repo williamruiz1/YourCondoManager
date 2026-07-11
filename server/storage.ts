@@ -6,8 +6,11 @@ import path from "path";
 import { promisify } from "util";
 import { inflateRawSync } from "zlib";
 import { db } from "./db";
+import { isPortalAccessIdleExpired } from "./portal-expiry";
 import { sendPlatformEmail } from "./email-provider";
+import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
 import {
+  agentActions,
   adminAssociationScopes,
   adminUserPreferences,
   associationMemberships,
@@ -50,6 +53,8 @@ import {
   executiveEvidence,
   executiveUpdates,
   documents,
+  recordsRequests,
+  recordsRequestItems,
   expenseAttachments,
   financialAccounts,
   financialCategories,
@@ -130,6 +135,10 @@ import {
   type DocumentTag,
   type DocumentVersion,
   type Document,
+  type RecordsRequest,
+  type InsertRecordsRequest,
+  type RecordsRequestItem,
+  type InsertRecordsRequestItem,
   type EmailThread,
   type InsertAdminAssociationScope,
   type InsertAssociationMembership,
@@ -3792,6 +3801,13 @@ export interface IStorage {
   createVendorDocument(vendorId: string, data: InsertDocument, actorEmail?: string): Promise<Document>;
   updateDocument(id: string, data: Partial<InsertDocument>, actorEmail?: string): Promise<Document | undefined>;
   deleteDocument(id: string, actorEmail?: string): Promise<boolean>;
+  // CT CGS §47-260 — owner records-request workflow (founder-os#8017).
+  getRecordsRequests(associationId?: string): Promise<RecordsRequest[]>;
+  getRecordsRequest(id: string): Promise<RecordsRequest | undefined>;
+  createRecordsRequest(data: InsertRecordsRequest, actorEmail?: string): Promise<RecordsRequest>;
+  updateRecordsRequest(id: string, data: Partial<InsertRecordsRequest>, actorEmail?: string): Promise<RecordsRequest | undefined>;
+  getRecordsRequestItems(requestId: string): Promise<RecordsRequestItem[]>;
+  createRecordsRequestItem(data: InsertRecordsRequestItem): Promise<RecordsRequestItem>;
   getHoaFeeSchedules(associationId?: string): Promise<HoaFeeSchedule[]>;
   createHoaFeeSchedule(data: InsertHoaFeeSchedule): Promise<HoaFeeSchedule>;
   updateHoaFeeSchedule(id: string, data: Partial<InsertHoaFeeSchedule>): Promise<HoaFeeSchedule | undefined>;
@@ -3840,6 +3856,13 @@ export interface IStorage {
   getVendorInvoices(associationId?: string): Promise<VendorInvoice[]>;
   getVendors(associationId?: string): Promise<Vendor[]>;
   getVendorRenewalAlerts(associationId?: string): Promise<Array<{ vendorId: string; vendorName: string; associationId: string; daysUntilExpiry: number; severity: "expired" | "due-soon"; insuranceExpiresAt: Date }>>;
+  // Vendor compliance tracking (founder-os#9482). COI reuses the existing
+  // documents/document_tags substrate (no new document store) — this returns
+  // a batch vendorId->hasCurrentCoi map so a list view isn't N+1.
+  getVendorCoiOnFileMap(vendorIds: string[]): Promise<Record<string, boolean>>;
+  // Dedup check for the compliance-reminder sweep: is there already an OPEN
+  // (queued|approved) agent-action queue item for this target+type?
+  hasOpenAgentAction(targetEntityType: string, targetEntityId: string, actionType: string): Promise<boolean>;
   createVendor(data: InsertVendor): Promise<Vendor>;
   updateVendor(id: string, data: Partial<InsertVendor>): Promise<Vendor | undefined>;
   createVendorInvoice(data: InsertVendorInvoice): Promise<VendorInvoice>;
@@ -7245,6 +7268,78 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
+  // ── CT CGS §47-260 — owner records-request workflow (founder-os#8017) ──────
+  // Thin glue over the records_requests / records_request_items tables. All
+  // statutory LOGIC (response-due timing, retention periods, copy fee,
+  // withholding) lives in server/services/records-retention-service.ts and is
+  // unit-tested there; these methods persist the results.
+  async getRecordsRequests(associationId?: string): Promise<RecordsRequest[]> {
+    if (!associationId) {
+      return db.select().from(recordsRequests).orderBy(desc(recordsRequests.createdAt));
+    }
+    return db
+      .select()
+      .from(recordsRequests)
+      .where(eq(recordsRequests.associationId, associationId))
+      .orderBy(desc(recordsRequests.createdAt));
+  }
+
+  async getRecordsRequest(id: string): Promise<RecordsRequest | undefined> {
+    const [result] = await db.select().from(recordsRequests).where(eq(recordsRequests.id, id));
+    return result;
+  }
+
+  async createRecordsRequest(data: InsertRecordsRequest, actorEmail?: string): Promise<RecordsRequest> {
+    const [result] = await db.insert(recordsRequests).values(data).returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "records_request",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async updateRecordsRequest(
+    id: string,
+    data: Partial<InsertRecordsRequest>,
+    actorEmail?: string,
+  ): Promise<RecordsRequest | undefined> {
+    const [before] = await db.select().from(recordsRequests).where(eq(recordsRequests.id, id));
+    if (!before) return undefined;
+    const [result] = await db
+      .update(recordsRequests)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(recordsRequests.id, id))
+      .returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "update",
+      entityType: "records_request",
+      entityId: id,
+      associationId: result.associationId,
+      beforeJson: before,
+      afterJson: result,
+    });
+    return result;
+  }
+
+  async getRecordsRequestItems(requestId: string): Promise<RecordsRequestItem[]> {
+    return db
+      .select()
+      .from(recordsRequestItems)
+      .where(eq(recordsRequestItems.requestId, requestId))
+      .orderBy(desc(recordsRequestItems.createdAt));
+  }
+
+  async createRecordsRequestItem(data: InsertRecordsRequestItem): Promise<RecordsRequestItem> {
+    const [result] = await db.insert(recordsRequestItems).values(data).returning();
+    return result;
+  }
+
   async createVendorDocument(vendorId: string, data: InsertDocument, actorEmail?: string): Promise<Document> {
     const [vendor] = await db.select().from(vendors).where(eq(vendors.id, vendorId));
     if (!vendor) {
@@ -7712,6 +7807,43 @@ export class DatabaseStorage implements IStorage {
       .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry);
 
     return alerts;
+  }
+
+  async getVendorCoiOnFileMap(vendorIds: string[]): Promise<Record<string, boolean>> {
+    const map: Record<string, boolean> = {};
+    for (const id of vendorIds) map[id] = false;
+    if (vendorIds.length === 0) return map;
+
+    const rows = await db
+      .select({ vendorId: documentTags.entityId })
+      .from(documentTags)
+      .innerJoin(documents, eq(documents.id, documentTags.documentId))
+      .where(
+        and(
+          eq(documentTags.entityType, "vendor"),
+          inArray(documentTags.entityId, vendorIds),
+          eq(documents.isCurrentVersion, 1),
+          ilike(documents.documentType, "%coi%"),
+        ),
+      );
+    for (const row of rows) map[row.vendorId] = true;
+    return map;
+  }
+
+  async hasOpenAgentAction(targetEntityType: string, targetEntityId: string, actionType: string): Promise<boolean> {
+    const rows = await db
+      .select({ id: agentActions.id })
+      .from(agentActions)
+      .where(
+        and(
+          eq(agentActions.targetEntityType, targetEntityType),
+          eq(agentActions.targetEntityId, targetEntityId),
+          eq(agentActions.actionType, actionType),
+          inArray(agentActions.status, ["queued", "approved"]),
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
   }
 
   private deriveVendorStatus(
@@ -8337,6 +8469,13 @@ export class DatabaseStorage implements IStorage {
         })
         .where(eq(ownerPaymentLinks.id, link.id));
     }
+
+    // YCM Financial Core — dues-to-GL wiring. The confirmed payment is now in the
+    // owner ledger (the system of record). Post it into the PARALLEL fund-aware GL
+    // so it reaches the financial statements. BEST-EFFORT + NON-FATAL: a GL sync
+    // failure must never break this webhook handler — the money is already
+    // recorded. Per-association + reconcile-to-cent gated, idempotent on retries.
+    await maybeSyncAssociationGl(payload.associationId, "payment-webhook");
 
     const [processedEvent] = await db
       .update(paymentWebhookEvents)
@@ -13215,12 +13354,9 @@ export class DatabaseStorage implements IStorage {
     let access = await this.getPortalAccessById(portalAccessId);
     if (!access || access.status !== "active") return undefined;
 
-    // Enforce 30-day session expiry based on last login
-    const SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
-    if (access.lastLoginAt) {
-      const elapsed = Date.now() - new Date(access.lastLoginAt).getTime();
-      if (elapsed > SESSION_MAX_AGE_MS) return undefined;
-    }
+    // Enforce 30-day idle session expiry based on last login. Shared helper (A-AUTH-005,
+    // founder-os#10757) so the upload-authorization path enforces the same window.
+    if (isPortalAccessIdleExpired(access)) return undefined;
 
     let boardRole: BoardRole | null = null;
     if (access.boardRoleId) {

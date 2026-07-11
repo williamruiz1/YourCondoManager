@@ -1,13 +1,28 @@
-# Auto-deploy to Fly on every push to the default branch.
+# Deploy to Fly — GATED pipeline (founder-os#10739, audit A-REL-004 / CQ-005).
 #
-# WHY: per OP #31 (done = installed/deployed/usable on William's device, NOT
-# PR merge), merged PRs that never reach production aren't done. Before this
-# workflow, YCM merges accumulated on `main` while Fly stayed on a stale
-# revision (last deploy 22h+ before this commit, with 25 PRs merged in
-# window). Founder directive 2026-05-20 04:44.
+# WHY the gate: previously every push to `main` auto-deployed straight to
+# production with `--strategy immediate` and auto-applied migrations to the live
+# Cherry Hill ledger — no staging catch, no pre-deploy backup, no rollback path.
+# A regression or a destructive migration reached 100% of prod instantly.
 #
-# REQUIRES: repo secret `FLY_API_TOKEN` — deploy-scoped token, generated via
-# `fly tokens create deploy -a yourcondomanager`.
+# THE GATE (in order; any failure stops prod from deploying):
+#   1. money-migration-guard — blocks destructive DDL on money tables unless
+#      explicitly reviewed ([money-migration-reviewed]).
+#   2. staging-gate — deploy the build to `yourcondomanager-staging` (migrations
+#      run against STAGING's OWN db, so a bad migration aborts HERE), then
+#      smoke-test /api/health. Prod deploy runs ONLY if staging is 200/status:ok.
+#   3. deploy-prod — take a fresh pre-deploy DB snapshot, THEN deploy prod.
+#
+# REQUIRED repo secrets:
+#   FLY_API_TOKEN         — deploy token for `yourcondomanager`  (fly tokens create deploy -a yourcondomanager)
+#   FLY_STAGING_API_TOKEN — deploy token for `yourcondomanager-staging` (fly tokens create deploy -a yourcondomanager-staging)
+#   FLY_DB_API_TOKEN      — token that can snapshot `yourcondomanager-db` volumes
+#                           (fly tokens create deploy -a yourcondomanager-db, or an org token). If unset,
+#                           the pre-deploy snapshot fail-closes (set repo var PREDEPLOY_SNAPSHOT_BEST_EFFORT=1 to opt out).
+#
+# ROLLBACK: docs/DEPLOY-ROLLBACK.md (restore-from-snapshot + revert-image).
+# REVERT this gate: `git revert` to the single-job immediate-deploy — the gate
+#   is purely additive to the workflow.
 
 name: Deploy (Fly)
 
@@ -16,24 +31,66 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# cancel-in-progress MUST be false for deploys: with `true`, every new merge
+# cancelled the RUNNING deploy — on 2026-07-03 FIVE consecutive deploys were
+# cancelled this way and production sat >=5 merges stale (migrations included).
+# `false` queues: the running deploy finishes, then the newest pending run
+# lands (GitHub keeps only the latest pending run per group — deploys still
+# coalesce, they just never get killed mid-flight).
 concurrency:
   group: fly-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    name: Deploy app to Fly
+  money-migration-guard:
+    name: Money-table migration review guard
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - name: Guard destructive money-table migrations
+        env:
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          GITHUB_SHA: ${{ github.sha }}
+          MONEY_MIGRATION_REVIEWED: ${{ github.event.inputs.money_migration_reviewed }}
+        run: node scripts/check-money-migrations.cjs
+
+  staging-gate:
+    name: Staging deploy + smoke test (promotion gate)
+    needs: money-migration-guard
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master 2026-05-20
+        with:
+          version: latest
+      - name: Deploy to STAGING (migrations run against staging DB; abort-on-failure catches bad migrations here)
+        run: flyctl deploy --remote-only --app yourcondomanager-staging --strategy immediate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_STAGING_API_TOKEN }}
+      - name: Smoke-test staging /api/health (blocks prod on non-200)
+        run: bash scripts/smoke-test.sh https://yourcondomanager-staging.fly.dev
+
+  deploy-prod:
+    name: Deploy app to Fly (prod)
+    needs: staging-gate
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 20
     concurrency: deploy-group
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master 2026-05-20
         with:
           version: latest
-
-      - name: Deploy to Fly
+      - name: Pre-deploy DB backup snapshot (fail-closed for the money app)
+        run: bash scripts/predeploy-snapshot.sh
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_DB_API_TOKEN }}
+          PREDEPLOY_SNAPSHOT_BEST_EFFORT: ${{ vars.PREDEPLOY_SNAPSHOT_BEST_EFFORT }}
+      - name: Deploy to Fly (prod)
         run: flyctl deploy --remote-only --strategy immediate
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

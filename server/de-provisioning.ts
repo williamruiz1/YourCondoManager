@@ -31,6 +31,7 @@
 
 import { and, eq } from "drizzle-orm";
 import { db } from "./db.js";
+import { withSchedulerLock } from "./scheduler-lock.js";
 import {
   adminUsers,
   authUsers,
@@ -311,13 +312,19 @@ export function startDeprovisioningScheduler(intervalMs: number = DAY_MS): void 
   if (deprovTimer) return;
   const tick = async (): Promise<void> => {
     try {
-      const result = await runAdminInactivityCheck();
-      if (result.warned.length > 0 || result.deactivated.length > 0 || result.errors.length > 0) {
-        log(
-          `[deprov] sweep complete warned=${result.warned.length} deactivated=${result.deactivated.length} errors=${result.errors.length}`,
-          "automation",
-        );
-      }
+      // SCALE-B-003 / A-REL-005 (founder-os#10741): the inactivity check SENDS
+      // deactivation emails + deactivates admins — user-visible side effects
+      // that must not double-fire across machines. Run under the cross-machine
+      // advisory lock (no-op single-machine; skips if another machine holds it).
+      await withSchedulerLock("deprov", async () => {
+        const result = await runAdminInactivityCheck();
+        if (result.warned.length > 0 || result.deactivated.length > 0 || result.errors.length > 0) {
+          log(
+            `[deprov] sweep complete warned=${result.warned.length} deactivated=${result.deactivated.length} errors=${result.errors.length}`,
+            "automation",
+          );
+        }
+      });
     } catch (err) {
       console.error("[deprov] sweep failed", err);
     }

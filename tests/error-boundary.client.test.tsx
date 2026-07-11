@@ -31,6 +31,13 @@ function BoomOnce({ shouldThrow }: { shouldThrow: boolean }) {
   return <div data-testid="boom-ok">ok</div>;
 }
 
+/** Throws the canonical deploy-invalidated (stale) lazy-chunk error. */
+function ChunkBoom() {
+  throw new Error(
+    "Failed to fetch dynamically imported module: https://x/assets/foo-abc.js",
+  );
+}
+
 describe("ErrorBoundary", () => {
   let consoleError: ReturnType<typeof vi.spyOn>;
 
@@ -119,6 +126,85 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>,
     );
     expect(screen.getByTestId("boom-ok")).toBeInTheDocument();
+  });
+});
+
+describe("ErrorBoundary — stale-chunk recovery (deploy-invalidated lazy chunks)", () => {
+  let consoleError: ReturnType<typeof vi.spyOn>;
+  let reloadSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    window.sessionStorage.clear();
+    reloadSpy = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, reload: reloadSpy },
+    });
+  });
+
+  afterEach(() => {
+    consoleError.mockRestore();
+  });
+
+  it("hard-reloads once on a stale-chunk error (no dead soft-retry)", () => {
+    render(
+      <ErrorBoundary>
+        <ChunkBoom />
+      </ErrorBoundary>,
+    );
+    // The boundary self-heals by fetching the fresh build.
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+    // A reload timestamp is recorded so a recurrence within the cooldown
+    // does NOT loop.
+    expect(
+      window.sessionStorage.getItem("ycm:chunk-boundary-reload-at"),
+    ).toBeTruthy();
+  });
+
+  it("does NOT auto-reload again within the cooldown; shows a hard-reload action instead", () => {
+    // Simulate: a reload was just attempted (cooldown active).
+    window.sessionStorage.setItem(
+      "ycm:chunk-boundary-reload-at",
+      String(Date.now()),
+    );
+    render(
+      <ErrorBoundary>
+        <ChunkBoom />
+      </ErrorBoundary>,
+    );
+    // No auto-reload loop.
+    expect(reloadSpy).not.toHaveBeenCalled();
+    // A working manual reload action is shown.
+    const retry = screen.getByTestId("error-state-retry");
+    expect(retry).toBeInTheDocument();
+    fireEvent.click(retry);
+    expect(reloadSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("a stale-chunk error overrides a custom fallback (a missing chunk needs a reload)", () => {
+    window.sessionStorage.setItem(
+      "ycm:chunk-boundary-reload-at",
+      String(Date.now()),
+    );
+    render(
+      <ErrorBoundary fallback={<div data-testid="my-fallback">alt</div>}>
+        <ChunkBoom />
+      </ErrorBoundary>,
+    );
+    // The reload UI wins over the custom panel fallback.
+    expect(screen.queryByTestId("my-fallback")).toBeNull();
+    expect(screen.getByTestId("error-boundary-fallback")).toBeInTheDocument();
+  });
+
+  it("a NON-chunk error still uses the normal soft-retry ErrorState", () => {
+    render(
+      <ErrorBoundary>
+        <BoomOnce shouldThrow={true} />
+      </ErrorBoundary>,
+    );
+    expect(reloadSpy).not.toHaveBeenCalled();
+    expect(screen.getByTestId("error-state")).toBeInTheDocument();
   });
 });
 

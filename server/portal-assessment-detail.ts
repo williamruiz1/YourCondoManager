@@ -37,6 +37,7 @@ import {
   type OwnerPortion,
   type UnitForOwnerPortion,
 } from "./assessment-ownership";
+import type { AssessmentPlanProgress } from "@shared/portal-assessment-plan";
 
 function toAssessmentInput(assessment: SpecialAssessment): AssessmentForOwnerPortion {
   return {
@@ -401,4 +402,140 @@ export async function getUpcomingInstallmentsForOwnerUnit(params: {
   }
 
   return result.sort((a, b) => (a.dueDate < b.dueDate ? -1 : 1));
+}
+
+function round2(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * 2026-07-09 (owner-finances redesign) — special-assessment PAYMENT-PLAN
+ * progress for the owner's unit, across every active assessment the unit is
+ * part of. Returns the plan as it is PAID OVER TIME (total · paid-to-date ·
+ * remaining · installments paid/total · next installment) so the owner portal
+ * can render a plan card instead of an alarming "balance due now".
+ *
+ * Every field is derived from the SAME primitives as `getUpcomingInstallmentsForOwnerUnit`
+ * (`computeOwnerPortion` + `countPostedInstallments` + `assessment.installmentCount`)
+ * so the two surfaces never drift. Reconciles by construction:
+ *   installmentsPaid + remainingInstallments === installmentCount
+ *   paidToDate + remaining                    === total
+ *
+ * DISPLAY ONLY — no ledger write, no money movement. Assessments whose owner
+ * portion is zero (unit excluded / mis-configured allocation) are skipped.
+ */
+export async function getAssessmentPlansForOwnerUnit(params: {
+  associationId: string;
+  unitId: string | null;
+  personId: string;
+}): Promise<AssessmentPlanProgress[]> {
+  const { associationId, unitId, personId } = params;
+  if (!unitId) return [];
+
+  const assessmentRows = await db
+    .select()
+    .from(specialAssessments)
+    .where(and(
+      eq(specialAssessments.associationId, associationId),
+      eq(specialAssessments.isActive, 1),
+    ));
+  if (assessmentRows.length === 0) return [];
+
+  const applicable = assessmentRows.filter((a) => isUnitIncluded(a, unitId));
+  if (applicable.length === 0) return [];
+
+  const unitRows = await db
+    .select()
+    .from(units)
+    .where(eq(units.associationId, associationId));
+
+  const ownershipRows = await db
+    .select({
+      unitId: ownerships.unitId,
+      ownershipPercentage: ownerships.ownershipPercentage,
+      endDate: ownerships.endDate,
+    })
+    .from(ownerships)
+    .innerJoin(units, eq(ownerships.unitId, units.id))
+    .where(eq(units.associationId, associationId));
+
+  const now = new Date();
+  const activeOwnerships = ownershipRows.filter(
+    (r) => !r.endDate || new Date(r.endDate) > now,
+  );
+
+  const ledgerEntries = await db
+    .select()
+    .from(ownerLedgerEntries)
+    .where(and(
+      eq(ownerLedgerEntries.associationId, associationId),
+      eq(ownerLedgerEntries.unitId, unitId),
+      eq(ownerLedgerEntries.referenceType, SPECIAL_ASSESSMENT_REFERENCE_TYPE),
+    ));
+  const myLedgerEntries = ledgerEntries.filter((e) => e.personId === personId);
+
+  const plans: AssessmentPlanProgress[] = [];
+  for (const assessment of applicable) {
+    const excludedSet = new Set(
+      Array.isArray(assessment.excludedUnitIdsJson) ? assessment.excludedUnitIdsJson : [],
+    );
+    const activeUnits = unitRows.filter((u) => !excludedSet.has(u.id));
+    const activeUnitsWithShare: UnitForOwnerPortion[] = activeUnits.map((u) => ({
+      id: u.id,
+      squareFootage: u.squareFootage ?? null,
+      ownershipPercent: sumUnitOwnershipPercent(u.id, activeOwnerships),
+    }));
+    const myUnitForPortion = activeUnitsWithShare.find((u) => u.id === unitId);
+    if (!myUnitForPortion) continue;
+
+    const installmentsPosted = countPostedInstallments(myLedgerEntries, assessment.id, unitId);
+
+    let portion: OwnerPortion;
+    try {
+      portion = computeOwnerPortion({
+        assessment: toAssessmentInput(assessment),
+        unit: myUnitForPortion,
+        totalActiveUnitCount: activeUnitsWithShare.length,
+        allUnits: activeUnitsWithShare,
+        installmentsPosted,
+      });
+    } catch {
+      // Rule mis-configuration (custom allocation ≠ 100%) — skip; the manager
+      // sees the error in /app/financial/rules.
+      continue;
+    }
+
+    if (portion.total <= 0) continue;
+
+    // Schedule-reconciled progress. `remainingInstallments` is the count of
+    // future installments; `installmentCount` (schedule length) === posted +
+    // remaining, so paidToDate + remaining === total by construction.
+    const installmentCount = installmentsPosted + portion.remainingInstallments;
+    const remaining = round2(portion.remainingInstallments * portion.installmentAmount);
+    const paidToDate = round2(Math.max(0, portion.total - remaining));
+
+    const hasNext = portion.remainingInstallments > 0;
+    const nextInstallmentNumber = hasNext ? installmentsPosted + 1 : null;
+    const nextDueDate =
+      hasNext && nextInstallmentNumber != null
+        ? addUtcMonths(new Date(assessment.startDate), nextInstallmentNumber - 1)
+        : null;
+
+    plans.push({
+      assessmentId: assessment.id,
+      assessmentName: assessment.name,
+      total: round2(portion.total),
+      paidToDate,
+      remaining,
+      installmentCount,
+      installmentsPaid: installmentsPosted,
+      installmentAmount: round2(portion.installmentAmount),
+      nextInstallmentAmount: hasNext ? round2(portion.installmentAmount) : null,
+      nextInstallmentDueDate: nextDueDate ? nextDueDate.toISOString() : null,
+      nextInstallmentNumber,
+    });
+  }
+
+  return plans.sort((a, b) => a.assessmentName.localeCompare(b.assessmentName));
 }
