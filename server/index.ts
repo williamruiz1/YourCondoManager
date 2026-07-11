@@ -48,7 +48,7 @@ dotenv.config({ path: ".env.local", override: true });
 // block below so the CJS bundle target stays compatible. No-op when
 // `SENTRY_DSN` is unset (local dev). See INSTALL-OBSERVABILITY.md for the
 // production deploy steps (Issue founder-os#1030).
-import { initServerObservability } from "./observability";
+import { initServerObservability, assertServerObservabilityConfigured } from "./observability";
 
 const app = express();
 const httpServer = createServer(app);
@@ -383,6 +383,13 @@ app.use((req, res, next) => {
   // Init Sentry first inside the async boot so errors during the rest of
   // boot are captured. Safe across hot-reload (idempotent init).
   await initServerObservability();
+
+  // A-OPS-003 / CQ-009 — boot-time observability assertion. Makes the
+  // "Sentry silently no-ops in production" failure LOUD so it can never
+  // regress unnoticed. Non-strict by default (a missing DSN loud-warns but
+  // never bricks prod); SENTRY_STRICT=1 upgrades it to a hard boot-fail once
+  // the DSN secret is provisioned. Non-production is a silent no-op.
+  assertServerObservabilityConfigured();
 
   // BLINDSPOT F7 — Plaid production env-flip guard. Refuse to boot in
   // PLAID_ENV=production unless webhook JWT verification is wired + the
