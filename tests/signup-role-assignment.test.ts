@@ -26,13 +26,16 @@ describe("Signup role assignment (source-scan)", () => {
   // ~4300 to ~5158 chars past the anchor. 6000 gives comfortable margin
   // (measured: the route mount for the NEXT endpoint starts at ~5328).
   it('signup INSERT uses role: "manager"', () => {
-    const signupIdx = routesSource.indexOf("/api/public/signup/start");
+    // Anchor on the actual route handler (a comment sits above the handler),
+    // and use a 6000-char window (the #10752 Stripe idempotency pass pushed the
+    // INSERT to ~5158 past the anchor; 6000 gives margin).
+    const signupIdx = routesSource.indexOf('app.post("/api/public/signup/start"');
     const region = routesSource.substring(signupIdx, signupIdx + 6000);
     expect(region).toContain('role: "manager"');
   });
 
   it('signup INSERT does NOT use role: "platform-admin"', () => {
-    const signupIdx = routesSource.indexOf("/api/public/signup/start");
+    const signupIdx = routesSource.indexOf('app.post("/api/public/signup/start"');
     const region = routesSource.substring(signupIdx, signupIdx + 6000);
     expect(region).not.toMatch(/role:\s*["']platform-admin["']/);
   });
