@@ -4,7 +4,7 @@ import { type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
-import { createHmac, timingSafeEqual } from "crypto";
+import { createHmac, timingSafeEqual, randomInt } from "crypto";
 import { storage } from "./storage";
 import { authorizeUploadAccess, validateUploadFilename } from "./uploads-access";
 import { db } from "./db";
@@ -57,6 +57,7 @@ import { enqueueAssessmentRuleRun, getJobStatus as getBackgroundJobStatus } from
 import {
   buildAssessmentDetailForOwnerUnit,
   getUpcomingInstallmentsForOwnerUnit,
+  getAssessmentPlansForOwnerUnit,
 } from "./portal-assessment-detail";
 // Wave 33 (5.4 Part B): `./ftph-feature-tree` and `@shared/ftph-feature-tree`
 // together account for ~50 KB of feature-metadata wiring that is only
@@ -964,10 +965,17 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
 
     if (missingAssociationIds.length > 0) {
       for (const associationId of missingAssociationIds) {
+        // A-AUTH-004 (founder-os#10757): auto-hydrate LEAST PRIVILEGE — read-only, not
+        // read-write. Admin write authority must not silently expand as a side effect of
+        // a portal_access row; write scope requires an explicit grant.
+        // NOTE (enforcement gap, tracked as a follow-up): the `scope` VALUE is not yet
+        // consumed at write sites — access is currently gated only by the association-id's
+        // presence in adminScopedAssociationIds — so this read-only default is
+        // least-privilege-by-intent and audit hygiene until scope-value enforcement lands.
         await storage.upsertAdminAssociationScope({
           adminUserId: adminUser.id,
           associationId,
-          scope: "read-write",
+          scope: "read-only",
         });
       }
       scopes = await storage.getAdminAssociationScopesByUserId(adminUser.id);
@@ -975,6 +983,7 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
         adminUserId: adminUser.id,
         email: adminUser.email,
         hydratedAssociationIds: missingAssociationIds,
+        grantedScope: "read-only",
         resultingScopeCount: scopes.length,
       });
     } else if (scopes.length === 0) {
@@ -13594,7 +13603,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       }
 
       // Generate a 6-digit OTP (one token covers all associations for this email)
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      // A-AUTH-002 (founder-os#10757): CSPRNG for security one-time codes (CWE-338).
+      // randomInt(100000, 1000000) is uniform in [100000, 999999] — always 6 digits.
+      const otp = String(randomInt(100000, 1000000));
       const otpHash = createHmac("sha256", portalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
@@ -14518,7 +14529,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         return res.status(403).json({ message: "Not authorized" });
       }
       const ownerUnitId = req.portalUnitId ?? null;
-      const [allEntries, activeSchedules, paymentPlansAll, specialAssessmentUpcomingInstallments] = await Promise.all([
+      const [allEntries, activeSchedules, paymentPlansAll, specialAssessmentUpcomingInstallments, assessmentPlans] = await Promise.all([
         storage.getOwnerLedgerEntries(req.portalAssociationId),
         // Recurring charge schedules scoped to this owner's unit (or association-wide schedules)
         db.select().from(recurringChargeSchedules).where(
@@ -14537,6 +14548,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         // 4.3 Q5 — upcoming special-assessment installments for this owner's unit.
         // Each entry links to GET /api/portal/assessments/:assessmentId/detail.
         getUpcomingInstallmentsForOwnerUnit({
+          associationId: req.portalAssociationId,
+          unitId: ownerUnitId,
+          personId: req.portalPersonId,
+        }),
+        // 2026-07-09 (owner-finances redesign) — special-assessment PLAN
+        // progress (total · paid-to-date · remaining · installments paid/total ·
+        // next installment) so the portal shows the assessment as a payment
+        // plan paid over time, not an alarming lump balance due now.
+        getAssessmentPlansForOwnerUnit({
           associationId: req.portalAssociationId,
           unitId: ownerUnitId,
           personId: req.portalPersonId,
@@ -14689,6 +14709,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         } : null,
         recentEntries: myEntries.slice(-10),
         specialAssessmentUpcomingInstallments,
+        // 2026-07-09 — special-assessment payment-PLAN progress (additive,
+        // display-only). Drives the owner-portal "payment plan" card.
+        assessmentPlans,
         // 2026-05-25 — per-unit hierarchical breakdown (additive).
         byUnit,
         // 2026-07-03 — per-unit dues-vs-assessment breakdown (additive, read-only).
@@ -17988,7 +18011,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         return res.json({ message: "If an account exists for this email, a login code has been sent." });
       }
 
-      const otp = String(Math.floor(100000 + Math.random() * 900000));
+      // A-AUTH-002 (founder-os#10757): CSPRNG for security one-time codes (CWE-338).
+      // randomInt(100000, 1000000) is uniform in [100000, 999999] — always 6 digits.
+      const otp = String(randomInt(100000, 1000000));
       const otpHash = createHmac("sha256", vendorPortalOtpSecret).update(otp).digest("hex");
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
       const vendorId = allCredentials[0].vendorId;
@@ -19293,7 +19318,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     return true;
   }
 
-  // Periodic cleanup of stale rate limit entries
+  // Periodic cleanup of stale rate limit entries.
+  // NOTE (founder-os#10741, SCALE-B-003): deliberately NOT advisory-locked —
+  // `hubPublicRateLimit` is a per-process in-memory Map, so each machine must GC
+  // its own; locking would leak memory on the others. Only side-effect sweeps
+  // are cross-machine-locked (see server/scheduler-lock.ts).
   setInterval(() => {
     const now = Date.now();
     for (const [ip, entry] of hubPublicRateLimit) {

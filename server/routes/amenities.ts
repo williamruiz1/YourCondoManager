@@ -11,6 +11,10 @@ import {
   insertAmenityReservationSchema,
 } from "@shared/schema";
 import type { AdminRole } from "@shared/schema";
+import {
+  captureAmenityBookingMoney,
+  resolveAmenityDeposit,
+} from "../services/amenity-money-service";
 
 // `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
 // the canonical source of truth, derived from `adminUserRoleEnum.enumValues`).
@@ -143,7 +147,17 @@ export function registerAmenityRoutes(
   app.patch("/api/amenity-reservations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
-      const { status, notes } = req.body as { status?: string; notes?: string };
+      const { status, notes, depositResolution, refundCents, forfeitCents } = req.body as {
+        status?: string;
+        notes?: string;
+        // ── Amenity money loop, Slices 3+4 (founder-os#10181) ──────────────────
+        // The deposit resolution: refund (clean checkout), forfeit (damage/
+        // violation), or a partial split. Amounts are INTEGER CENTS. Optional —
+        // omitted on a plain status/notes edit.
+        depositResolution?: "refund" | "forfeit" | "partial";
+        refundCents?: number;
+        forfeitCents?: number;
+      };
       const updateData: Record<string, unknown> = { updatedAt: new Date() };
       if (status) updateData.status = status;
       if (notes !== undefined) updateData.notes = notes;
@@ -163,7 +177,38 @@ export function registerAmenityRoutes(
         .where(eq(amenityReservations.id, id))
         .returning();
       if (!updated) return res.status(404).json({ message: "Reservation not found" });
-      res.json(updated);
+
+      // ── Amenity money loop, Slices 3+4 (founder-os#10181) ──────────────────
+      // When the admin resolves the deposit (refund / forfeit / partial), route
+      // it through the gated money service. GATED fail-safe OFF: a non-allowlisted
+      // association is a pure no-op. Invariant violations (over-resolving) are a
+      // client input error → 400. The service writes depositRefundedCents /
+      // depositForfeitedCents and fires the parallel GL (non-fatal).
+      let responseRow = updated;
+      if (depositResolution || (refundCents ?? 0) > 0 || (forfeitCents ?? 0) > 0) {
+        try {
+          const resolve = await resolveAmenityDeposit({
+            reservationId: id,
+            refundCents: refundCents ?? 0,
+            forfeitCents: forfeitCents ?? 0,
+          });
+          if (resolve.mutated) {
+            const [refreshed] = await db.select().from(amenityReservations)
+              .where(eq(amenityReservations.id, id));
+            if (refreshed) responseRow = refreshed;
+          }
+        } catch (resolveErr: any) {
+          const msg = resolveErr?.message ?? String(resolveErr);
+          // Invariant / input errors from the service are client errors.
+          if (/must be a non-negative integer|exceeds the/.test(msg)) {
+            return res.status(400).json({ message: msg });
+          }
+          // Any other error is non-fatal to the status/notes update already made.
+          console.error(`[amenity-money] non-fatal deposit-resolution error for reservation=${id}: ${msg}`);
+        }
+      }
+
+      res.json(responseRow);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -381,7 +426,27 @@ export function registerAmenityRoutes(
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.flatten() });
 
       const [created] = await db.insert(amenityReservations).values(parsed.data).returning();
-      res.status(201).json(created);
+
+      // ── Amenity money loop, Slices 1+2 (founder-os#10181) ──────────────────
+      // Charge the usage fee + hold the refundable deposit. This is GATED
+      // fail-safe OFF per association (isGlEnabledForAssociation): for every
+      // non-allowlisted association — the default, incl. CHC — it is a PURE
+      // NO-OP (no charge, no column write). It is also NON-FATAL: a money-capture
+      // error must never break the booking that already committed. When enabled
+      // it writes feeChargedCents / depositHeldCents and fires the parallel GL.
+      let responseRow = created;
+      try {
+        const capture = await captureAmenityBookingMoney({ reservationId: created.id });
+        if (capture.mutated) {
+          const [refreshed] = await db.select().from(amenityReservations)
+            .where(eq(amenityReservations.id, created.id));
+          if (refreshed) responseRow = refreshed;
+        }
+      } catch (moneyErr: any) {
+        console.error(`[amenity-money] non-fatal capture error for reservation=${created.id}: ${moneyErr?.message ?? moneyErr}`);
+      }
+
+      res.status(201).json(responseRow);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
