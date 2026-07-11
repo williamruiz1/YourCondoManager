@@ -19306,7 +19306,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     return true;
   }
 
-  // Periodic cleanup of stale rate limit entries
+  // Periodic cleanup of stale rate limit entries.
+  // NOTE (founder-os#10741, SCALE-B-003): deliberately NOT advisory-locked —
+  // `hubPublicRateLimit` is a per-process in-memory Map, so each machine must GC
+  // its own; locking would leak memory on the others. Only side-effect sweeps
+  // are cross-machine-locked (see server/scheduler-lock.ts).
   setInterval(() => {
     const now = Date.now();
     for (const [ip, entry] of hubPublicRateLimit) {

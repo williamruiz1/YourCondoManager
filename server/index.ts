@@ -10,6 +10,7 @@ import { createServer } from "http";
 // see the import-time note further down and the dynamic `await import("./seed")`.
 import { storage } from "./storage";
 import { pool, db } from "./db";
+import { withSchedulerLock } from "./scheduler-lock";
 import { eq } from "drizzle-orm";
 import { autopayEnrollments, delinquencyEscalations } from "@shared/schema";
 import { runAutopayCollectionForAssociation } from "./routes/autopay";
@@ -337,8 +338,15 @@ function startAutomationJobs() {
   }
 
   const intervalMs = Math.max(60_000, Number(process.env.AUTOMATION_SWEEPS_INTERVAL_MS || 300_000));
+  // SCALE-B-003 / A-REL-005 (founder-os#10741): the automation sweep fans out
+  // autopay charging, delinquency notices, and assessment dispatch — real money
+  // + owner-facing side effects that MUST NOT double-fire across machines. Wrap
+  // every tick in a cross-machine advisory lock so only one machine runs the
+  // sweep per interval. No-op on the current single-machine topology (the lock
+  // always acquires immediately). The in-memory __automationJobState flag still
+  // guards against overlapping runs on the SAME machine.
   const timer = setInterval(() => {
-    runAutomationSweep().catch((error) => {
+    withSchedulerLock("automation-sweep", () => runAutomationSweep()).catch((error) => {
       console.error("Automation sweep failed:", error);
     });
   }, intervalMs);
@@ -348,7 +356,7 @@ function startAutomationJobs() {
     timer,
   };
 
-  runAutomationSweep().catch((error) => {
+  withSchedulerLock("automation-sweep", () => runAutomationSweep()).catch((error) => {
     console.error("Automation sweep failed:", error);
   });
   log(`automation sweeps started (interval ${intervalMs}ms)`, "automation");
@@ -563,7 +571,15 @@ app.use((req, res, next) => {
   // list so neither is inlined into the main bundle.
   const seedModuleSpecifier =
     process.env.NODE_ENV === "production" ? "./seed.cjs" : "./seed.js";
-  void (async () => {
+  // STARTUP-B-006 (founder-os#10741): seedDatabase() runs on every boot (a
+  // 4k-line seed). With Fly auto_stop/auto_start, a cold start pays the full
+  // seed before serving. Gate it behind SEED_ON_BOOT so it can be disabled once
+  // verified redundant in prod. DEFAULT = current seed-on-boot behavior (the
+  // flag must be explicitly "false" to skip) — a low-risk item, not rushed.
+  const seedOnBoot = (process.env.SEED_ON_BOOT ?? "true").toLowerCase() !== "false";
+  if (!seedOnBoot) {
+    log("[boot] seed :: SKIPPED (SEED_ON_BOOT=false)", "startup");
+  } else void (async () => {
     try {
       log(`[boot] seed :: starting lazy import of ${seedModuleSpecifier}`, "startup");
       const { seedDatabase } = await import(/* @vite-ignore */ seedModuleSpecifier);
