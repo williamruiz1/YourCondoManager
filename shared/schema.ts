@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex, index, date, decimal } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, pgEnum, jsonb, uniqueIndex, index, date, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HUB_VISIBILITY_ALL_VALUES } from "./hub-visibility";
@@ -899,7 +899,11 @@ export const paymentWebhookEvents = pgTable("payment_webhook_events", {
   paymentLinkId: varchar("payment_link_id").references(() => ownerPaymentLinks.id),
   unitId: varchar("unit_id").references(() => units.id),
   personId: varchar("person_id").references(() => persons.id),
-  amount: real("amount"),
+  // A-LEDGER-005 (founder-os#10755): money stored as double precision (float8) — interim
+  // fix off single-precision float4 (~7 sig digits) whose absolute error can exceed
+  // $0.005 near ~$40k, causing cent-recovery off-by-a-cent. Full integer-cents migration
+  // tracked as a follow-up. Always round each term to cents before summing.
+  amount: doublePrecision("amount"),
   currency: text("currency").default("USD"),
   status: paymentEventStatusEnum("status").notNull().default("received"),
   eventType: text("event_type"),
@@ -962,7 +966,11 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   // unitId, not personId (see buildUnitAccountStatement).
   personId: varchar("person_id").notNull().references(() => persons.id),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull(),
-  amount: real("amount").notNull(),
+  // A-LEDGER-005 (founder-os#10755): double precision (float8) — interim fix off float4
+  // (see payment_webhook_events.amount). Callers recover cents via
+  // Math.round(Math.abs(amount) * 100) and MUST round each term to cents before summing.
+  // Full integer-cents migration tracked as a follow-up.
+  amount: doublePrecision("amount").notNull(),
   postedAt: timestamp("posted_at").notNull(),
   description: text("description"),
   referenceType: text("reference_type"),
