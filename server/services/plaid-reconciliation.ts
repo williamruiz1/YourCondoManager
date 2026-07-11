@@ -167,18 +167,39 @@ async function applyMatch(input: {
   associationId: string;
 }): Promise<void> {
   const now = new Date();
-  await db
-    .update(ownerLedgerEntries)
-    .set({
-      bankTransactionId: input.bankTransactionId,
-      settledAt: now,
-    })
-    .where(
-      and(
-        eq(ownerLedgerEntries.id, input.ledgerEntryId),
-        eq(ownerLedgerEntries.associationId, input.associationId),
-      ),
-    );
+  // A-RECON-004 (founder-os#10753): write BOTH sides of the match in ONE
+  // transaction — the ledger link AND the bank credit marked CONSUMED. The
+  // candidate query filters `isNull(bankTransactions.reconciledToPaymentTransactionId)`,
+  // so before this the credit stayed "unmatched" in the matcher's own input and
+  // could settle a SECOND same-amount ledger entry on a later sync run (one real
+  // deposit → two settlements). Setting `reconciledToPaymentTransactionId` excludes
+  // the credit from future runs; the transaction makes both writes commit-or-rollback
+  // together so a partial (ledger linked but credit still matchable) can't occur.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(ownerLedgerEntries)
+      .set({
+        bankTransactionId: input.bankTransactionId,
+        settledAt: now,
+      })
+      .where(
+        and(
+          eq(ownerLedgerEntries.id, input.ledgerEntryId),
+          eq(ownerLedgerEntries.associationId, input.associationId),
+        ),
+      );
+    await tx
+      .update(bankTransactions)
+      .set({
+        reconciledToPaymentTransactionId: input.ledgerEntryId,
+      })
+      .where(
+        and(
+          eq(bankTransactions.id, input.bankTransactionId),
+          eq(bankTransactions.associationId, input.associationId),
+        ),
+      );
+  });
 }
 
 /**

@@ -107,24 +107,39 @@ vi.mock("../server/db", () => {
         return chain;
       },
     }),
-    update: (_table: unknown) => ({
-      set: (patch: { bankTransactionId: string; settledAt: Date }) => ({
+    update: (table: any) => ({
+      set: (patch: any) => ({
         where: (filter: (row: any) => boolean) => {
-          const targets = state.entries.filter(filter);
-          for (const t of targets) {
-            state.updates.push({
-              ledgerEntryId: t.id,
-              associationId: t.associationId,
-              bankTransactionId: patch.bankTransactionId,
-              settledAtIso: patch.settledAt.toISOString(),
-            });
-            t.bankTransactionId = patch.bankTransactionId;
-            t.settledAt = patch.settledAt;
+          const isCredit = table?.__testTableId === "bank_transactions";
+          if (isCredit) {
+            // A-RECON-004: the bank-credit consumed marker.
+            for (const c of state.credits.filter(filter)) {
+              if ("reconciledToPaymentTransactionId" in patch) {
+                c.reconciledToPaymentTransactionId = patch.reconciledToPaymentTransactionId;
+              }
+            }
+          } else {
+            for (const t of state.entries.filter(filter)) {
+              state.updates.push({
+                ledgerEntryId: t.id,
+                associationId: t.associationId,
+                bankTransactionId: patch.bankTransactionId,
+                settledAtIso: patch.settledAt.toISOString(),
+              });
+              t.bankTransactionId = patch.bankTransactionId;
+              t.settledAt = patch.settledAt;
+            }
           }
           return Promise.resolve();
         },
       }),
     }),
+    // applyMatch writes both sides atomically (A-RECON-004). The mock runs the
+    // callback with the same fakeDb (no real rollback — the required "zero partial
+    // rows after DB failure" rollback proof needs a transactional DB; see the PR note).
+    transaction: async (cb: (tx: any) => Promise<void>) => {
+      await cb(fakeDb);
+    },
   };
 
   return { db: fakeDb };
@@ -384,5 +399,48 @@ describe("Issue #448 — Plaid bank-tx reconciliation", () => {
 
     expect(r.matched).toHaveLength(0);
     expect(state.updates).toHaveLength(0);
+  });
+});
+
+describe("A-RECON-004 (founder-os#10753) — a matched credit is CONSUMED (no double-settle)", () => {
+  it("marks the bank credit consumed (reconciledToPaymentTransactionId) on a match", async () => {
+    state.credits = [credit({ id: "btx-A", amountCents: -25000 })];
+    state.entries = [entry({ id: "ole-A", amount: -250 })];
+
+    await reconcileBankTransactions(ASSOC_A);
+
+    // The credit is now linked to the ledger entry it settled → excluded from future runs.
+    expect(state.credits.find((c) => c.id === "btx-A")?.reconciledToPaymentTransactionId).toBe("ole-A");
+  });
+
+  it("a consumed credit is excluded from the next reconcile run", async () => {
+    state.credits = [credit({ id: "btx-A", amountCents: -25000 })];
+    state.entries = [entry({ id: "ole-A", amount: -250 })];
+
+    await reconcileBankTransactions(ASSOC_A); // consumes btx-A
+
+    // Second run: the credit is already reconciled → not a candidate.
+    state.updates = [];
+    const r2 = await reconcileBankTransactions(ASSOC_A);
+    expect(r2.matched).toHaveLength(0);
+    expect(state.updates).toHaveLength(0);
+  });
+
+  it("THE BUG: two equal-amount pending entries + one credit → only ONE is ever settled", async () => {
+    // Before the fix, run 1 matched the credit to ole-A, run 2 re-fetched the still-
+    // "unmatched" credit and settled ole-B too — one deposit paying two intents.
+    state.credits = [credit({ id: "btx-A", amountCents: -25000, date: new Date("2026-05-10") })];
+    state.entries = [
+      entry({ id: "ole-A", amount: -250, createdAt: new Date("2026-05-10") }),
+      entry({ id: "ole-B", amount: -250, createdAt: new Date("2026-05-10") }),
+    ];
+
+    const r1 = await reconcileBankTransactions(ASSOC_A);
+    const r2 = await reconcileBankTransactions(ASSOC_A); // must NOT settle the second entry
+
+    const settled = state.entries.filter((e) => e.bankTransactionId === "btx-A");
+    expect(settled).toHaveLength(1); // exactly one entry settled by the single deposit
+    expect(r1.matched).toHaveLength(1);
+    expect(r2.matched).toHaveLength(0); // credit consumed → no second settlement
   });
 });
