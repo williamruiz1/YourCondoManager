@@ -208,6 +208,113 @@ function sumLines(lines: BalanceSheetLine[]): number {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// INCOME & EXPENSE STATEMENT (a.k.a. the income statement / statement of
+// activities). The plain-English "what came in and what went out" statement an
+// owner reads to see the association's financial performance for the period.
+//
+// This is the DERIVED income statement built directly off the double-entry GL
+// (NOT off vendor_invoices or the owner ledger). Because it reads the same
+// posted legs the balance sheet reads, its NET INCOME is EXACTLY the balance
+// sheet's current-period net income (income − expense) to the cent — the two
+// statements can never disagree.
+//
+// - INCOME lines  = every income-account balance (credit-normal → positive when
+//   net-credit), e.g. HOA Dues Income (4000), Special Assessment Income (4200).
+// - EXPENSE lines = every expense-account balance (debit-normal → positive when
+//   net-debit), e.g. Management Fees (5100), Insurance (5200), R&M (5300)…
+// - NET INCOME    = Σ income − Σ expense (positive == surplus, negative == deficit).
+// Segregated by fund (operating vs reserve) so reserve activity reads separately.
+// ──────────────────────────────────────────────────────────────────────────────
+
+export interface IncomeStatementLine {
+  accountCode: string;
+  name: string;
+  fund: GlFund;
+  accountType: GlAccountType;
+  /** Signed balance in cents, in the account's natural (normal-balance) direction. */
+  balanceCents: number;
+}
+
+export interface IncomeStatementFundSection {
+  fund: GlFund;
+  income: IncomeStatementLine[];
+  expenses: IncomeStatementLine[];
+  totalIncomeCents: number;
+  totalExpenseCents: number;
+  /** income − expense for the fund. Positive == surplus, negative == deficit. */
+  netIncomeCents: number;
+}
+
+export interface IncomeStatement {
+  /** Per-fund sections (operating, reserve). Only funds with activity appear. */
+  funds: IncomeStatementFundSection[];
+  totalIncomeCents: number;
+  totalExpenseCents: number;
+  /** Σ income − Σ expense across funds. EXACTLY the balance sheet's net income. */
+  netIncomeCents: number;
+}
+
+/**
+ * Build a fund-segregated income & expense statement from the GL journal corpus.
+ * Only accounts with non-zero activity appear as lines; a fund with no income
+ * and no expense activity is omitted. Net income here is, by construction,
+ * identical to the balance sheet's current-period net income (both derive from
+ * the same posted legs), which is exactly what makes the two statements tie out.
+ */
+export function buildIncomeStatement(journals: JournalEntry[]): IncomeStatement {
+  const balances = deriveAccountBalances(journals);
+  const sections: IncomeStatementFundSection[] = [];
+
+  for (const fund of FUNDS) {
+    const income: IncomeStatementLine[] = [];
+    const expenses: IncomeStatementLine[] = [];
+
+    for (const b of balances) {
+      if (b.fund !== fund) continue;
+      if (b.balanceCents === 0) continue;
+      const type = accountTypeFor(b.accountCode, b.fund);
+      if (type !== "income" && type !== "expense") continue;
+      const line: IncomeStatementLine = {
+        accountCode: b.accountCode,
+        name: nameFor(b.accountCode, b.fund),
+        fund: b.fund,
+        accountType: type,
+        balanceCents: b.balanceCents,
+      };
+      if (type === "income") income.push(line);
+      else expenses.push(line);
+    }
+
+    if (income.length === 0 && expenses.length === 0) continue;
+
+    income.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+    expenses.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+
+    const totalIncomeCents = income.reduce((s, l) => s + l.balanceCents, 0);
+    const totalExpenseCents = expenses.reduce((s, l) => s + l.balanceCents, 0);
+
+    sections.push({
+      fund,
+      income,
+      expenses,
+      totalIncomeCents,
+      totalExpenseCents,
+      netIncomeCents: totalIncomeCents - totalExpenseCents,
+    });
+  }
+
+  const totalIncomeCents = sections.reduce((s, f) => s + f.totalIncomeCents, 0);
+  const totalExpenseCents = sections.reduce((s, f) => s + f.totalExpenseCents, 0);
+
+  return {
+    funds: sections,
+    totalIncomeCents,
+    totalExpenseCents,
+    netIncomeCents: totalIncomeCents - totalExpenseCents,
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // BUDGET-VS-ACTUAL
 // ──────────────────────────────────────────────────────────────────────────────
 

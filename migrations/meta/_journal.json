@@ -351,6 +351,62 @@
       "when": 1780400000001,
       "tag": "0049_tenant_sending_alias",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1780400000002,
+      "tag": "0050_unit_centric_ledger_phase1",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1780400000003,
+      "tag": "0051_disbursement_dual_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1780400001003,
+      "tag": "0052_ct_reserve_disclosure",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1780400001004,
+      "tag": "0053_rate_limit_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1780400001005,
+      "tag": "0054_period_closes",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1780400001006,
+      "tag": "0055_agent_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1780400001007,
+      "tag": "0056_violations",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1780400001008,
+      "tag": "0057_vendor_w9_compliance",
+      "breakpoints": true
     }
   ]
 }

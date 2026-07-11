@@ -244,14 +244,19 @@ describe("HV-3 — migration shape", () => {
       ["board", "board-only"],
       ["admin", "operator-only"],
     ]) {
+      // Whitespace-tolerant: the #384/#385 fresh-DB hardening wrapped the
+      // hub_map_issues backfills in a DO $$ guard with ALIGNED-COLUMN padding
+      // (`= 'residents'     WHERE`), which the previous exact-single-space
+      // regex could never match (founder-os#9256 / YCM#415). The semantics
+      // asserted — each old value backfilled to its new value — are unchanged.
       expect(migrationSource).toMatch(
         new RegExp(
-          `UPDATE "hub_map_issues" SET "visibility_level" = '${newV}' WHERE "visibility_level" = '${oldV}'`,
+          `UPDATE "hub_map_issues" SET "visibility_level"\\s*=\\s*'${newV}'\\s+WHERE "visibility_level"\\s*=\\s*'${oldV}'`,
         ),
       );
       expect(migrationSource).toMatch(
         new RegExp(
-          `UPDATE "community_announcements" SET "visibility_level" = '${newV}' WHERE "visibility_level" = '${oldV}'`,
+          `UPDATE "community_announcements" SET "visibility_level"\\s*=\\s*'${newV}'\\s+WHERE "visibility_level"\\s*=\\s*'${oldV}'`,
         ),
       );
     }

@@ -94,7 +94,7 @@ function ZoneGroup({ zone, location }: ZoneGroupProps) {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="label-caps text-muted-foreground/70">
+      <SidebarGroupLabel className="label-caps text-sidebar-foreground">
         {zone.label}
       </SidebarGroupLabel>
       <SidebarGroupContent>
@@ -132,7 +132,7 @@ function ZoneGroup({ zone, location }: ZoneGroupProps) {
                     <Fragment key={item.url}>
                       {showGroupHeader ? (
                         <li
-                          className="px-2 pb-0.5 pt-2 first:pt-0 text-[10px] font-label font-semibold uppercase tracking-widest text-muted-foreground/60 select-none group-data-[collapsible=icon]:hidden"
+                          className="px-2 pb-0.5 pt-2 first:pt-0 text-[10px] font-label font-semibold uppercase tracking-widest text-sidebar-foreground select-none group-data-[collapsible=icon]:hidden"
                           data-testid={`nav-group-${slugify(zone.label)}-${slugify(item.groupLabel as string)}`}
                           aria-hidden="true"
                         >
@@ -221,7 +221,7 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
             >
               Your Condo Manager
             </h2>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-tight font-label">
+            <p className="text-[10px] text-sidebar-foreground uppercase tracking-widest leading-tight font-label">
               Property Operations
             </p>
           </div>
@@ -244,11 +244,11 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
               className="flex items-center gap-2 rounded-lg border border-sidebar-border bg-sidebar-accent/30 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/60"
               data-testid="link-selected-association-overview"
             >
-              <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">
+              <span className="material-symbols-outlined text-[16px] text-sidebar-foreground flex-shrink-0">
                 domain
               </span>
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none mb-0.5 font-label">
+                <div className="text-[10px] uppercase tracking-wide text-sidebar-foreground leading-none mb-0.5 font-label">
                   Association
                 </div>
                 <div
@@ -265,10 +265,10 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
               className="flex items-center gap-2 rounded-lg border border-dashed border-sidebar-border px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent/30"
               data-testid="link-select-association"
             >
-              <span className="material-symbols-outlined text-[16px] text-muted-foreground flex-shrink-0">
+              <span className="material-symbols-outlined text-[16px] text-sidebar-foreground flex-shrink-0">
                 domain_add
               </span>
-              <span className="text-xs text-muted-foreground font-body">
+              <span className="text-xs text-sidebar-foreground font-body">
                 Select association
               </span>
             </Link>
@@ -310,7 +310,7 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
                 return (
                   <Link key={item.url} href={item.url}>
                     <button
-                      className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-on-surface transition-colors font-body"
+                      className="flex items-center gap-1.5 text-xs text-sidebar-foreground hover:text-sidebar-foreground transition-colors font-body"
                       data-testid={`link-nav-${slugify(item.title)}`}
                     >
                       <ItemIcon className="h-4 w-4" aria-hidden="true" />

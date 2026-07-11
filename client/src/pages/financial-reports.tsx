@@ -834,12 +834,28 @@ type BoardSummaryData = {
   budgetUtilization: number | null;
 };
 
+type CashFlowData = {
+  startDate: string;
+  endDate: string;
+  cashIn: { total: number };
+  cashOut: { total: number; byCategory: { category: string; amount: number }[] };
+  netCashFlow: number;
+  series: { month: string; cashIn: number; cashOut: number; net: number }[];
+  basis: string;
+};
+
 const SUMMARY_PERIODS = [
   { label: "Last 30 days", days: 30 },
   { label: "Last 90 days", days: 90 },
   { label: "Last 6 months", days: 180 },
   { label: "Last 12 months", days: 365 },
 ];
+
+function formatMonthLabel(monthKey: string) {
+  const [y, m] = monthKey.split("-").map(Number);
+  if (!y || !m) return monthKey;
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
 
 function ProfitLossTab({ associationId }: { associationId: string }) {
   const [periodDays, setPeriodDays] = useState(90);
@@ -1208,6 +1224,156 @@ function BoardSummaryTab({ associationId }: { associationId: string }) {
   );
 }
 
+function CashFlowTab({ associationId }: { associationId: string }) {
+  const [periodDays, setPeriodDays] = useState(180);
+
+  const endDate = new Date();
+  const startDate = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000);
+
+  const query = useQuery<CashFlowData>({
+    queryKey: ["/api/financial/reports/cash-flow", associationId, periodDays],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        associationId,
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+      });
+      const res = await apiRequest("GET", `/api/financial/reports/cash-flow?${params}`);
+      return res.json();
+    },
+    enabled: Boolean(associationId),
+  });
+
+  const data = query.data;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Select value={String(periodDays)} onValueChange={(v) => setPeriodDays(Number(v))}>
+          <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {SUMMARY_PERIODS.map((p) => (
+              <SelectItem key={p.days} value={String(p.days)}>{p.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {query.isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}><CardContent className="space-y-3 pt-6"><Skeleton className="h-4 w-24" /><Skeleton className="h-8 w-32" /></CardContent></Card>
+          ))}
+        </div>
+      ) : data ? (
+        <>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Cash In</p>
+                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(data.cashIn.total)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Owner payments received</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Cash Out</p>
+                <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(data.cashOut.total)}</p>
+                <p className="text-xs text-muted-foreground mt-1">Vendor invoices &amp; utilities</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground">Net Cash Flow</p>
+                <p className={cn("text-2xl font-bold", data.netCashFlow >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
+                  {formatCurrency(data.netCashFlow)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">Cash in minus cash out</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Monthly Cash Activity</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Month</TableHead>
+                      <TableHead className="text-right">Cash In</TableHead>
+                      <TableHead className="text-right">Cash Out</TableHead>
+                      <TableHead className="text-right">Net</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.series.map((row) => (
+                      <TableRow key={row.month}>
+                        <TableCell className="font-medium">{formatMonthLabel(row.month)}</TableCell>
+                        <TableCell className="text-right text-green-700 dark:text-green-400">{formatCurrency(row.cashIn)}</TableCell>
+                        <TableCell className="text-right text-red-600 dark:text-red-400">{formatCurrency(row.cashOut)}</TableCell>
+                        <TableCell className={cn("text-right font-medium", row.net >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>{formatCurrency(row.net)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {data.series.length === 0 && (
+                      <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No cash activity found for this period.</TableCell></TableRow>
+                    )}
+                    {data.series.length > 0 && (
+                      <TableRow className="font-semibold border-t">
+                        <TableCell>Total</TableCell>
+                        <TableCell className="text-right text-green-700 dark:text-green-400">{formatCurrency(data.cashIn.total)}</TableCell>
+                        <TableCell className="text-right text-red-600 dark:text-red-400">{formatCurrency(data.cashOut.total)}</TableCell>
+                        <TableCell className={cn("text-right", data.netCashFlow >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>{formatCurrency(data.netCashFlow)}</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Cash Out by Category</CardTitle></CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Category</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.cashOut.byCategory.map((row) => (
+                      <TableRow key={row.category}>
+                        <TableCell className="capitalize">{row.category}</TableCell>
+                        <TableCell className="text-right font-medium text-red-600 dark:text-red-400">{formatCurrency(row.amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                    {data.cashOut.byCategory.length === 0 && (
+                      <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground py-6">No expenses recorded in this period.</TableCell></TableRow>
+                    )}
+                    {data.cashOut.byCategory.length > 0 && (
+                      <TableRow className="font-semibold border-t">
+                        <TableCell>Total Cash Out</TableCell>
+                        <TableCell className="text-right text-red-600 dark:text-red-400">{formatCurrency(data.cashOut.total)}</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+
+          {data.basis && (
+            <p className="text-xs text-muted-foreground">{data.basis}</p>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-muted-foreground">Failed to load cash flow data.</p>
+      )}
+    </div>
+  );
+}
+
 function FinancialSummaryReports() {
   const { activeAssociationId } = useActiveAssociation();
 
@@ -1223,11 +1389,15 @@ function FinancialSummaryReports() {
     <Tabs defaultValue="pl" className="space-y-4">
       <TabsList>
         <TabsTrigger value="pl">P&amp;L Statement</TabsTrigger>
+        <TabsTrigger value="cash-flow">Cash Flow</TabsTrigger>
         <TabsTrigger value="ar-aging">AR Aging</TabsTrigger>
         <TabsTrigger value="board">Board Summary</TabsTrigger>
       </TabsList>
       <TabsContent value="pl" className="mt-0">
         <ProfitLossTab associationId={activeAssociationId} />
+      </TabsContent>
+      <TabsContent value="cash-flow" className="mt-0">
+        <CashFlowTab associationId={activeAssociationId} />
       </TabsContent>
       <TabsContent value="ar-aging" className="mt-0">
         <ArAgingTab associationId={activeAssociationId} />

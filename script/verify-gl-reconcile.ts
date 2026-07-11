@@ -45,7 +45,7 @@ if (!process.env.DATABASE_URL) {
 }
 
 const CHERRY_HILL_ID = "f301d073-ed84-4d73-84ce-3ef28af66f7a";
-const associationId = process.argv.find((a) => !a.startsWith("-") && a.includes("-") && a.length >= 36) ?? CHERRY_HILL_ID;
+const associationId = process.argv.slice(2).find((a) => !a.startsWith("-") && a.includes("-") && a.length >= 36) ?? CHERRY_HILL_ID;
 const dryRun = process.argv.includes("--dry-run");
 
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });

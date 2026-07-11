@@ -24,13 +24,24 @@ import {
   listManualReviewCandidates,
   findOwnerSuggestionsForUnmatchedCredits,
   createPaymentFromSuggestion,
+  listAssociationOwners,
   upsertDescriptorAlias,
 } from "../services/reconciliation/auto-matcher";
-import { buildReconciliationReport } from "../services/reconciliation/report";
+import {
+  buildReconciliationReport,
+  buildReconciliationTransactionLedger,
+  NON_OWNER_INCOME_ACTION,
+} from "../services/reconciliation/report";
 import {
   manualMatchBankTransaction,
   listPendingReconciliation,
 } from "../services/plaid-reconciliation";
+import {
+  getMonthCloseState,
+  closeMonth,
+  reopenMonth,
+  PeriodCloseError,
+} from "../services/reconciliation/period-close";
 
 // ── Reusable request shape (mirrored from routes.ts) ─────────────────────────
 
@@ -118,6 +129,176 @@ export function registerAdminReconciliationRoutes(
         res
           .status(500)
           .json({ error: error.message, code: "RECONCILIATION_REPORT_ERROR" });
+      }
+    },
+  );
+
+  // ── Consolidated transaction ledger ────────────────────────────────────────
+  // ONE row per bank credit with full identification (owner + unit + status +
+  // confidence), composing the existing engine output. This is the data the
+  // Bank Accounts page renders as a single, identified transaction table
+  // (replacing the old two-raw-list duplication).
+  app.get(
+    "/api/admin/reconciliation/transactions",
+    requireAdmin,
+    requireAdminRole(RECON_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const ledger = await buildReconciliationTransactionLedger({ associationId });
+        res.json(ledger);
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message, code: "RECONCILIATION_TRANSACTIONS_ERROR" });
+      }
+    },
+  );
+
+  // ── Owner roster (for the "choose a different owner" dropdown) ─────────────
+  // The full owner directory for the association (all owners, not just the
+  // name-scored candidates). Powers the review queue's manual-attribution
+  // dropdown so a treasurer can assign a deposit to ANY owner. Read-only.
+  app.get(
+    "/api/admin/reconciliation/owners",
+    requireAdmin,
+    requireAdminRole(RECON_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const owners = await listAssociationOwners(associationId);
+        res.json({ owners });
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message, code: "RECONCILIATION_OWNERS_ERROR" });
+      }
+    },
+  );
+
+  // ── Review queue: mark a deposit as non-owner income ───────────────────────
+  //
+  // Records a DURABLE, reversible human decision that a bank credit is NOT an
+  // owner payment (bank interest, inter-account transfer, refund, etc.). This
+  // MOVES NO MONEY and creates NO owner-ledger entry — it only writes an audit
+  // record. The transaction-ledger read path (buildReconciliationTransactionLedger)
+  // excludes classified credits, so the deposit leaves the review queue.
+  // Idempotent: re-marking an already-classified credit is a no-op (ok: true).
+  app.post(
+    "/api/admin/reconciliation/mark-non-owner-income",
+    requireAdmin,
+    requireAdminRole(RECON_WRITE_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const { associationId, bankTransactionId, category } = req.body as {
+          associationId?: string;
+          bankTransactionId?: string;
+          category?: string;
+        };
+        if (!associationId || !bankTransactionId) {
+          return res.status(400).json({
+            error: "associationId and bankTransactionId are required",
+            code: "MISSING_FIELDS",
+          });
+        }
+        assertAssociationScope(req, associationId);
+
+        // Validate the bank tx belongs to this association + is a credit + is
+        // not already committed to an owner ledger entry.
+        const [btx] = await db
+          .select({
+            id: bankTransactions.id,
+            amountCents: bankTransactions.amountCents,
+            name: bankTransactions.name,
+            merchantName: bankTransactions.merchantName,
+          })
+          .from(bankTransactions)
+          .where(
+            and(
+              eq(bankTransactions.id, bankTransactionId),
+              eq(bankTransactions.associationId, associationId),
+            ),
+          )
+          .limit(1);
+        if (!btx) {
+          return res
+            .status(404)
+            .json({ error: "Bank transaction not found", code: "BTX_NOT_FOUND" });
+        }
+        if (btx.amountCents >= 0) {
+          return res
+            .status(400)
+            .json({ error: "Bank transaction is not a credit", code: "BTX_NOT_CREDIT" });
+        }
+        const [linked] = await db
+          .select({ id: ownerLedgerEntries.id })
+          .from(ownerLedgerEntries)
+          .where(
+            and(
+              eq(ownerLedgerEntries.associationId, associationId),
+              eq(ownerLedgerEntries.bankTransactionId, bankTransactionId),
+            ),
+          )
+          .limit(1);
+        if (linked) {
+          return res.status(400).json({
+            error:
+              "Bank transaction is already matched to an owner ledger entry — un-match it before classifying as non-owner income",
+            code: "ALREADY_LINKED",
+          });
+        }
+
+        // Idempotency: if already classified, return ok without a duplicate row.
+        const [existing] = await db
+          .select({ id: auditLogs.id })
+          .from(auditLogs)
+          .where(
+            and(
+              eq(auditLogs.associationId, associationId),
+              eq(auditLogs.entityType, "bank_transaction"),
+              eq(auditLogs.entityId, bankTransactionId),
+              eq(auditLogs.action, NON_OWNER_INCOME_ACTION),
+            ),
+          )
+          .limit(1);
+        if (existing) {
+          return res.json({ ok: true, bankTransactionId, alreadyClassified: true });
+        }
+
+        await db.insert(auditLogs).values({
+          actorEmail: req.adminUserEmail ?? "unknown",
+          action: NON_OWNER_INCOME_ACTION,
+          entityType: "bank_transaction",
+          entityId: bankTransactionId,
+          associationId,
+          afterJson: {
+            bankTransactionId,
+            descriptor: btx.merchantName ?? btx.name,
+            amountCents: btx.amountCents,
+            category: category ?? null,
+          },
+        });
+
+        res.json({ ok: true, bankTransactionId, alreadyClassified: false });
+      } catch (error: any) {
+        res.status(500).json({
+          error: error.message,
+          code: "RECONCILIATION_NON_OWNER_INCOME_ERROR",
+        });
       }
     },
   );
@@ -456,6 +637,163 @@ export function registerAdminReconciliationRoutes(
         res
           .status(500)
           .json({ error: error.message, code: "RECONCILIATION_AUDIT_LOG_ERROR" });
+      }
+    },
+  );
+
+  // ── Month-close: the treasurer period-close workflow (YCM#220) ─────────────
+  //
+  // "Close month" answers the question reconciliation-by-transaction never
+  // could: "is June fully reconciled?" A treasurer views the month's
+  // matched/unmatched counts, then attests a close (who + when). Closing with
+  // stragglers requires an explicit acknowledgement (soft guard, not a block).
+  // A closed period surfaces a badge; re-opening is an explicit, audit-logged
+  // action. This is an ATTESTATION — it does not lock ledger writes.
+  //
+  // Endpoints
+  //   GET  /api/admin/reconciliation/month-close?associationId=&month=YYYY-MM
+  //   POST /api/admin/reconciliation/month-close   { associationId, month, acknowledgeUnmatched?, notes? }
+  //   POST /api/admin/reconciliation/month-reopen  { associationId, month }
+
+  // Map PeriodCloseError codes → HTTP status.
+  function periodCloseStatus(code: string): number {
+    switch (code) {
+      case "INVALID_PERIOD":
+        return 400;
+      case "UNMATCHED_ACK_REQUIRED":
+        return 409;
+      case "ALREADY_CLOSED":
+        return 409;
+      case "NOT_CLOSED":
+        return 409;
+      default:
+        return 500;
+    }
+  }
+
+  function getMonthQuery(req: Request): string | undefined {
+    const m = (req.query.month ?? (req.body && req.body.month)) as unknown;
+    return typeof m === "string" ? m : undefined;
+  }
+
+  app.get(
+    "/api/admin/reconciliation/month-close",
+    requireAdmin,
+    requireAdminRole(RECON_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const month = getMonthQuery(req);
+        if (!month) {
+          return res
+            .status(400)
+            .json({ error: "month (YYYY-MM) is required", code: "MISSING_MONTH" });
+        }
+
+        const state = await getMonthCloseState({ associationId, periodMonth: month });
+        res.json(state);
+      } catch (error: any) {
+        if (error instanceof PeriodCloseError) {
+          return res
+            .status(periodCloseStatus(error.code))
+            .json({ error: error.message, code: error.code, detail: error.detail });
+        }
+        res
+          .status(500)
+          .json({ error: error.message, code: "MONTH_CLOSE_STATE_ERROR" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/reconciliation/month-close",
+    requireAdmin,
+    requireAdminRole(RECON_WRITE_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId =
+          typeof req.body?.associationId === "string"
+            ? req.body.associationId
+            : getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const month = getMonthQuery(req);
+        if (!month) {
+          return res
+            .status(400)
+            .json({ error: "month (YYYY-MM) is required", code: "MISSING_MONTH" });
+        }
+
+        const record = await closeMonth({
+          associationId,
+          periodMonth: month,
+          actorUserId: req.adminUserId ?? "unknown",
+          actorEmail: req.adminUserEmail ?? "unknown",
+          acknowledgeUnmatched: req.body?.acknowledgeUnmatched === true,
+          notes: typeof req.body?.notes === "string" ? req.body.notes : null,
+        });
+        res.json({ ok: true, close: record });
+      } catch (error: any) {
+        if (error instanceof PeriodCloseError) {
+          return res
+            .status(periodCloseStatus(error.code))
+            .json({ error: error.message, code: error.code, detail: error.detail });
+        }
+        res.status(500).json({ error: error.message, code: "MONTH_CLOSE_ERROR" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/admin/reconciliation/month-reopen",
+    requireAdmin,
+    requireAdminRole(RECON_WRITE_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId =
+          typeof req.body?.associationId === "string"
+            ? req.body.associationId
+            : getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const month = getMonthQuery(req);
+        if (!month) {
+          return res
+            .status(400)
+            .json({ error: "month (YYYY-MM) is required", code: "MISSING_MONTH" });
+        }
+
+        const record = await reopenMonth({
+          associationId,
+          periodMonth: month,
+          actorUserId: req.adminUserId ?? "unknown",
+          actorEmail: req.adminUserEmail ?? "unknown",
+        });
+        res.json({ ok: true, close: record });
+      } catch (error: any) {
+        if (error instanceof PeriodCloseError) {
+          return res
+            .status(periodCloseStatus(error.code))
+            .json({ error: error.message, code: error.code, detail: error.detail });
+        }
+        res.status(500).json({ error: error.message, code: "MONTH_REOPEN_ERROR" });
       }
     },
   );

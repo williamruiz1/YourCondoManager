@@ -1,0 +1,99 @@
+name: DB Logical Backup (weekly)
+
+# Weekly independent pg_dump of the production Neon database — a safety net that does NOT
+# depend on Neon PITR (which is account-scoped and currently a 6h window).
+# See docs/runbooks/db-backup-restore.md for posture, restore steps, and RPO/RTO.
+#
+# Credential: reuses the EXISTING `FLY_API_TOKEN` repo secret by default (reads the live
+# DATABASE_URL from the running Fly app and de-pools it). No new secret required to run.
+# Optional hardening: add repo secret `BACKUP_DATABASE_URL` (the DIRECT/non-pooler
+# connection string) — the job prefers it and then needs no Fly SSH.
+
+on:
+  schedule:
+    - cron: '17 7 * * 1' # Mondays 07:17 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Install Postgres 17 client
+        run: |
+          set -euo pipefail
+          sudo install -d /etc/apt/keyrings
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /etc/apt/keyrings/pgdg.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Dump production database
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          export PATH="/usr/lib/postgresql/17/bin:$PATH"
+
+          if [ -n "${BACKUP_DATABASE_URL:-}" ]; then
+            echo "Using BACKUP_DATABASE_URL secret."
+            DB_URL="$BACKUP_DATABASE_URL"
+          elif [ -n "${FLY_API_TOKEN:-}" ]; then
+            echo "Reading DATABASE_URL from Fly app (no BACKUP_DATABASE_URL set)."
+            RAW="$(flyctl ssh console -a yourcondomanager -C 'printenv DATABASE_URL' \
+                    | tr -d '\r' | grep -oE 'postgres(ql)?://[^[:space:]]+' | head -1)"
+            if [ -z "$RAW" ]; then
+              echo "::error::Could not read DATABASE_URL from Fly app."; exit 1
+            fi
+            DB_URL="${RAW/-pooler/}"   # de-pool: pg_dump needs session mode, not the PgBouncer pooler
+          else
+            echo "::error::No DB credential available. Add BACKUP_DATABASE_URL (direct endpoint) or FLY_API_TOKEN — see docs/runbooks/db-backup-restore.md"
+            exit 1
+          fi
+
+          # Belt-and-suspenders: ensure the pooler host is never used for the dump.
+          DB_URL="${DB_URL/-pooler/}"
+
+          TS="$(date -u +%Y%m%dT%H%M%SZ)"
+          OUT="ycm-db-backup-${TS}.dump"
+          echo "Dumping to ${OUT} (host: $(printf '%s' "$DB_URL" | sed -E 's#.*@([^/?:]+).*#\1#'))"
+          pg_dump "$DB_URL" -Fc --no-owner --no-privileges -f "$OUT"
+          ls -lh "$OUT"
+          # Sanity: a custom-format dump must list table-data sections.
+          N="$(pg_restore --list "$OUT" | grep -c 'TABLE DATA' || true)"
+          echo "TABLE DATA sections: $N"
+          [ "$N" -gt 0 ] || { echo "::error::Dump has 0 table-data sections — aborting."; exit 1; }
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+
+      - name: Upload backup artifact (90-day retention)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ycm-db-backup
+          path: ${{ env.OUT }}
+          retention-days: 90
+          if-no-files-found: error
+
+      # ---- Optional offsite copy to Cloudflare R2 (enable by adding the R2_* secrets) ----
+      # - name: Upload to R2 (offsite)
+      #   if: ${{ secrets.R2_ACCESS_KEY_ID != '' }}
+      #   env:
+      #     AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      #     AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      #     R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}      # https://<account>.r2.cloudflarestorage.com
+      #     R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      #   run: |
+      #     set -euo pipefail
+      #     aws s3 cp "$OUT" "s3://$R2_BUCKET/ycm/$OUT" --endpoint-url "$R2_ENDPOINT"
