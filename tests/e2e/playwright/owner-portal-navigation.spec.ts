@@ -129,11 +129,14 @@ const ZONES: readonly ZoneAssertion[] = [
     headingTestId: "portal-finances-heading",
     headingTextPattern: /My Finances/,
     breadcrumbLast: "My Finances",
-    // The finances hero BRANCHES on balance (founder-os#8337 gate revival):
-    // balance>0 renders the balance card; balance===0 (the real-backend
-    // empty-DB seed) renders the paid-in-full/zero-balance card. Either
-    // proves data reached the DOM.
-    extraTestIdAnyOf: ["portal-finances-balance", "portal-finances-paid-in-full-headline"],
+    // The finances hero BRANCHES on `paidInFull` (portal-finances.tsx ~639):
+    // balance>0 renders the "Pay this period" hero (`portal-finances-pay-this-period`);
+    // balance===0 renders the paid-in-full card (`portal-finances-paid-in-full-headline`).
+    // Either proves data reached the DOM. NOTE (founder-os#10808): the #436
+    // "Pay this period" redesign removed the old `portal-finances-balance`
+    // testid — the seed owner carries a balance, so this must match the
+    // current balance>0 hero or the whole route-mock gate times out here.
+    extraTestIdAnyOf: ["portal-finances-pay-this-period", "portal-finances-paid-in-full-headline"],
   },
   {
     path: "/portal/requests",
