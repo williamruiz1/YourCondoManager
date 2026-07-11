@@ -6,6 +6,9 @@ import path from "path";
 import { promisify } from "util";
 import { inflateRawSync } from "zlib";
 import { db } from "./db";
+// The Drizzle transaction handle passed to `db.transaction(async (tx) => …)`.
+// Used to thread atomicity through money-write helpers (founder-os#10753).
+type LedgerTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 import { sendPlatformEmail } from "./email-provider";
 import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
 import {
@@ -8593,8 +8596,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(ownerLedgerEntries.postedAt));
   }
 
-  async createOwnerLedgerEntry(data: InsertOwnerLedgerEntry): Promise<OwnerLedgerEntry> {
-    const [result] = await db.insert(ownerLedgerEntries).values(data).returning();
+  // Accepts an optional Drizzle transaction handle so multi-row money writes
+  // (e.g. the bank-statement import loop) can commit atomically or roll back
+  // as a unit (founder-os#10753 / DATA-B-009). Without `tx` it uses the shared
+  // pool exactly as before.
+  async createOwnerLedgerEntry(data: InsertOwnerLedgerEntry, tx?: LedgerTx): Promise<OwnerLedgerEntry> {
+    const [result] = await (tx ?? db).insert(ownerLedgerEntries).values(data).returning();
     return result;
   }
 
@@ -11175,6 +11182,18 @@ export class DatabaseStorage implements IStorage {
     let skippedRows = invalidCount;
     const details: AiIngestionImportSummary["details"] = [];
 
+    // DATA-B-009 (founder-os#10753): make the multi-row owner-ledger import
+    // atomic — all rows commit together or none do, so a mid-loop failure /
+    // crash / rolling-restart can never leave a partially-imported statement.
+    // Preview/dryRun does no writes, so it runs without a transaction. Reads
+    // (the per-row already-imported idempotency check) go through the same
+    // connection so a re-run of a rolled-back import re-imports correctly.
+    // Capture the guard-narrowed associationId (the early `if (!record.associationId)
+    // return` above narrows it to string, but that narrowing is lost inside the
+    // nested runImportLoop closure — so bind it here where it is still string).
+    const associationId = record.associationId;
+    let ledgerConn: LedgerTx | undefined;
+    const runImportLoop = async () => {
     for (let index = 0; index < transactions.length; index += 1) {
       const txn = transactions[index];
       if (txn.amount == null || !txn.postedAt) {
@@ -11254,7 +11273,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const referenceId = `${record.id}:${index}`;
-      const [existing] = await db
+      const [existing] = await (ledgerConn ?? db)
         .select({ id: ownerLedgerEntries.id })
         .from(ownerLedgerEntries)
         .where(and(
@@ -11274,7 +11293,7 @@ export class DatabaseStorage implements IStorage {
 
       if (!dryRun) {
         const created = await this.createOwnerLedgerEntry({
-          associationId: record.associationId,
+          associationId: associationId,
           unitId: unit.id,
           personId: person.id,
           entryType: txn.entryType,
@@ -11283,7 +11302,7 @@ export class DatabaseStorage implements IStorage {
           description: txn.description ?? "Imported from bank statement",
           referenceType: "ai-bank-statement",
           referenceId,
-        });
+        }, ledgerConn);
         createdOwnerLedgerEntryIds.push(created.id);
       }
       createdOwnerLedgerEntries += 1;
@@ -11294,7 +11313,7 @@ export class DatabaseStorage implements IStorage {
           reason: dryRun ? "Owner ledger entry would be created." : "Owner ledger entry created.",
           beforeJson: null,
           afterJson: {
-            associationId: record.associationId,
+            associationId: associationId,
             unitId: unit.id,
             personId: person.id,
             entryType: txn.entryType,
@@ -11303,6 +11322,17 @@ export class DatabaseStorage implements IStorage {
             description: txn.description ?? "Imported from bank statement",
           },
         });
+    }
+    };
+    if (dryRun) {
+      await runImportLoop();
+    } else {
+      // One atomic unit: every owner-ledger row from this statement commits
+      // together, or the whole import rolls back on any failure.
+      await db.transaction(async (tx) => {
+        ledgerConn = tx;
+        await runImportLoop();
+      });
     }
 
     const imported = createdOwnerLedgerEntries > 0;

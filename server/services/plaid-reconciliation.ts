@@ -80,6 +80,20 @@ export async function reconcileBankTransactions(
     )
     .orderBy(asc(bankTransactions.date));
 
+  // A-RECON-004 (founder-os#10753): a matched credit is recorded ONLY on the
+  // ledger side (`applyMatch` sets ownerLedgerEntries.bankTransactionId);
+  // `reconciledToPaymentTransactionId` belongs to the separate
+  // payment_transactions pipeline and is never written here. So a credit that a
+  // prior run already linked to a ledger entry must be excluded from this run —
+  // otherwise the same real deposit would settle a second same-amount entry.
+  const ledgerLinks = await db
+    .select({ bankTransactionId: ownerLedgerEntries.bankTransactionId })
+    .from(ownerLedgerEntries)
+    .where(eq(ownerLedgerEntries.associationId, associationId));
+  const consumedCreditIds = new Set(
+    ledgerLinks.map((r) => r.bankTransactionId).filter((id): id is string => Boolean(id)),
+  );
+
   // 2. Pull eligible pending ledger entries (plaid-pay-intent reference type,
   //    not yet settled, this association only).
   const pendingEntries = await db
@@ -103,6 +117,9 @@ export async function reconcileBankTransactions(
   //    smallest |dateDelta| (cap at MATCH_DATE_WINDOW_DAYS).
   for (const credit of unmatchedCredits) {
     if (!isCredit(credit)) continue;
+    // A-RECON-004: skip a credit already consumed by a ledger link (prevents the
+    // same deposit settling a second entry on a later run).
+    if (consumedCreditIds.has(credit.id)) continue;
     const creditAbsCents = Math.abs(credit.amountCents);
     const creditDate = new Date(credit.date);
 
@@ -167,6 +184,11 @@ async function applyMatch(input: {
   associationId: string;
 }): Promise<void> {
   const now = new Date();
+  // A single atomic UPDATE, made IDEMPOTENT (founder-os#10753 / A-RECON-004):
+  // the `isNull(settledAt)` + `isNull(bankTransactionId)` guards mean applying a
+  // match to an already-settled entry updates zero rows — so a match can never
+  // overwrite an existing settlement, enforcing one-credit-to-one-entry at the
+  // write layer as a backstop to the query-level exclusion above.
   await db
     .update(ownerLedgerEntries)
     .set({
@@ -177,6 +199,8 @@ async function applyMatch(input: {
       and(
         eq(ownerLedgerEntries.id, input.ledgerEntryId),
         eq(ownerLedgerEntries.associationId, input.associationId),
+        isNull(ownerLedgerEntries.settledAt),
+        isNull(ownerLedgerEntries.bankTransactionId),
       ),
     );
 }
@@ -210,6 +234,22 @@ export async function manualMatchBankTransaction(input: {
     .limit(1);
   if (!credit) {
     return { ok: false, reason: "Bank transaction not found or already reconciled", code: "BANK_TX_UNAVAILABLE" };
+  }
+  // A-RECON-004 (founder-os#10753): reject if this credit is already linked to a
+  // ledger entry, so the manual endpoint can't settle a second entry against an
+  // already-consumed deposit.
+  const [alreadyConsumed] = await db
+    .select({ id: ownerLedgerEntries.id })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.associationId, input.associationId),
+        eq(ownerLedgerEntries.bankTransactionId, input.bankTransactionId),
+      ),
+    )
+    .limit(1);
+  if (alreadyConsumed) {
+    return { ok: false, reason: "Bank transaction already reconciled to a ledger entry", code: "BANK_TX_UNAVAILABLE" };
   }
   if (!isCredit(credit)) {
     return { ok: false, reason: "Bank transaction is a debit, not a credit", code: "NOT_A_CREDIT" };
