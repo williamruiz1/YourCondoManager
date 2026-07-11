@@ -40,6 +40,7 @@ import {
 } from "../shared/schema.js";
 import { sendPlatformEmail } from "./email-provider.js";
 import { log } from "./logger.js";
+import { withSchedulerLock, SchedulerLock } from "./scheduler-lock.js";
 
 // Tunables — exported for tests; defaults match Plaid attestation requirements.
 export const INACTIVITY_DEACTIVATE_DAYS = 90;
@@ -311,7 +312,14 @@ export function startDeprovisioningScheduler(intervalMs: number = DAY_MS): void 
   if (deprovTimer) return;
   const tick = async (): Promise<void> => {
     try {
-      const result = await runAdminInactivityCheck();
+      // SCALE-B-003 / A-REL-005 (founder-os#10741): the inactivity check sends
+      // user-visible deactivation + warning emails. Guard the scheduled tick
+      // behind a cross-machine advisory lock so two machines can never send
+      // duplicate deactivation emails. The pure `runAdminInactivityCheck` stays
+      // lockless for direct/test callers. No-op on single-machine.
+      const locked = await withSchedulerLock(SchedulerLock.DEPROVISIONING, runAdminInactivityCheck);
+      if (!locked.acquired) return;
+      const result = locked.value;
       if (result.warned.length > 0 || result.deactivated.length > 0 || result.errors.length > 0) {
         log(
           `[deprov] sweep complete warned=${result.warned.length} deactivated=${result.deactivated.length} errors=${result.errors.length}`,

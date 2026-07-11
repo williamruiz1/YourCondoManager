@@ -28,6 +28,7 @@ import { runMigrationHealthCheck } from "./migration-health";
 import { startElectionScheduler } from "./election-scheduler";
 import { startDeprovisioningScheduler } from "./de-provisioning";
 import { startVendorComplianceScheduler } from "./vendor-compliance-scheduler";
+import { withSchedulerLock, SchedulerLock } from "./scheduler-lock";
 import { createRateLimiter, createPgRateLimiter, onWriteOnly, type RateLimitQuery } from "./rate-limit";
 import { subdomainRedirect } from "./middleware/subdomain-redirect";
 import { resolveSessionCookieDomain } from "./session-cookie-domain";
@@ -220,6 +221,19 @@ async function runAllDelinquencyNotices(): Promise<{ generated: number; skipped:
 }
 
 async function runAutomationSweep() {
+  // SCALE-B-003 / A-REL-005 (founder-os#10741): the automation sweep drives
+  // money actions (autopay charging, delinquency notices, assessment dispatch).
+  // Wrap the whole sweep in a cross-machine advisory lock so it can NEVER
+  // double-fire when more than one machine is live (scale-out or a rolling
+  // deploy's old+new overlap). On the current single-machine topology the lock
+  // acquires immediately, so this is a no-op — the sweep runs exactly as before.
+  const result = await withSchedulerLock(SchedulerLock.AUTOMATION_SWEEP, runAutomationSweepLocked);
+  if (!result.acquired) {
+    log("automation sweep: another machine holds the lock; skipping this tick", "automation");
+  }
+}
+
+async function runAutomationSweepLocked() {
   // Wave 12 (Phase 5.1 cleanup): the unified assessment orchestrator is now
   // the sole poster. ASSESSMENT_EXECUTION_UNIFIED defaults ON; the legacy
   // per-subsystem functions (runDueRecurringCharges,
@@ -558,6 +572,19 @@ app.use((req, res, next) => {
     process.env.NODE_ENV === "production" ? "./seed.cjs" : "./seed.js";
   void (async () => {
     try {
+      // STARTUP-B-006 (founder-os#10741): seeding runs on every process boot,
+      // and seed.ts is ~4,257 lines. With Fly auto_stop/auto_start a cold start
+      // pays the full seed cost before accepting traffic. `SEED_ON_BOOT` gates
+      // it so it can be disabled once verified safe (seeding moved to an
+      // explicit one-shot migration step). DEFAULTS TO CURRENT BEHAVIOR
+      // (seed-on-boot) — this low-risk change is a no-op until the flag is
+      // explicitly set to 0. The seed is already heavily idempotent (ON CONFLICT
+      // DO NOTHING + demo-data prod gating), so re-runs are safe today.
+      const seedOnBoot = String(process.env.SEED_ON_BOOT ?? "1").trim() !== "0";
+      if (!seedOnBoot) {
+        log("[boot] seed :: skipped (SEED_ON_BOOT=0)", "startup");
+        return;
+      }
       log(`[boot] seed :: starting lazy import of ${seedModuleSpecifier}`, "startup");
       const { seedDatabase } = await import(/* @vite-ignore */ seedModuleSpecifier);
       await seedDatabase();

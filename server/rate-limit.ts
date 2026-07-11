@@ -20,7 +20,14 @@ export function createRateLimiter(options: {
   const buckets = new Map<string, Bucket>();
   const { windowMs, max, message = "Too many requests, please try again later." } = options;
 
-  // Periodic cleanup to prevent unbounded memory growth
+  // Periodic cleanup to prevent unbounded memory growth.
+  // SCALE-B-003 note (founder-os#10741): this timer is INTENTIONALLY NOT wrapped
+  // in a cross-machine advisory lock. It only evicts expired entries from THIS
+  // process's in-memory `buckets` map — there is no cross-machine side effect
+  // and each machine must clean its own map. A shared lock here would be wrong
+  // (it would stop one machine from cleaning its own memory). The multi-machine
+  // correctness gap for rate limiting is handled separately by the
+  // Postgres-backed limiter (createPgRateLimiter) on money/auth routes.
   setInterval(() => {
     const now = Date.now();
     for (const [key, bucket] of buckets.entries()) {

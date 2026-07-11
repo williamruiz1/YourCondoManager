@@ -30,6 +30,7 @@ import { storage } from "./storage";
 import { fileAction } from "./services/agent-action-service";
 import { vendorComplianceStatus, type VendorComplianceStatus } from "./services/vendor-compliance";
 import { log } from "./logger";
+import { withSchedulerLock, SchedulerLock } from "./scheduler-lock";
 import type { Vendor } from "@shared/schema";
 
 export const VENDOR_COMPLIANCE_ACTION_TYPE = "suggest.vendor_compliance_renewal";
@@ -131,7 +132,14 @@ export function startVendorComplianceScheduler(intervalMs: number = DAY_MS): voi
   if (complianceTimer) return;
   const tick = async (): Promise<void> => {
     try {
-      const result = await runVendorComplianceSweep();
+      // SCALE-B-003 / A-REL-005 (founder-os#10741): the sweep files agent
+      // actions (vendor-compliance reminders). Guard the scheduled tick behind a
+      // cross-machine advisory lock so two machines can't double-file. The pure
+      // `runVendorComplianceSweep` stays lockless for direct/test callers. No-op
+      // on single-machine.
+      const locked = await withSchedulerLock(SchedulerLock.VENDOR_COMPLIANCE, runVendorComplianceSweep);
+      if (!locked.acquired) return;
+      const result = locked.value;
       if (result.filed.length > 0 || result.errors.length > 0) {
         log(
           `[vendor-compliance] sweep complete filed=${result.filed.length} skipped=${result.skippedAlreadyOpen.length} errors=${result.errors.length}`,

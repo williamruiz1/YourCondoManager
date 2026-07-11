@@ -20,6 +20,24 @@ vi.mock("../services/agent-action-service", () => ({
   fileAction: vi.fn(),
 }));
 
+// founder-os#10741: the scheduler now advisory-locks its TICK (see
+// scheduler-lock.ts), which transitively imports `server/db.ts` (requires
+// DATABASE_URL). This suite tests the pure `runVendorComplianceSweep` sweep
+// matrix — NOT the tick — so mock the lock as a pass-through to preserve the
+// "never touches a real DATABASE_URL" invariant above.
+vi.mock("../scheduler-lock", () => ({
+  withSchedulerLock: async (_name: string, fn: () => Promise<unknown>) => ({
+    acquired: true,
+    value: await fn(),
+  }),
+  SchedulerLock: {
+    AUTOMATION_SWEEP: "ycm:automation-sweep",
+    ELECTION_AUTO_CLOSE: "ycm:election-auto-close",
+    DEPROVISIONING: "ycm:deprovisioning-sweep",
+    VENDOR_COMPLIANCE: "ycm:vendor-compliance-sweep",
+  },
+}));
+
 import { storage } from "../storage";
 import { fileAction } from "../services/agent-action-service";
 import { runVendorComplianceSweep, VENDOR_COMPLIANCE_ACTION_TYPE } from "../vendor-compliance-scheduler";

@@ -19306,7 +19306,12 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     return true;
   }
 
-  // Periodic cleanup of stale rate limit entries
+  // Periodic cleanup of stale rate limit entries.
+  // SCALE-B-003 note (founder-os#10741): INTENTIONALLY NOT advisory-locked — it
+  // only evicts expired entries from this process's in-memory
+  // `hubPublicRateLimit` map, which has no cross-machine side effect (each
+  // machine cleans its own map). A shared lock would incorrectly block a machine
+  // from cleaning its own memory.
   setInterval(() => {
     const now = Date.now();
     for (const [ip, entry] of hubPublicRateLimit) {
