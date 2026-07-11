@@ -30,10 +30,12 @@ primary_region = "ewr"
 [build]
   [build.args]
     VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"
-    # Observability (Issue founder-os#1030) — set both values when the YCM
-    # Sentry org + GA4 property are provisioned. Build-time inlines them
-    # into the client bundle. Server-side `SENTRY_DSN` lives in Fly secrets
-    # (NOT here). See INSTALL-OBSERVABILITY.md for the runbook.
+    # Observability (Issue founder-os#1030; A-OPS-003 / CQ-009). The SDKs are
+    # now in package.json — set VITE_SENTRY_DSN here (build-time, inlined into
+    # the client bundle) and the server-side `SENTRY_DSN` Fly secret to actually
+    # capture. Both are empty today → Sentry safely no-ops. Set SENTRY_STRICT=1
+    # once the DSN is provisioned to make a future missing DSN hard-fail the boot.
+    # See INSTALL-OBSERVABILITY.md for the runbook (residual human steps).
     VITE_SENTRY_DSN = ""
     VITE_GA_MEASUREMENT_ID = ""
     VITE_APP_ENV = "production"
