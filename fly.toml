@@ -29,7 +29,18 @@ primary_region = "ewr"
 
 [build]
   [build.args]
-    VITE_GOOGLE_MAPS_API_KEY = "AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8"
+    # Google Maps JS key (founder-os audit A-SEC-002 / COST-B-004 / CQ-012).
+    # This is a VITE_-prefixed key: it is client-visible by design (Maps JS
+    # keys must be inlined into the browser bundle) — the protection is
+    # HTTP-referrer + API restriction in Google Cloud Console, NOT secrecy.
+    # It is intentionally EMPTY here so no live key is committed to git.
+    # The CI deploy (.github/workflows/fly-deploy.yml) injects the real value
+    # at build time via `--build-arg` from the repo secret
+    # `VITE_GOOGLE_MAPS_API_KEY`, so rotating the key never requires a commit
+    # and the value never accumulates in git history. maps-loader.ts degrades
+    # gracefully (no map UI) when the value is empty, so a manual/local
+    # `flyctl deploy` without the build-arg is safe.
+    VITE_GOOGLE_MAPS_API_KEY = ""
     # Observability (Issue founder-os#1030; A-OPS-003 / CQ-009). The SDKs are
     # now in package.json — set VITE_SENTRY_DSN here (build-time, inlined into
     # the client bundle) and the server-side `SENTRY_DSN` Fly secret to actually
