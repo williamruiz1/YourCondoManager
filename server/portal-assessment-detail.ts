@@ -260,7 +260,70 @@ export async function buildAssessmentDetailForOwnerUnit(params: {
       .reduce((acc, e) => acc + e.amount, 0),
   );
 
-  const totalOwed = Math.max(0, ownerPortion.total - totalPaidAbs);
+  // 2026-07-12 — same LEGACY-assessment ledger-truth treatment as
+  // `getAssessmentPlansForOwnerUnit` (the owner-portal "My Finances" summary
+  // card, fixed above). A non-auto-posted assessment (`autoPostEnabled !==
+  // 1` — e.g. the Cherry Hill Court driveway assessment, imported before
+  // tracked installment posting existed) can never accumulate a tracked
+  // `SPECIAL_ASSESSMENT_REFERENCE_TYPE` ledger row, so `myLedgerEntries`
+  // above is structurally always empty for it — which made `totalOwed`
+  // collapse to the full theoretical per-unit-equal `ownerPortion.total`
+  // (the observed bug: the drill-in reported $4,444.44 "Total owed" while
+  // the just-fixed summary card, reading the real ledger, showed
+  // $1,326.19). Use the REAL net "assessment"-category ledger balance for
+  // this unit instead — the SAME figure the summary card + the rest of the
+  // dashboard already treat as authoritative — so the two surfaces never
+  // drift. Only trusted when this is the ONLY non-auto-posted assessment
+  // applicable to this unit (a shared, untagged ledger balance can't be
+  // safely attributed to a specific legacy assessment when more than one
+  // applies — same ambiguity guard as the summary card); otherwise falls
+  // back to the pre-existing theoretical calc below. Read-only — no ledger
+  // write, no money movement.
+  const isLegacy = assessmentRow.autoPostEnabled !== 1;
+  let legacyLedgerRemaining: number | null = null;
+  if (isLegacy) {
+    const siblingAssessmentRows = await db
+      .select()
+      .from(specialAssessments)
+      .where(and(
+        eq(specialAssessments.associationId, associationId),
+        eq(specialAssessments.isActive, 1),
+      ));
+    const legacyApplicableCount = siblingAssessmentRows.filter(
+      (a) => isUnitIncluded(a, unitId) && a.autoPostEnabled !== 1,
+    ).length;
+    if (legacyApplicableCount === 1) {
+      const rawAssessmentEntries = await db
+        .select()
+        .from(ownerLedgerEntries)
+        .where(and(
+          eq(ownerLedgerEntries.associationId, associationId),
+          eq(ownerLedgerEntries.unitId, unitId),
+          eq(ownerLedgerEntries.personId, personId),
+          eq(ownerLedgerEntries.entryType, "assessment"),
+        ));
+      const untrackedEntries = rawAssessmentEntries.filter(
+        (e) => e.referenceType !== SPECIAL_ASSESSMENT_REFERENCE_TYPE,
+      );
+      legacyLedgerRemaining = round2(
+        Math.max(0, untrackedEntries.reduce((sum, e) => sum + e.amount, 0)),
+      );
+    }
+  }
+
+  // `totalOwed`/`totalPaid` reconcile to the SAME `total` the summary card
+  // uses (`Math.max(theoretical portion, real ledger remaining)` — the
+  // ledger remaining can exceed the naive per-unit-equal share once years
+  // of real charges/payments are accounted for), so the two "Total owed" /
+  // "Remaining" figures William sees never diverge between the summary card
+  // and this drill-in.
+  let totalOwed = Math.max(0, ownerPortion.total - totalPaidAbs);
+  let totalPaidForHistory = totalPaidAbs;
+  if (isLegacy && legacyLedgerRemaining != null) {
+    const reconciledTotal = round2(Math.max(ownerPortion.total, legacyLedgerRemaining));
+    totalOwed = legacyLedgerRemaining;
+    totalPaidForHistory = round2(Math.max(0, reconciledTotal - legacyLedgerRemaining));
+  }
 
   return {
     assessment: {
@@ -278,7 +341,7 @@ export async function buildAssessmentDetailForOwnerUnit(params: {
     ownerPortion,
     history: {
       installmentsPosted,
-      totalPaid: Number(totalPaidAbs.toFixed(2)),
+      totalPaid: Number(totalPaidForHistory.toFixed(2)),
       totalOwed: Number(totalOwed.toFixed(2)),
       ledgerEntries: ledgerEntriesView,
     },
