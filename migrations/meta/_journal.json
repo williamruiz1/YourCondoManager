@@ -421,6 +421,13 @@
       "when": 1780400001010,
       "tag": "0059_arc_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1780400001011,
+      "tag": "0060_money_float8",
+      "breakpoints": true
     }
   ]
 }
