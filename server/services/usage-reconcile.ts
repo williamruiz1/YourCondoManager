@@ -28,6 +28,7 @@
  */
 
 import { assertStripeKeySafe } from "../staging-guard";
+import { stripeFetch } from "./stripe-fetch";
 import { db } from "../db";
 import { units, associations, adminAssociationScopes, adminUsers, platformSubscriptions } from "@shared/schema";
 import { eq, count, inArray } from "drizzle-orm";
@@ -60,13 +61,11 @@ export async function createPlatformStripeMeterPoster(): Promise<MeterPoster | n
   assertStripeKeySafe(secretKey); // founder-os#10193 F0 — refuse live Stripe key in staging
   if (!secretKey?.trim()) return null;
   return async (path, body) => {
-    const resp = await fetch(`https://api.stripe.com/v1${path}`, {
+    const resp = await stripeFetch({
+      path,
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body.toString(),
+      secretKey,
+      body,
     });
     const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
     if (!resp.ok) {
