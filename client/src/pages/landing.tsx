@@ -329,8 +329,18 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
             <h1 className="font-serif text-5xl md:text-6xl lg:text-7xl font-bold leading-tight text-on-surface mb-6">
               {t("landing.hero.headlineLead")} <span className="text-primary italic">{t("landing.hero.headlineEmphasis")}</span>
             </h1>
-            <p className="text-on-surface-variant text-lg md:text-xl max-w-xl mb-8 leading-relaxed">
-              {t("landing.hero.subhead")}
+            <p className="text-on-surface-variant text-lg md:text-xl max-w-xl mb-3 leading-relaxed">
+              {t("landing.hero.subhead.lead")}
+            </p>
+            {/* Punchy fragment row — bolded, different placement than the lead
+                line, per William's 2026-07-12 copy pass (fragments, not full
+                sentences; see docs/design-system/marketing-copy-standard.md). */}
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 mb-8 text-base md:text-lg">
+              <span className="font-bold text-ycm-navy dark:text-slate-100">{t("landing.hero.subhead.point1")}</span>
+              <span aria-hidden="true" className="text-ycm-teal">·</span>
+              <span className="font-bold text-ycm-navy dark:text-slate-100">{t("landing.hero.subhead.point2")}</span>
+              <span aria-hidden="true" className="text-ycm-teal">·</span>
+              <span className="font-bold text-ycm-navy dark:text-slate-100">{t("landing.hero.subhead.point3")}</span>
             </p>
             <div className="flex flex-wrap gap-4">
               {hasWorkspaceAccess ? (
@@ -364,18 +374,66 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
         <h2 id="value-prop-heading" className="sr-only">{t("landing.valueProp.heading")}</h2>
         <div className="grid md:grid-cols-3 gap-6">
           {[
-            { icon: Landmark, title: t("landing.valueProp.financial.title"), body: t("landing.valueProp.financial.body") },
-            { icon: Users, title: t("landing.valueProp.workflow.title"), body: t("landing.valueProp.workflow.body") },
-            { icon: Sparkles, title: t("landing.valueProp.ai.title"), body: t("landing.valueProp.ai.body") },
+            {
+              icon: Landmark,
+              title: t("landing.valueProp.financial.title"),
+              body: t("landing.valueProp.financial.body"),
+              // Illustrative mini-visual — synthetic labels only, not a live
+              // screenshot (no real association/tenant data, per policy).
+              visual: (
+                <div className="space-y-2" aria-hidden="true">
+                  {[
+                    { label: "Assessments", value: "$12,400", pct: "88%" },
+                    { label: "Reserves", value: "$61,200", pct: "62%" },
+                    { label: "Expenses", value: "$4,150", pct: "34%" },
+                  ].map((row) => (
+                    <div key={row.label} className="flex items-center gap-2 text-[11px]">
+                      <span className="w-20 shrink-0 text-slate-500">{row.label}</span>
+                      <div className="flex-1 h-1.5 rounded-full bg-ycm-navy/10 overflow-hidden">
+                        <div className="h-full rounded-full bg-ycm-teal" style={{ width: row.pct }} />
+                      </div>
+                      <span className="w-16 shrink-0 text-right font-semibold text-ycm-navy">{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+              ),
+            },
+            {
+              icon: Users,
+              title: t("landing.valueProp.workflow.title"),
+              body: t("landing.valueProp.workflow.body"),
+              visual: (
+                <div className="space-y-1.5" aria-hidden="true">
+                  {["Board meeting minutes — approved", "Q3 maintenance vote — 5/5 cast", "Roof inspection — scheduled"].map((row) => (
+                    <div key={row} className="flex items-center gap-2 text-[11px] text-slate-600">
+                      <CheckCircle2 className="h-3.5 w-3.5 text-ycm-teal shrink-0" />
+                      <span>{row}</span>
+                    </div>
+                  ))}
+                </div>
+              ),
+            },
+            {
+              icon: Sparkles,
+              title: t("landing.valueProp.ai.title"),
+              body: t("landing.valueProp.ai.body"),
+              visual: (
+                <div className="space-y-1.5 text-[11px]" aria-hidden="true">
+                  <div className="rounded-lg bg-ycm-navy/5 px-2.5 py-1.5 text-slate-600 w-fit max-w-[85%]">What's our reserve balance?</div>
+                  <div className="rounded-lg bg-ycm-teal/15 text-ycm-navy px-2.5 py-1.5 font-medium w-fit max-w-[85%] ml-auto">Sample Association: $61,200</div>
+                </div>
+              ),
+            },
           ].map((f) => {
             const Icon = f.icon;
             return (
               <div key={f.title} className="rounded-2xl border border-ycm-sky/15 bg-ycm-cool-white p-6 shadow-sm">
-                <div className="w-12 h-12 rounded-xl bg-ycm-teal/15 text-ycm-navy flex items-center justify-center mb-4" aria-hidden="true">
-                  <Icon className="h-6 w-6" />
+                <div className="rounded-xl bg-white/70 border border-ycm-sky/10 p-3 mb-4">{f.visual}</div>
+                <div className="w-10 h-10 rounded-xl bg-ycm-teal/15 text-ycm-navy flex items-center justify-center mb-3" aria-hidden="true">
+                  <Icon className="h-5 w-5" />
                 </div>
-                <h3 className="font-bold text-lg text-ycm-navy mb-1.5">{f.title}</h3>
-                <p className="text-sm text-slate-600 leading-relaxed">{f.body}</p>
+                <h3 className="font-bold text-xl text-ycm-navy mb-1.5">{f.title}</h3>
+                <p className="text-base text-slate-600 leading-relaxed">{f.body}</p>
               </div>
             );
           })}

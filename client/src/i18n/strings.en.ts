@@ -982,24 +982,30 @@ export const strings = {
   "landing.hero.eyebrow": "Architecture of Trust",
   "landing.hero.headlineLead": "Everything your association needs.",
   "landing.hero.headlineEmphasis": "Nothing it doesn't.",
-  "landing.hero.subhead":
-    "The definitive platform for modern property governance. Streamline operations, empower boards, and engage residents with structural clarity.",
+  // Hero subhead — split into a plain lead line + 3 bolded punch fragments
+  // (marketing-copy standard: subtext ≤12 words, fragments over sentences).
+  "landing.hero.subhead.lead": "The definitive platform for modern property governance.",
+  "landing.hero.subhead.point1": "Streamline operations.",
+  "landing.hero.subhead.point2": "Empower boards.",
+  "landing.hero.subhead.point3": "Engage residents.",
   "landing.hero.cta.primary": "Get Started Free",
   "landing.hero.cta.secondary": "Talk to us",
   "landing.hero.image.alt": "Your Condo Manager logo — three stylized condo buildings in the brand slate-blue, teal, and navy palette",
   "landing.hero.panel.tagline": "Built for self-managed condo boards",
 
   // 3-feature value prop (brand v1 — founder-os#1024)
+  // Card subtext tightened per the marketing-copy standard (≤12 words, punchy
+  // fragments) — docs/design-system/marketing-copy-standard.md.
   "landing.valueProp.heading": "What Your Condo Manager does for your association",
   "landing.valueProp.financial.title": "Financials & banking",
   "landing.valueProp.financial.body":
-    "Connect your association's accounts with Plaid, track dues and reserves, and reconcile every transaction — no spreadsheets, no surprises at audit time.",
+    "Bank sync, dues tracking, and reconciliation — no spreadsheets, no surprises.",
   "landing.valueProp.workflow.title": "Board & owner workflow",
   "landing.valueProp.workflow.body":
-    "Run meetings, votes, maintenance requests, and document sharing in one place. Boards stay organized; owners always know what's happening.",
+    "Meetings, votes, maintenance, and documents — organized in one place.",
   "landing.valueProp.ai.title": "AI-assisted operations",
   "landing.valueProp.ai.body":
-    "Ask anything — current balance, bylaws, payment history, amenity bookings — and get an instant answer. Your association's AI assistant, built in.",
+    "Ask anything — balances, bylaws, payments — get instant answers.",
 
   "landing.persona.toggleLabel": "Tailored for you:",
   "landing.persona.whyPrefix": "Why",
@@ -1009,7 +1015,7 @@ export const strings = {
   "landing.persona.board.headline":
     "Give your board the tools to govern with confidence.",
   "landing.persona.board.subhead":
-    "Your Condo Manager gives volunteer boards everything needed to handle finances, governance, residents, and maintenance — without expensive management fees or complicated software.",
+    "Finances, governance, residents, maintenance — in one place. No management fees. No complexity.",
   "landing.persona.board.ctaPrimary": "Start managing your association",
   "landing.persona.board.ctaSecondary": "See what's included",
   "landing.persona.board.feature.finances.title": "Clear, simple finances",
@@ -1034,7 +1040,7 @@ export const strings = {
   "landing.persona.manager.headline":
     "Run your entire portfolio from one command center.",
   "landing.persona.manager.subhead":
-    "Your Condo Manager gives property managers a single platform for every association — billing, owners, maintenance, governance, and reporting — without the spreadsheets.",
+    "Billing, owners, maintenance, governance, reporting — every association, one platform. No spreadsheets.",
   "landing.persona.manager.ctaPrimary": "Get started — it's free",
   "landing.persona.manager.ctaSecondary": "Schedule a demo",
   "landing.persona.manager.feature.visibility.title": "Portfolio-wide visibility",
@@ -1059,7 +1065,7 @@ export const strings = {
   "landing.persona.resident.headline":
     "Stay connected and in control of your home.",
   "landing.persona.resident.subhead":
-    "Access your account, pay dues online, track maintenance requests, and stay informed about your community — all without making a phone call.",
+    "Pay dues, track requests, stay informed — no phone calls needed.",
   "landing.persona.resident.ctaPrimary": "Access your portal",
   "landing.persona.resident.ctaSecondary": "Learn more",
   "landing.persona.resident.feature.pay.title": "Pay dues online",
