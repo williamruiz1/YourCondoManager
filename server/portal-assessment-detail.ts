@@ -309,7 +309,26 @@ export async function getUpcomingInstallmentsForOwnerUnit(params: {
 
   if (assessmentRows.length === 0) return [];
 
-  const applicable = assessmentRows.filter((a) => isUnitIncluded(a, unitId));
+  // 2026-07-12 — a "next installment due" is only a trustworthy per-period
+  // signal for assessments the unified execution orchestrator actually
+  // posts on schedule (`autoPostEnabled === 1`; see
+  // server/assessment-execution.ts). For a LEGACY assessment that was never
+  // wired to that pipeline (`autoPostEnabled === 0` — e.g. the Cherry Hill
+  // Court driveway assessment, imported as a single opening-balance ledger
+  // charge with no tracked installment postings), `installmentsPosted` can
+  // NEVER increase (nothing ever tags a ledger row with this assessment's
+  // installment reference), so the derived "next installment" would always
+  // collapse to installment #1 due at the assessment's `startDate` — which
+  // for a multi-year-old legacy assessment reads as "the WHOLE remaining
+  // balance is due, years past due" (the observed owner-portal bug: a
+  // $4,444.44 lump shown as due 1/1/2021). Exclude non-auto-posted
+  // assessments from the "due this period" feed entirely — their balance is
+  // still shown to the owner via the assessment-plan card
+  // (`getAssessmentPlansForOwnerUnit`, below) as an ongoing obligation with
+  // no fabricated due date, never folded into "Pay this period."
+  const applicable = assessmentRows.filter(
+    (a) => isUnitIncluded(a, unitId) && a.autoPostEnabled === 1,
+  );
   if (applicable.length === 0) return [];
 
   const unitRows = await db
@@ -475,6 +494,46 @@ export async function getAssessmentPlansForOwnerUnit(params: {
     ));
   const myLedgerEntries = ledgerEntries.filter((e) => e.personId === personId);
 
+  // 2026-07-12 — LEGACY assessments (`autoPostEnabled === 0`, e.g. the Cherry
+  // Hill Court driveway assessment) were never wired to the unified
+  // execution orchestrator, so they carry no tracked installment postings —
+  // `installmentsPosted` above is structurally always 0 for them, which
+  // makes `computeOwnerPortion`'s theoretical per-unit-equal SHARE (a naive
+  // split of the assessment's ORIGINAL total, ignoring years of real
+  // payment history) the wrong "remaining" figure, and its derived "next
+  // installment due date" collapse to the assessment's `startDate` — read
+  // as "the whole balance is years past due" (the observed owner-portal
+  // bug). For these, use the REAL net "assessment"-category ledger balance
+  // for this unit — the SAME ledger truth the rest of the dashboard already
+  // treats as authoritative (`byUnit[].byCategory.assessment` /
+  // `perUnit[].assessment`) — as the remaining amount instead. Only trusted
+  // when there is exactly ONE such legacy assessment applicable to this
+  // unit (otherwise a shared, untagged ledger balance can't be
+  // unambiguously split between them, so we fall back to the theoretical
+  // share below rather than guess). Excludes any ledger row tagged with the
+  // real installment referenceType so a DIFFERENT, auto-posted assessment's
+  // tracked postings are never double-counted into this legacy balance.
+  // Read-only — no ledger write, no money movement.
+  const legacyApplicable = applicable.filter((a) => a.autoPostEnabled !== 1);
+  let legacyLedgerRemaining: number | null = null;
+  if (legacyApplicable.length === 1) {
+    const rawAssessmentEntries = await db
+      .select()
+      .from(ownerLedgerEntries)
+      .where(and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        eq(ownerLedgerEntries.unitId, unitId),
+        eq(ownerLedgerEntries.personId, personId),
+        eq(ownerLedgerEntries.entryType, "assessment"),
+      ));
+    const untrackedEntries = rawAssessmentEntries.filter(
+      (e) => e.referenceType !== SPECIAL_ASSESSMENT_REFERENCE_TYPE,
+    );
+    legacyLedgerRemaining = round2(
+      Math.max(0, untrackedEntries.reduce((sum, e) => sum + e.amount, 0)),
+    );
+  }
+
   const plans: AssessmentPlanProgress[] = [];
   for (const assessment of applicable) {
     const excludedSet = new Set(
@@ -508,6 +567,35 @@ export async function getAssessmentPlansForOwnerUnit(params: {
 
     if (portion.total <= 0) continue;
 
+    const isLegacy = assessment.autoPostEnabled !== 1;
+
+    if (isLegacy && legacyLedgerRemaining != null) {
+      // No real schedule to reconcile against — present the assessment as
+      // an ONGOING balance (paid over time, no fixed installment count/due
+      // date), using the ledger-truth remaining amount. Never past-due
+      // (`nextInstallmentDueDate: null`), never folded into "Pay this
+      // period" (that feed already excludes non-auto-posted assessments —
+      // see `getUpcomingInstallmentsForOwnerUnit`).
+      const remaining = legacyLedgerRemaining;
+      const total = round2(Math.max(portion.total, remaining));
+      const paidToDate = round2(Math.max(0, total - remaining));
+      if (total <= 0) continue;
+      plans.push({
+        assessmentId: assessment.id,
+        assessmentName: assessment.name,
+        total,
+        paidToDate,
+        remaining,
+        installmentCount: 0,
+        installmentsPaid: 0,
+        installmentAmount: round2(portion.installmentAmount),
+        nextInstallmentAmount: null,
+        nextInstallmentDueDate: null,
+        nextInstallmentNumber: null,
+      });
+      continue;
+    }
+
     // Schedule-reconciled progress. `remainingInstallments` is the count of
     // future installments; `installmentCount` (schedule length) === posted +
     // remaining, so paidToDate + remaining === total by construction.
@@ -515,7 +603,11 @@ export async function getAssessmentPlansForOwnerUnit(params: {
     const remaining = round2(portion.remainingInstallments * portion.installmentAmount);
     const paidToDate = round2(Math.max(0, portion.total - remaining));
 
-    const hasNext = portion.remainingInstallments > 0;
+    // A legacy assessment with no unambiguous ledger-truth override (2+
+    // concurrent legacy assessments for this unit) still gets the due-date
+    // suppression — we just can't safely attribute the ledger balance, so
+    // the theoretical share is kept for `total`/`remaining` as before.
+    const hasNext = !isLegacy && portion.remainingInstallments > 0;
     const nextInstallmentNumber = hasNext ? installmentsPosted + 1 : null;
     const nextDueDate =
       hasNext && nextInstallmentNumber != null
@@ -528,8 +620,8 @@ export async function getAssessmentPlansForOwnerUnit(params: {
       total: round2(portion.total),
       paidToDate,
       remaining,
-      installmentCount,
-      installmentsPaid: installmentsPosted,
+      installmentCount: isLegacy ? 0 : installmentCount,
+      installmentsPaid: isLegacy ? 0 : installmentsPosted,
       installmentAmount: round2(portion.installmentAmount),
       nextInstallmentAmount: hasNext ? round2(portion.installmentAmount) : null,
       nextInstallmentDueDate: nextDueDate ? nextDueDate.toISOString() : null,

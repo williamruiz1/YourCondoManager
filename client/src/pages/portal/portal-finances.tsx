@@ -853,7 +853,14 @@ function FinancesHubContent() {
                 <div className="mt-4">
                   <div className="mb-2 flex items-baseline justify-between text-sm">
                     <span className="font-semibold text-primary">{view.pctPaid}% paid</span>
-                    <span className="text-on-surface-variant">{view.installmentsLabel}</span>
+                    <span className="text-on-surface-variant">
+                      {/* 2026-07-12 — a legacy assessment with no real installment
+                          schedule (`hasSchedule: false`) has no trustworthy
+                          "N of M installments paid" count (see
+                          server/portal-assessment-detail.ts). Say so plainly
+                          instead of a misleading "0 of 1" / "0 installments". */}
+                      {view.hasSchedule ? view.installmentsLabel : "Paid over time — no fixed installment schedule"}
+                    </span>
                   </div>
                   <div
                     className="h-2.5 w-full overflow-hidden rounded-full bg-surface-container"
@@ -866,7 +873,9 @@ function FinancesHubContent() {
 
                 {/* next installment + detail link */}
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                  {plan.nextInstallmentAmount != null ? (
+                  {view.isPaidOff ? (
+                    <p className="text-sm text-on-surface-variant">This assessment is fully paid.</p>
+                  ) : plan.nextInstallmentAmount != null ? (
                     <p className="text-sm text-on-surface-variant">
                       Next installment:{" "}
                       <b className="tabular-nums text-on-surface">
@@ -885,7 +894,14 @@ function FinancesHubContent() {
                       ) : null}
                     </p>
                   ) : (
-                    <p className="text-sm text-on-surface-variant">This assessment is fully paid.</p>
+                    // 2026-07-12 — no `nextInstallmentAmount` but NOT paid off:
+                    // a legacy assessment with no real installment schedule
+                    // (the CHC driveway assessment). Say so plainly instead of
+                    // falling through to the (wrong) "fully paid" message.
+                    <p className="text-sm text-on-surface-variant">
+                      Paid over time — no fixed installment schedule. Contact your
+                      manager for the payment schedule.
+                    </p>
                   )}
                   <Link
                     href={`/portal/finances/assessments/${plan.assessmentId}`}
