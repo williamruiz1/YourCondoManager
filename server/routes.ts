@@ -304,6 +304,7 @@ import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAgentActionRoutes } from "./routes/agent-actions";
+import { registerBoardMemoryRoutes } from "./routes/board-memory";
 import { registerArcRoutes } from "./routes/arc";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
 import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
@@ -1562,6 +1563,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // (assigned from the action-type); L3/L4 cannot execute without a recorded
   // human approval (L4 → board-level approver).
   registerAgentActionRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  // Cross-board-cycle institutional memory (founder-os#9475, W1). A queryable
+  // decision log that survives board turnover — L1 read-only surface (no
+  // approve/execute/actuate path); recording is append-only institutional logging.
+  registerBoardMemoryRoutes(app, {
     requireAdmin,
     requireAdminRole,
     getAssociationIdQuery,

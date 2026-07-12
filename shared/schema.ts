@@ -5067,6 +5067,93 @@ export const insertStatutoryRecordSchema = createInsertSchema(statutoryRecords).
 export type StatutoryRecord = typeof statutoryRecords.$inferSelect;
 export type InsertStatutoryRecord = z.infer<typeof insertStatutoryRecordSchema>;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Cross-board-cycle institutional memory (founder-os#9475, W1).
+//
+// A volunteer HOA board turns over every 1-3 years, and institutional memory
+// evaporates with it: the new treasurer/secretary/president cannot answer "why
+// was the fence request denied?" or "what did the prior treasurer do about this
+// vendor?" This is a queryable DECISION LOG that survives board turnover — one
+// immutable row per board decision, carrying the decision, the reasoning, the
+// actor (denormalized to TEXT so it survives even after that admin user is
+// deleted), the board term, the date, linked attachments, and an optional link
+// to the entity (owner / vendor / rule / unit) the decision touched.
+//
+//   READ-ONLY (L1) by design. Querying this memory NEVER actuates: there is no
+//   approve/execute/actuate path off a query — it only SURFACES prior context.
+//   Recording a decision is an append-only WRITE-TO the log (institutional
+//   logging, like the audit log), NOT a write FROM memory to any other system.
+//   The log is immutable: the app never UPDATEs or DELETEs a recorded decision
+//   (a decision is a historical FACT; you don't rewrite board history).
+//
+// Tenant-isolated per YCM convention: associationId derived from the session,
+// never from the request body. Additive / net-new: touches no existing table.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// The decision domains the query interface can filter + surface history on.
+export const boardDecisionCategoryEnum = pgEnum("board_decision_category", [
+  "rule_application", // an owner/unit rule was applied or enforced
+  "vendor",           // a vendor was selected, renewed, disputed, terminated
+  "owner",            // an owner request/dispute/waiver was decided
+  "financial",        // a financial decision (budget, reserve, assessment)
+  "governance",       // bylaws / policy / procedure decisions
+  "architectural",    // ARC / architectural-change decisions
+  "general",          // anything else
+]);
+export type BoardDecisionCategory = (typeof boardDecisionCategoryEnum.enumValues)[number];
+
+// board_decisions — the institutional-memory decision log. One immutable row per
+// board decision; persists across board terms (turnover-survival).
+export const boardDecisions = pgTable("board_decisions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  // What was decided (short subject) + the decision outcome.
+  subject: text("subject").notNull(),
+  decision: text("decision").notNull(),
+  // The load-bearing "why" — every memory result surfaces the reasoning inline.
+  reasoning: text("reasoning").notNull(),
+  category: boardDecisionCategoryEnum("category").notNull().default("general"),
+  // ── Actor — DENORMALIZED to text so the memory survives board turnover even
+  // after the deciding admin user is removed. actorType ∈ {board|admin|agent|
+  // committee}. recordedByUserId is an optional provenance FK (nullable, does
+  // NOT gate retrieval).
+  actorType: text("actor_type").notNull().default("board"),
+  actorName: text("actor_name").notNull(),
+  actorRole: text("actor_role"),
+  recordedByUserId: varchar("recorded_by_user_id").references(() => adminUsers.id),
+  // ── Turnover-survival key: the board term this decision was made under
+  // (e.g. "2023-2024"). Retrievable by anyone in any later term.
+  boardTerm: text("board_term"),
+  decidedAt: timestamp("decided_at").notNull().defaultNow(),
+  // ── History-surfacing link: the entity this decision touched. entityType ∈
+  // {owner|vendor|rule|unit|...}; entityLabel is a denormalized human label so
+  // history reads even if the linked row later changes/leaves.
+  relatedEntityType: text("related_entity_type"),
+  relatedEntityId: varchar("related_entity_id"),
+  relatedEntityLabel: text("related_entity_label"),
+  // Optional provenance link to the agent_action that produced this decision.
+  sourceActionId: varchar("source_action_id").references(() => agentActions.id),
+  // Linked supporting documents — { name, url } array (additive metadata).
+  attachments: jsonb("attachments").$type<{ name: string; url: string }[]>().notNull().default(sql`'[]'::jsonb`),
+  // Free-form tags to widen natural-language-style lookup.
+  tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  // Query index: an association's decisions by category + recency.
+  byAssocCategory: index("board_decisions_assoc_category_idx").on(table.associationId, table.category, table.decidedAt),
+  // History-surfacing index: decisions tied to a specific entity.
+  byAssocEntity: index("board_decisions_assoc_entity_idx").on(table.associationId, table.relatedEntityType, table.relatedEntityId),
+  // Turnover-survival index: decisions by term.
+  byAssocTerm: index("board_decisions_assoc_term_idx").on(table.associationId, table.boardTerm),
+}));
+
+export const insertBoardDecisionSchema = createInsertSchema(boardDecisions).omit({
+  id: true,
+  createdAt: true,
+});
+export type BoardDecision = typeof boardDecisions.$inferSelect;
+export type InsertBoardDecision = z.infer<typeof insertBoardDecisionSchema>;
+
 // ───────────────────────────────────────────────────────────────────────────
 // Rule violations (founder-os#9487 — Board mode "log a violation" wizard).
 //
