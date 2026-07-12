@@ -4,9 +4,55 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { X } from "lucide-react";
 
+// Audience-aware form fields (2026-07-12 live review). Previously every
+// caller got the same "association name + number of units" fields — wrong
+// shape for a property manager, who runs MANY associations, not one.
+// William: "the lead form must adapt to the audience (PM: company name,
+// portfolio size in associations/units; resident: their association;
+// board: association + role)."
+export type DemoRequestAudience = "manager" | "board" | "resident";
+
 type DemoRequestModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** Which "Tailored for you" tab was active when the modal opened. Falls
+   *  back to the board fields (the default persona) when not passed, so
+   *  older call sites keep working. */
+  audience?: DemoRequestAudience;
+};
+
+const AUDIENCE_FIELDS: Record<DemoRequestAudience, {
+  associationLabel: string;
+  associationPlaceholder: string;
+  showUnitCount: boolean;
+  unitCountLabel: string;
+  unitCountPlaceholder: string;
+  showRole: boolean;
+}> = {
+  board: {
+    associationLabel: "Association name",
+    associationPlaceholder: "e.g. Cherry Hill Court Condominium",
+    showUnitCount: true,
+    unitCountLabel: "Number of units",
+    unitCountPlaceholder: "e.g. 24",
+    showRole: true,
+  },
+  manager: {
+    associationLabel: "Company / management firm name",
+    associationPlaceholder: "e.g. Acme Property Management",
+    showUnitCount: true,
+    unitCountLabel: "Portfolio size (associations or units managed)",
+    unitCountPlaceholder: "e.g. 12 associations",
+    showRole: false,
+  },
+  resident: {
+    associationLabel: "Your association name",
+    associationPlaceholder: "e.g. Cherry Hill Court Condominium",
+    showUnitCount: false,
+    unitCountLabel: "",
+    unitCountPlaceholder: "",
+    showRole: false,
+  },
 };
 
 const EMPTY_FORM = {
@@ -14,10 +60,12 @@ const EMPTY_FORM = {
   email: "",
   association: "",
   unitCount: "",
+  role: "",
   message: "",
 };
 
-export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalProps) {
+export default function DemoRequestModal({ isOpen, onClose, audience = "board" }: DemoRequestModalProps) {
+  const fields = AUDIENCE_FIELDS[audience];
   const [formData, setFormData] = useState(EMPTY_FORM);
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -37,7 +85,7 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
       const response = await fetch("/api/public/demo-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, audience }),
       });
 
       if (!response.ok) {
@@ -126,7 +174,7 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
 
               <div>
                 <label htmlFor="ttu-association" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Association name
+                  {fields.associationLabel}
                 </label>
                 <Input
                   id="ttu-association"
@@ -134,27 +182,46 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
                   name="association"
                   value={formData.association}
                   onChange={handleChange}
-                  placeholder="e.g. Cherry Hill Court Condominium"
+                  placeholder={fields.associationPlaceholder}
                   disabled={loading}
                 />
               </div>
 
-              <div>
-                <label htmlFor="ttu-unitCount" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Number of units
-                </label>
-                <Input
-                  id="ttu-unitCount"
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  name="unitCount"
-                  value={formData.unitCount}
-                  onChange={handleChange}
-                  placeholder="e.g. 24"
-                  disabled={loading}
-                />
-              </div>
+              {fields.showRole && (
+                <div>
+                  <label htmlFor="ttu-role" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Your role
+                  </label>
+                  <Input
+                    id="ttu-role"
+                    type="text"
+                    name="role"
+                    value={formData.role}
+                    onChange={handleChange}
+                    placeholder="e.g. Treasurer, President"
+                    disabled={loading}
+                  />
+                </div>
+              )}
+
+              {fields.showUnitCount && (
+                <div>
+                  <label htmlFor="ttu-unitCount" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    {fields.unitCountLabel}
+                  </label>
+                  <Input
+                    id="ttu-unitCount"
+                    type={audience === "manager" ? "text" : "number"}
+                    inputMode={audience === "manager" ? undefined : "numeric"}
+                    min={audience === "manager" ? undefined : 1}
+                    name="unitCount"
+                    value={formData.unitCount}
+                    onChange={handleChange}
+                    placeholder={fields.unitCountPlaceholder}
+                    disabled={loading}
+                  />
+                </div>
+              )}
 
               <div>
                 <label htmlFor="ttu-message" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">

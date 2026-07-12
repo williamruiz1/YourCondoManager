@@ -11766,6 +11766,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         ? String(req.body.unitCount).trim()
         : "";
       const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+      // Audience-aware form (2026-07-12): the marketing form now adapts its
+      // fields to which "Tailored for you" tab was active — a property
+      // manager's "association" field is really a company/portfolio, not
+      // one association. `audience` + `role` are optional so older callers
+      // (no audience sent) keep working; the email body just relabels the
+      // same two fields so the reader isn't confused by "Association: Acme
+      // Property Management" on a PM lead.
+      const audience = typeof req.body?.audience === "string" ? req.body.audience.trim() : "";
+      const role = typeof req.body?.role === "string" ? req.body.role.trim() : "";
+      const associationFieldLabel = audience === "manager" ? "Company" : "Association";
+      const unitFieldLabel = audience === "manager" ? "Portfolio size" : "Units";
 
       if (!name || !email) {
         return res.status(400).json({ message: "name and email are required" });
@@ -11782,8 +11793,9 @@ New "Talk to us" enquiry from the Your Condo Manager website
 
 Name: ${name}
 Email: ${email}
-Association: ${associationName || "Not provided"}
-Units: ${unitCount || "Not provided"}
+Audience: ${audience || "Not provided"}
+${associationFieldLabel}: ${associationName || "Not provided"}
+${unitFieldLabel}: ${unitCount || "Not provided"}${role ? `\nRole: ${role}` : ""}
 
 Message:
 ${message || "No message provided"}

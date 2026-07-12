@@ -188,7 +188,11 @@ describe("i18n strings.en", () => {
     expect(strings).toHaveProperty("landing.persona.board.headline");
     expect(strings).toHaveProperty("landing.bento.heading");
     expect(strings).toHaveProperty("landing.compliance.audit.title");
-    expect(strings).toHaveProperty("landing.finalCta.title");
+    // Final CTA became audience-aware (2026-07-12) — 3 persona-keyed variants
+    // replaced the single generic title/body.
+    expect(strings).toHaveProperty("landing.finalCta.board.title");
+    expect(strings).toHaveProperty("landing.finalCta.manager.title");
+    expect(strings).toHaveProperty("landing.finalCta.resident.title");
 
     expect(strings).toHaveProperty("pricing.hero.eyebrow");
     expect(strings).toHaveProperty("pricing.cards.popular");
@@ -252,7 +256,8 @@ describe("t()", () => {
     expect(t("pricing.cards.selfManaged.name")).toBe("Self-Managed");
     expect(t("pricing.compare.heading")).toBe("Plan Comparison");
     expect(t("solutions.hero.headlineEmphasis")).toBe("Modern Excellence.");
-    expect(t("solutions.finalCta.title")).toBe("Ready to elevate your estate?");
+    // "estate" wording swept out 2026-07-12 (wrong term for condo/HOA).
+    expect(t("solutions.finalCta.title")).toBe("Ready to elevate your association?");
   });
 
   it("returns the key itself for unknown keys (safe fallback)", () => {
