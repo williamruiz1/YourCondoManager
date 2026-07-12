@@ -177,6 +177,18 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
 
   const content = personaContent[persona];
 
+  // Audience-aware final CTA (2026-07-12 live review) — title/body speak to
+  // each audience's emotional payoff; button labels reuse the persona's own
+  // ctaPrimary/ctaSecondary (content.*) above so the wording that followed
+  // the visitor through the "Tailored for you" section repeats here instead
+  // of resetting to a generic string.
+  const finalCtaContent: Record<Persona, { title: string; body: string }> = {
+    board: { title: t("landing.finalCta.board.title"), body: t("landing.finalCta.board.body") },
+    manager: { title: t("landing.finalCta.manager.title"), body: t("landing.finalCta.manager.body") },
+    resident: { title: t("landing.finalCta.resident.title"), body: t("landing.finalCta.resident.body") },
+  };
+  const finalCta = finalCtaContent[persona];
+
   if (isAuthenticatedNoAccess) {
     return (
       <div className="min-h-screen bg-white dark:bg-slate-950 flex items-center justify-center px-4">
@@ -647,8 +659,8 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
         <section className="relative rounded-3xl overflow-hidden py-20 px-8 text-center bg-ycm-navy max-w-7xl mx-auto mb-32">
           <div className="absolute inset-0 bg-gradient-to-br from-ycm-navy via-ycm-navy to-ycm-sky/40" aria-hidden="true"></div>
           <div className="relative z-10 max-w-2xl mx-auto">
-            <h2 className="font-headline text-4xl md:text-5xl text-white font-bold mb-6">{t("landing.finalCta.title")}</h2>
-            <p className="text-ycm-cream/90 text-lg mb-10">{t("landing.finalCta.body")}</p>
+            <h2 className="font-headline text-4xl md:text-5xl text-white font-bold mb-6">{finalCta.title}</h2>
+            <p className="text-ycm-cream/90 text-lg mb-10">{finalCta.body}</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               {hasWorkspaceAccess ? (
                 <Button
@@ -663,10 +675,10 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
               ) : (
                 <>
                   <button className="bg-white text-slate-900 px-8 py-4 rounded-lg font-bold hover:bg-slate-100 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={onStartGoogleSignIn} data-testid="button-landing-open-workspace">
-                    {t("landing.finalCta.startTrial")}
+                    {content.ctaPrimary}
                   </button>
                   <button className="border border-white/30 text-white px-8 py-4 rounded-lg font-bold hover:bg-white/10 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white" onClick={() => setDemoModalOpen(true)}>
-                    {t("landing.finalCta.speakExpert")}
+                    {content.ctaSecondary}
                   </button>
                 </>
               )}
@@ -678,7 +690,7 @@ export default function LandingPage({ hasWorkspaceAccess, isAuthenticatedNoAcces
 
       <SiteFooter />
 
-      <DemoRequestModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
+      <DemoRequestModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} audience={persona} />
     </div>
   );
 }
