@@ -4975,6 +4975,98 @@ export type AgentActionToggle = typeof agentActionToggles.$inferSelect;
 export type AgentActionLevel = (typeof agentActionLevelEnum.enumValues)[number];
 export type AgentActionStatus = (typeof agentActionStatusEnum.enumValues)[number];
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Statutory records production (founder-os#9483 — ratified 2026-07-04).
+//
+// The unifying ISSUANCE layer over the statutory-document generators. Owner /
+// closing-agent requests a statutory document; we generate the right packet
+// (resale certificate — CGS §47-270, reusing #8013's generator; estoppel — the
+// closing account-status subset; records-request — a §47-260 response), PIN its
+// statutory deadline into the shared chief-of-staff agent-action queue (so the
+// countdown is always visible + surfaces a near-deadline reminder), and GATE
+// issuance at L3 of the permission ladder — a recorded PM sign — via the same
+// executeAction gate the whole platform uses. Issuance is structurally
+// impossible without the L3 approval.
+//
+// Additive / net-new: one new table + two enums. References existing tables
+// (associations, units, persons, agent_actions, records_requests, admin_users);
+// touches no existing column or row. Tenant-isolated: association_id on the row,
+// derived from the session, never from the request body.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The kind of statutory document produced. */
+export const statutoryRecordTypeEnum = pgEnum("statutory_record_type", [
+  "resale_certificate", // CGS §47-270 — reuses #8013's generator
+  "estoppel_certificate", // closing account-status subset (money owed + good standing)
+  "records_request", // CGS §47-260 — owner records-inspection response
+]);
+export type StatutoryRecordType = (typeof statutoryRecordTypeEnum.enumValues)[number];
+
+/** intake/generate → (signed) → issued lifecycle. */
+export const statutoryRecordStatusEnum = pgEnum("statutory_record_status", [
+  "generated", // packet built + persisted + queued; awaiting the L3 PM sign
+  "signed", // the PM recorded the L3 approval; ready to issue
+  "issued", // actuated THROUGH the L3 gate — final, immutable payload
+  "rejected", // the PM declined
+]);
+export type StatutoryRecordStatus = (typeof statutoryRecordStatusEnum.enumValues)[number];
+
+export const statutoryRecords = pgTable("statutory_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  recordType: statutoryRecordTypeEnum("record_type").notNull(),
+  status: statutoryRecordStatusEnum("status").notNull().default("generated"),
+  // Who the packet is for (a closing agent / owner). Free-form so it can be an
+  // external requester who is not in the roster.
+  requesterName: text("requester_name").notNull(),
+  requesterEmail: text("requester_email"),
+  // Optional unit / owner scope (resale cert + estoppel are unit-scoped; a
+  // records-request may not be).
+  unitId: varchar("unit_id").references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  // When the request was received — drives the deadline clock.
+  receivedAt: timestamp("received_at").notNull(),
+  expedited: integer("expedited").notNull().default(0),
+  // The pinned statutory deadline + how many business days it was (audit).
+  deadlineAt: timestamp("deadline_at").notNull(),
+  slaBusinessDays: integer("sla_business_days").notNull(),
+  statuteCitation: text("statute_citation").notNull(),
+  // The generated packet (the §47-270 / estoppel / §47-260 document).
+  documentPayload: jsonb("document_payload").notNull(),
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  // The shared-queue item that surfaces the deadline + carries the L3 sign gate.
+  agentActionId: varchar("agent_action_id").references(() => agentActions.id),
+  // When a full §47-260 records-request lifecycle already exists, link to it.
+  linkedRecordsRequestId: varchar("linked_records_request_id").references(() => recordsRequests.id),
+  // The L3 PM sign.
+  signedByUserId: varchar("signed_by_user_id").references(() => adminUsers.id),
+  signedByEmail: text("signed_by_email"),
+  signedAt: timestamp("signed_at"),
+  issuedAt: timestamp("issued_at"),
+  rejectedReason: text("rejected_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  byAssocStatus: index("statutory_records_assoc_status_idx").on(table.associationId, table.status),
+  // Deadline-first surfacing index (near-deadline sweep).
+  byAssocDeadline: index("statutory_records_assoc_deadline_idx").on(table.associationId, table.deadlineAt),
+}));
+
+export const insertStatutoryRecordSchema = createInsertSchema(statutoryRecords).omit({
+  id: true,
+  status: true,
+  agentActionId: true,
+  signedByUserId: true,
+  signedByEmail: true,
+  signedAt: true,
+  issuedAt: true,
+  rejectedReason: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type StatutoryRecord = typeof statutoryRecords.$inferSelect;
+export type InsertStatutoryRecord = z.infer<typeof insertStatutoryRecordSchema>;
+
 // ───────────────────────────────────────────────────────────────────────────
 // Rule violations (founder-os#9487 — Board mode "log a violation" wizard).
 //
