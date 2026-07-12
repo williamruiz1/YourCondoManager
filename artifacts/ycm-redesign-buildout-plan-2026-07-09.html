@@ -1,0 +1,168 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>YCM Redesign Build-Out Plan — 2026-07-09</title>
+<style>
+:root{--teal:#014D4A;--teal-700:#0a6a63;--accent:#15A39C;--light:#BFE8E4;--gray-100:#F5F7F9;--gray-200:#E5E7EB;--ink:#0f2e2c;--muted:#5b7572;--ok:#15803d;--ok-bg:#dcfce7;--warn:#b45309;--warn-bg:#fef3c7;--bad:#b91c1c;--bad-bg:#fee2e2;--info-bg:#e0f2f1;--radius:12px;--shadow:0 1px 3px rgba(1,77,74,.06),0 4px 16px rgba(1,77,74,.05);--font:'Inter Tight',system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box}body{margin:0;font-family:var(--font);color:var(--ink);background:var(--gray-100);font-size:14.5px;line-height:1.6;overflow-x:hidden}
+h1,h2,h3{margin:0;color:var(--teal);font-weight:800;letter-spacing:-.01em}
+.wrap{max-width:1020px;margin:0 auto;padding:0 22px 60px}
+.previewbar{background:#111;color:#fff;font-size:12.5px;padding:8px 18px;display:flex;gap:12px;align-items:center}
+.previewbar .tag{background:var(--accent);color:#fff;border-radius:6px;padding:1px 8px;font-weight:700}
+.hero{background:linear-gradient(135deg,var(--teal),#0a6a63);color:#fff;padding:40px 22px}
+.hero .in{max-width:1020px;margin:0 auto;display:flex;gap:16px;align-items:center}
+.hero svg{width:48px;flex-shrink:0}
+.hero h1{color:#fff;font-size:26px}.hero p{color:var(--light);margin:6px 0 0;max-width:680px}
+.plan-tag{display:inline-block;background:var(--warn-bg);color:var(--warn);border-radius:999px;padding:3px 12px;font-weight:800;font-size:12px;margin-bottom:10px}
+.card{background:#fff;border:1px solid var(--gray-200);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px 24px;margin-top:20px}
+.card h2{font-size:19px;display:flex;align-items:center;gap:10px}
+.num{background:var(--teal);color:#fff;width:26px;height:26px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0}
+h3{font-size:15px;margin:18px 0 8px}
+p{margin:8px 0}ul{margin:8px 0;padding-left:20px}li{margin:5px 0}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:14px}
+@media(max-width:820px){.grid3{grid-template-columns:1fr}}
+.surf{border:1px solid var(--gray-200);border-radius:10px;overflow:hidden}
+.surf .h{padding:12px 14px;color:#fff;font-weight:800;font-size:13.5px;display:flex;justify-content:space-between}
+.surf.s1 .h{background:var(--teal)}.surf.s2 .h{background:var(--accent)}.surf.s3 .h{background:var(--teal-700)}
+.surf .b{padding:12px 14px;font-size:12.5px;color:var(--muted)}
+.surf .b b{color:var(--ink)}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;margin:1px}
+.pill.restyle{background:var(--info-bg);color:var(--teal)}.pill.new{background:var(--bad-bg);color:var(--bad)}.pill.reuse{background:var(--ok-bg);color:var(--ok)}
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:520px}
+th{text-align:left;color:var(--muted);font-weight:700;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:9px 12px;border-bottom:2px solid var(--gray-200)}
+td{padding:9px 12px;border-bottom:1px solid var(--gray-200);vertical-align:top}
+tr:last-child td{border-bottom:0}
+ol.road{counter-reset:s;list-style:none;padding:0;margin:10px 0}
+ol.road>li{counter-increment:s;position:relative;padding:9px 12px 9px 44px;border-bottom:1px solid var(--gray-200)}
+ol.road>li::before{content:counter(s);position:absolute;left:10px;top:8px;background:var(--accent);color:#fff;width:24px;height:24px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px}
+ol.road>li b{color:var(--teal)}
+.phase{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);margin:16px 0 4px}
+.risk{border-left:4px solid var(--warn);background:var(--warn-bg);border-radius:0 8px 8px 0;padding:12px 14px;margin:10px 0;font-size:13px}
+.risk b{color:var(--warn)}
+.money{border-left:4px solid var(--bad);background:var(--bad-bg);border-radius:0 8px 8px 0;padding:10px 14px;margin:12px 0;font-size:12.5px}
+.rec{background:var(--ok-bg);color:#14532d;border-radius:8px;padding:12px 14px;margin:12px 0;font-size:13px}
+.rec b{color:var(--ok)}
+code{background:var(--gray-100);border:1px solid var(--gray-200);border-radius:5px;padding:1px 5px;font-size:12px}
+.first8{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.first8 span{background:var(--teal);color:#fff;border-radius:8px;padding:6px 12px;font-weight:700;font-size:12.5px}
+.first8 span.f{background:var(--accent)}
+.foot{color:var(--muted);font-size:12px;margin-top:24px;text-align:center}
+</style></head><body><div style="position:fixed;bottom:8px;right:8px;z-index:99999;background:rgba(20,20,20,0.82);color:#fff;font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:4px 9px;border-radius:6px;pointer-events:none;opacity:0.88;letter-spacing:.01em;">Created 2026-07-09 (mtime, untracked in git) &middot; Author unknown (untracked in git)</div>
+<div class="previewbar"><span class="tag">PLAN — NOT BUILT</span> YourCondoManager redesign build-out plan · for review, route to PocketPM + fleet after signoff.</div>
+<div class="hero"><div class="in">
+<svg viewBox="0 0 120 120"><polygon points="10,88 34,70 34,112 10,112" fill="#fff"/><polygon points="46,58 70,40 70,112 46,112" fill="#fff"/><polygon points="82,26 106,8 106,112 82,112" fill="#fff"/></svg>
+<div><span class="plan-tag">IMPLEMENTATION PLAN · 2026-07-09</span>
+<h1>YCM Redesign — Build-Out Plan</h1>
+<p>Three surfaces on the new brand, in priority order: Manager app → Owner portal → Owner app. Grounded in the gated redesign preview and the current codebase.</p></div>
+</div></div>
+<div class="wrap">
+
+<div class="card"><h2><span class="num">1</span>Executive summary</h2>
+<p><b>Build order (priority):</b> <b>1) Manager app</b> (paying users — drives adoption, build first) → <b>2) Owner portal</b> → <b>3) Owner app</b> (greenfield native).</p>
+<p><b>Owner-not-resident reframing:</b> the redesign's "Resident App" is built as an <b>OWNER app — for condo unit OWNERS, not renters</b>. Owner-centric features only (pay dues, statements/ledger, book amenities, submit requests, documents/announcements). Reframed throughout.</p>
+<p><b>The honest framing:</b> the platform is <b>mature, not greenfield</b> — 141 routes, 169 tables, a working Owner Portal, and live Stripe/Connect payments already exist. So Manager &amp; Portal are mostly <b>REBRAND + IA cleanup</b> (one net-new module: Violations); the Owner app is a <b>greenfield native shell with maximum reuse</b>. Stack today: React + Vite + wouter + react-query + Tailwind + drizzle + express + passport/session.</p>
+<div class="grid3">
+  <div class="surf s1"><div class="h"><span>Manager app</span><span>9 screens</span></div><div class="b">Dashboard, Billing &amp; Dues, Payments, Ledger &amp; Reconcile, Reports, Work Orders, Owners &amp; Units, <b>Violations (net-new)</b>, Login. <br><b>Mostly restyle</b> over existing pages.</div></div>
+  <div class="surf s2"><div class="h"><span>Owner portal</span><span>6 screens</span></div><div class="b">Home, Pay Dues, Statements, Documents, Requests, <b>My Account (consolidation)</b>. <br><b>Restyle + consolidate</b> — portal already exists.</div></div>
+  <div class="surf s3"><div class="h"><span>Owner app</span><span>5 screens</span></div><div class="b">Dashboard, Pay, New Request, Documents, <b>Messages (net-new)</b>. <br><b>Greenfield native</b> — Capacitor, max reuse.</div></div>
+</div></div>
+
+<div class="card"><h2><span class="num">0</span>Cross-cutting foundation — build ONCE, all 3 consume</h2>
+<p><b>F1 — Shared design system (<code>@ycm/design-system</code>) — CRITICAL PATH.</b> Port the redesign <code>brand.css</code> once: brand tokens → Tailwind (teal <code>#014D4A</code> / accent <code>#15A39C</code> / Inter Tight), plus shell + primitives (AppShell, Sidebar, TopBar, Card, Stat, DataTable, Pill, Button, Field, Chart). <b>Light-first — dark mode stays SHELVED</b> (current force-light default).</p>
+<p><b>F2 — Auth/session parity</b> across manager (<code>/app/*</code>), portal (<code>/portal/*</code>), owner app — one session model; migrate the full surface, never lock out a class of users.</p>
+<p><b>F3 — Gated review → William signoff</b> per surface: publish a wireframe round to the YCM admin hub, get explicit "build this" <b>before</b> porting to live code. Wireframe-first, never reactive tweaks in production.</p>
+</div>
+
+<div class="card"><h2><span class="num">2</span>Surface 1 — Manager app <span style="font-size:12px;color:var(--muted);font-weight:600">(priority 1)</span></h2>
+<p><b>Target nav:</b> Dashboard · Payments · Reports · Violations · Work Orders · Documents · Communications · Calendar · Settings.</p>
+<div class="scroll"><table>
+<tr><th>Redesign screen</th><th>Current code</th><th>Disposition</th></tr>
+<tr><td>Dashboard</td><td>dashboard.tsx (+ alerts/actions panels)</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td>Billing &amp; Dues</td><td>financial-billing / assessments / recurring-charges</td><td><span class="pill restyle">RESTYLE+consolidate</span></td></tr>
+<tr><td>Payments</td><td>financial-payments, admin-payments-record, stripe-connect</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td>Ledger &amp; Reconciliation</td><td>financial-ledger / reconciliation, virtualized-ledger-table</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td>Reports</td><td>financial-reports, financial-ar-aging</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td>Work Orders</td><td>work-orders, vendors</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td>Owners &amp; Units</td><td>persons, units</td><td><span class="pill restyle">RESTYLE + reframe</span></td></tr>
+<tr><td><b>Violations</b></td><td>no page today (adj: governance-compliance)</td><td><span class="pill new">NET-NEW MODULE</span></td></tr>
+<tr><td>Login</td><td>server/auth.ts + login page</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+</table></div>
+<h3>Phased slices (requirements = definition of done)</h3>
+<ul>
+<li><b>M0</b> Manager shell (new AppShell/Sidebar/TopBar, 9-item nav over <code>/app/*</code>). <i>AC: every route in new chrome, no 404s, light-only.</i></li>
+<li><b>M1</b> Dashboard restyle · <b>M2</b> Billing &amp; Dues · <b>M3</b> Payments (Stripe status, test-mode) · <b>M4</b> Ledger &amp; Reconciliation.</li>
+<li><b>M5</b> Reports · <b>M6</b> Work Orders · <b>M7</b> Owners &amp; Units (reframe) · <b>M8</b> <b>Violations (net-new tables + API + page)</b> · <b>M9</b> Login/Communications/Calendar/Documents/Settings.</li>
+</ul>
+<p><b>Data/API:</b> only Violations is net-new (<code>violations</code>, <code>violation_types</code>, <code>violation_notices</code> + routes). Everything else reuses the existing 169 tables.</p>
+<div class="money"><b>Money-safety:</b> Payments/Ledger touch real Stripe + Cherry Hill's live books — <b>test-mode only in dev</b>, flag-gate every money surface, live-money changes need William's ratify. Keep redirects when collapsing duplicate <code>/app/financial(s)/*</code> routes.</div>
+</div>
+
+<div class="card"><h2><span class="num">3</span>Surface 2 — Owner portal <span style="font-size:12px;color:var(--muted);font-weight:600">(priority 2)</span></h2>
+<div class="scroll"><table>
+<tr><th>Redesign screen</th><th>Current code</th><th>Disposition</th></tr>
+<tr><td>Home</td><td>portal-home.tsx</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td>Pay Dues</td><td>portal-finances (duenow), autopay/payment-portal routes</td><td><span class="pill restyle">RESTYLE + extract Pay flow</span></td></tr>
+<tr><td>Statements</td><td>portal finances/statement, account-statement</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td>Documents</td><td>portal-documents.tsx</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td>Requests</td><td>portal-requests.tsx</td><td><span class="pill restyle">RESTYLE</span></td></tr>
+<tr><td><b>My Account</b></td><td>my-consents + user-settings + payment-methods</td><td><span class="pill new">NET-NEW consolidation</span> <span class="pill reuse">no new tables</span></td></tr>
+</table></div>
+<h3>Phased slices</h3>
+<ul><li><b>P0</b> Portal shell (owner nav, new brand) · <b>P1</b> Home · <b>P2</b> Pay Dues (Stripe reuse, test-mode) · <b>P3</b> Statements (+PDF) · <b>P4</b> Documents+Requests · <b>P5</b> My Account · <b>P6</b> Amenities booking.</li></ul>
+<p><b>Data/API:</b> none net-new — pure restyle + consolidation. Enforce owner data-scoping (owners see only their unit).</p>
+</div>
+
+<div class="card"><h2><span class="num">4</span>Surface 3 — Owner app <span style="font-size:12px;color:var(--muted);font-weight:600">(priority 3 · greenfield)</span></h2>
+<div class="rec"><b>Recommended stack: Capacitor</b> — wrap the existing React owner client in a native shell → real iOS + Android apps from <b>one codebase</b>, reusing the whole React client, API, session auth, Stripe flows, and design system. Beats React&nbsp;Native/Expo (full UI rewrite, low reuse) and PWA-only (no store, flaky iOS push). Gives native <b>push, camera (work-order photos), Face ID, Apple/Google Pay</b> via plugins. Directly satisfies "favor reuse of the existing React/TS client + API."</div>
+<div class="scroll"><table>
+<tr><th>Owner-app screen</th><th>Reuses</th><th>Disposition</th></tr>
+<tr><td>Dashboard</td><td>portal-home logic</td><td><span class="pill reuse">REUSE logic</span></td></tr>
+<tr><td>Pay</td><td>portal Pay flow + Stripe</td><td><span class="pill reuse">REUSE</span> + Apple/Google Pay</td></tr>
+<tr><td>New Request</td><td>portal-requests submit</td><td><span class="pill reuse">REUSE</span> + native camera</td></tr>
+<tr><td>Documents</td><td>portal-documents</td><td><span class="pill reuse">REUSE</span></td></tr>
+<tr><td><b>Messages</b></td><td>communications / notices</td><td><span class="pill new">NET-NEW owner messaging</span></td></tr>
+</table></div>
+<h3>Phased slices</h3>
+<ul><li><b>O0</b> Capacitor shell + owner bundle (iOS+Android build, session auth, "Owner" not "Resident") · <b>O1</b> Dashboard+Documents · <b>O2</b> Pay native (Apple/Google Pay, test-mode) · <b>O3</b> New Request + camera · <b>O4</b> Messages + push · <b>O5</b> Biometric unlock + store-submission prep.</li></ul>
+<p><b>Data/API:</b> no new core tables (reuses ledger, saved-methods, autopay, work-orders, documents, push). Likely add native device-token registration; possibly a light owner-thread table for Messages.</p>
+<div class="money"><b>Money-safety:</b> owner-app payments reuse the existing Stripe gateway, flag-gated, test-mode in dev. App Store + Apple/Google Pay provisioning is a founder action — start early (flag to William).</div>
+</div>
+
+<div class="card"><h2><span class="num">5</span>Top 3 sequencing / dependency risks</h2>
+<div class="risk"><b>1. The design system (F1) is the whole critical path.</b> Build + lock <code>@ycm/design-system</code> and get signoff <i>before</i> any surface starts, or you get three drifting rebrands. F1 is Phase 0; nothing else starts until it lands.</div>
+<div class="risk"><b>2. Owner app depends on the portal being restyled first.</b> The Capacitor app reuses portal screens/logic — building the native shell before the portal restyle wraps soon-to-change UI. Enforce Manager → Portal → Owner-app order.</div>
+<div class="risk"><b>3. Money surfaces + IA route de-dup.</b> Payments/Ledger/Pay-Dues touch live Stripe + Cherry Hill's books, and consolidating duplicate <code>/app/financial(s)/*</code> routes can break payment paths / deep links. Test-mode-only in dev, flag-gate, keep redirects, William ratify before any live-money change.</div>
+</div>
+
+<div class="card"><h2><span class="num">6</span>Sequenced roadmap (fleet build order)</h2>
+<div class="phase">Phase 0 — foundation (blocks everything)</div>
+<div class="phase">Phase 1 — Manager · Phase 2 — Owner portal · Phase 3 — Owner app</div>
+<ol class="road">
+<li><b>F1</b> — Shared design system (tokens→Tailwind, shell+primitives, light-only). <i>Critical path.</i></li>
+<li><b>F2</b> — Auth/session parity across all 3 surfaces.</li>
+<li><b>F3</b> — Wireframe-round + William signoff flow (YCM admin hub).</li>
+<li><b>M0</b> — Manager shell (AppShell/Sidebar/TopBar, 9-item nav).</li>
+<li><b>M1</b> — Dashboard restyle.</li>
+<li><b>M2</b> — Billing &amp; Dues restyle + consolidate.</li>
+<li><b>M3</b> — Payments restyle (Stripe status, test-mode).</li>
+<li><b>M4</b> — Ledger &amp; Reconciliation restyle.</li>
+<li>… M5 Reports · M6 Work Orders · M7 Owners &amp; Units · M8 Violations (net-new) · M9 Login/Comms/Calendar/Docs/Settings.</li>
+<li><b>Phase 2:</b> P0 shell → P1 Home → P2 Pay Dues → P3 Statements → P4 Docs+Requests → P5 My Account → P6 Amenities.</li>
+<li><b>Phase 3:</b> O0 Capacitor shell → O1 Dashboard+Docs → O2 Pay native → O3 Request+camera → O4 Messages+push → O5 Biometric+store-prep.</li>
+</ol>
+<p style="margin-top:14px;font-weight:700;color:var(--teal)">First 8 slices, in order:</p>
+<div class="first8"><span class="f">F1</span><span class="f">F2</span><span class="f">F3</span><span>M0</span><span>M1</span><span>M2</span><span>M3</span><span>M4</span></div>
+</div>
+
+<div class="card"><h2><span class="num">7</span>Notes / open items</h2>
+<ul>
+<li><b>All 20 redesign screens reviewed</b> (9 Manager · 6 Owner portal · 5 Owner app) + <code>brand.css</code> — none failed to load.</li>
+<li>No separate <code>/stitch/</code> or <code>/r1/</code> prototype was reachable under <code>/redesign/</code>; the index links this single 20-screen set. If a ~25-screen Stitch prototype exists, it's at an unlinked path — <b>flag to confirm with William/GM.</b></li>
+<li><b>Reframing debt:</b> mobile screen titles still say "YCM Resident" — correct to "Owner" during O0.</li>
+<li><b>Dark mode stays shelved</b> (force-light) — not re-enabled in this build.</li>
+<li><b>PLAN only:</b> no product code, no PPM features, no dispatches, no flags enabled. GM routes into PocketPM + fleet after review.</li>
+</ul>
+</div>
+
+<div class="foot">YourCondoManager · Redesign Build-Out Plan · 2026-07-09 · PLAN, not built · markdown source at <code>wiki/plans/ycm-redesign-buildout-plan-2026-07-09.md</code></div>
+</div></body></html>

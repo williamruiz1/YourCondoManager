@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROPOSAL — Owner Finances redesign (wireframe)</title>
+<style>
+  :root{
+    /* YCM brand */
+    --teal:#014D4A;        /* primary deep teal */
+    --teal-700:#036461;
+    --accent:#15A39C;      /* bright accent */
+    --accent-soft:#E4F4F2;
+    --accent-line:#BEE6E2;
+
+    --ink:#0E2321;         /* near-black teal-tinted text */
+    --ink-2:#3C4E4C;       /* secondary text */
+    --muted:#7B8B89;       /* tertiary / de-emphasized */
+    --faint:#A8B4B2;
+
+    --page:#F4F7F6;        /* light-first background */
+    --card:#FFFFFF;
+    --line:#E3EAE8;
+    --line-2:#EEF3F2;
+
+    /* status */
+    --ok:#137A5A;          /* on-track green (used sparingly, as chip text) */
+    --ok-soft:#E7F4EE;
+    --overdue:#C0362C;     /* RED — reserved for genuinely past-due only */
+    --overdue-soft:#FBEBE9;
+
+    --shadow:0 1px 2px rgba(10,40,38,.04), 0 8px 24px rgba(10,40,38,.06);
+    --radius:16px;
+    --radius-sm:11px;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,"Helvetica Neue",Arial,sans-serif;
+    --num:"SF Mono",ui-monospace,"Roboto Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--sans);
+    background:var(--page);
+    color:var(--ink);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:64px;
+  }
+
+  /* ---------- proposal ribbon ---------- */
+  .ribbon{
+    background:repeating-linear-gradient(135deg,#12312F,#12312F 14px,#153A38 14px,#153A38 28px);
+    color:#CFE7E4;
+    font-size:12.5px;
+    letter-spacing:.04em;
+    text-align:center;
+    padding:9px 16px;
+    font-weight:600;
+  }
+  .ribbon b{color:#fff;letter-spacing:.09em}
+  .ribbon .tag{
+    display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);
+    padding:1px 8px;border-radius:999px;font-size:11px;margin-left:8px;font-weight:600;letter-spacing:.06em
+  }
+
+  /* ---------- portal top bar ---------- */
+  .topbar{
+    background:var(--teal);
+    color:#fff;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 22px;
+  }
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand .mark{
+    width:34px;height:34px;border-radius:9px;
+    background:linear-gradient(150deg,var(--accent),#0C7C77);
+    display:grid;place-items:center;font-weight:800;font-size:15px;color:#052a28;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)
+  }
+  .brand .wm{line-height:1.05}
+  .brand .wm .t1{font-weight:800;font-size:15px;letter-spacing:.02em}
+  .brand .wm .t2{font-size:11px;color:#A9D4D0;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+  .who{display:flex;align-items:center;gap:10px}
+  .who .name{text-align:right;line-height:1.15}
+  .who .name .n1{font-weight:600;font-size:13.5px}
+  .who .name .n2{font-size:11.5px;color:#9FD0CC}
+  .who .av{width:34px;height:34px;border-radius:50%;background:#0B6F6A;display:grid;place-items:center;font-weight:700;font-size:13px;border:1px solid rgba(255,255,255,.2)}
+
+  /* ---------- layout ---------- */
+  .wrap{max-width:940px;margin:0 auto;padding:26px 20px 0}
+  .pagehead{margin-bottom:20px}
+  .pagehead h1{font-size:24px;letter-spacing:-.01em;font-weight:800}
+  .pagehead p{color:var(--ink-2);font-size:14px;margin-top:3px}
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:22px;margin-bottom:18px;
+  }
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+  .card-head h2{font-size:15px;font-weight:700;letter-spacing:.01em}
+  .eyebrow{font-size:11.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:700}
+
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 11px;border-radius:999px;letter-spacing:.01em}
+  .chip .dot{width:7px;height:7px;border-radius:50%}
+  .chip.ok{background:var(--ok-soft);color:var(--ok)}
+  .chip.ok .dot{background:var(--ok)}
+  .chip.info{background:var(--accent-soft);color:var(--teal);border:1px solid var(--accent-line)}
+  .chip.info .dot{background:var(--accent)}
+  .chip.overdue{background:var(--overdue-soft);color:var(--overdue)}
+  .chip.overdue .dot{background:var(--overdue)}
+
+  /* ---------- HERO: pay this period ---------- */
+  .hero{
+    background:
+      radial-gradient(120% 130% at 100% 0%, rgba(21,163,156,.10), transparent 55%),
+      linear-gradient(180deg,#FFFFFF, #FBFEFD);
+    border:1px solid var(--accent-line);
+    position:relative;overflow:hidden;
+  }
+  .hero:before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:5px;
+    background:linear-gradient(180deg,var(--accent),var(--teal));
+  }
+  .hero .status-row{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .hero .reassure{font-size:14px;color:var(--ink-2);font-weight:500}
+  .hero .label{font-size:12.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-top:14px}
+  .hero .amount{
+    font-family:var(--num);font-size:52px;font-weight:700;color:var(--teal);
+    letter-spacing:-.02em;line-height:1;margin:4px 0 2px;
+  }
+  .hero .amount .cents{font-size:30px;color:var(--teal-700);vertical-align:top}
+  .hero .breakdown{color:var(--ink-2);font-size:13.5px;margin-top:8px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+  .hero .breakdown .seg{display:inline-flex;align-items:center;gap:7px}
+  .hero .breakdown .k{width:9px;height:9px;border-radius:3px;flex:none}
+  .k.dues{background:var(--teal)}
+  .k.inst{background:var(--accent)}
+  .hero .due{color:var(--muted);font-size:12.5px}
+  .hero .cta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:20px}
+  .btn{
+    border:none;cursor:pointer;font-family:var(--sans);font-weight:700;font-size:15px;
+    padding:14px 26px;border-radius:12px;letter-spacing:.01em;transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .btn-primary{background:var(--teal);color:#fff;box-shadow:0 6px 18px rgba(1,77,74,.22)}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(1,77,74,.28)}
+  .btn-primary .sub{display:block;font-size:11px;font-weight:600;color:#9FD8D3;letter-spacing:.02em;margin-top:1px}
+  .link-quiet{background:none;border:none;color:var(--teal-700);font-weight:600;font-size:13.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--accent-line)}
+
+  /* ---------- assessment plan ---------- */
+  .plan-note{
+    display:inline-flex;align-items:center;gap:7px;background:var(--accent-soft);color:var(--teal);
+    border:1px solid var(--accent-line);border-radius:8px;padding:6px 11px;font-size:12.5px;font-weight:600;margin-bottom:16px
+  }
+  .plan-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+  .stat{background:var(--line-2);border-radius:var(--radius-sm);padding:13px 15px}
+  .stat .sk{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .stat .sv{font-family:var(--num);font-size:21px;font-weight:700;color:var(--ink);margin-top:5px;letter-spacing:-.01em}
+  .stat.remain .sv{color:var(--teal)}
+  .progress-wrap{margin-top:4px}
+  .progress-top{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:8px}
+  .progress-top .pct{font-weight:700;color:var(--teal)}
+  .progress-top .cnt{color:var(--muted)}
+  .bar{height:12px;border-radius:999px;background:#E7EEEC;overflow:hidden;position:relative}
+  .bar .fill{height:100%;width:33.3%;border-radius:999px;background:linear-gradient(90deg,var(--accent),var(--teal));position:relative}
+  .bar .ticks{position:absolute;inset:0;display:flex}
+  .bar .ticks span{flex:1;border-right:1.5px solid rgba(255,255,255,.6)}
+  .bar .ticks span:last-child{border-right:none}
+  .plan-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap}
+  .plan-foot .next{font-size:13.5px;color:var(--ink-2)}
+  .plan-foot .next b{color:var(--ink);font-family:var(--num)}
+
+  /* ---------- per-unit table ---------- */
+  .units-note{font-size:13px;color:var(--ink-2);margin-bottom:14px}
+  .units-note b{color:var(--ink)}
+  .tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px}
+  table.units{width:100%;border-collapse:separate;border-spacing:0;min-width:560px}
+  table.units th,table.units td{padding:12px 14px;text-align:right;font-size:13.5px}
+  table.units thead th{
+    font-size:12px;letter-spacing:.03em;color:var(--muted);font-weight:700;text-transform:uppercase;
+    border-bottom:1.5px solid var(--line);vertical-align:bottom;
+  }
+  table.units thead th .u2{display:block;font-size:11px;color:var(--faint);text-transform:none;letter-spacing:0;font-weight:600;margin-top:2px}
+  table.units th.row-label,table.units td.row-label{
+    text-align:left;color:var(--ink-2);font-weight:600;white-space:nowrap;
+    position:sticky;left:0;background:var(--card);
+  }
+  table.units td{font-family:var(--num);color:var(--ink)}
+  table.units .unit-col{color:var(--ink)}
+  table.units .total-col{background:var(--accent-soft);color:var(--teal);font-weight:700}
+  table.units thead .total-col{color:var(--teal);border-bottom-color:var(--accent-line)}
+  table.units tbody tr:not(:last-child) td,table.units tbody tr:not(:last-child) th{border-bottom:1px solid var(--line-2)}
+  table.units tr.total-row td,table.units tr.total-row th{
+    font-weight:800;border-top:1.5px solid var(--line);color:var(--ink);font-size:14px;padding-top:14px
+  }
+  table.units tr.total-row .row-label{color:var(--ink)}
+  table.units tr.total-row .total-col{color:var(--teal)}
+
+  /* ---------- secondary / context grid ---------- */
+  .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  .soft{background:#FBFDFC;border-color:var(--line-2);box-shadow:none}
+  .soft h2{color:var(--ink-2)}
+  .ytd{display:flex;gap:26px;margin-top:6px}
+  .ytd .yk{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .ytd .yv{font-family:var(--num);font-size:22px;font-weight:700;color:var(--ink-2);margin-top:4px}
+  .context-line{color:var(--muted);font-size:12.5px;margin-top:13px;display:flex;align-items:center;gap:7px}
+  .obligation{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+  .obligation .ov{font-family:var(--num);font-size:22px;font-weight:700;color:var(--muted)}
+  .obligation-note{color:var(--faint);font-size:12px;margin-top:9px;line-height:1.45}
+
+  /* ---------- actions ---------- */
+  .actions{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .act{
+    display:flex;flex-direction:column;gap:5px;text-align:left;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);
+    padding:16px 16px;cursor:pointer;transition:border-color .12s ease, transform .12s ease;
+  }
+  .act:hover{border-color:var(--accent-line);transform:translateY(-1px)}
+  .act .ai{width:32px;height:32px;border-radius:9px;background:var(--accent-soft);display:grid;place-items:center;margin-bottom:5px}
+  .act .at{font-weight:700;font-size:14px}
+  .act .ad{font-size:12px;color:var(--muted)}
+
+  /* ---------- legend / red usage note ---------- */
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:2px;font-size:12px;color:var(--muted)}
+  .legend .li{display:inline-flex;align-items:center;gap:7px}
+  .legend .sw{width:11px;height:11px;border-radius:3px}
+
+  /* ---------- before/after footer ---------- */
+  .ba{max-width:940px;margin:26px auto 0;padding:0 20px}
+  .ba-card{background:#0F2C2A;color:#DDECEA;border-radius:var(--radius);padding:22px 24px}
+  .ba-card h3{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:#8FC7C2;font-weight:700;margin-bottom:16px}
+  .ba-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .ba-item .num{font-family:var(--num);font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.05em}
+  .ba-item h4{font-size:14px;margin:5px 0 8px;color:#fff}
+  .ba-row{font-size:12.5px;line-height:1.5}
+  .ba-row .was{color:#E1948C}
+  .ba-row .now{color:#8FE0D8}
+  .ba-row .lbl{color:#6E938F;display:inline-block;width:44px}
+
+  footer.meta{max-width:940px;margin:20px auto 0;padding:0 20px;color:var(--faint);font-size:11.5px;text-align:center}
+
+  /* entrance */
+  .fade{opacity:0;transform:translateY(10px);animation:rise .6s cubic-bezier(.2,.7,.2,1) forwards}
+  .fade:nth-child(1){animation-delay:.02s}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .hero{animation:rise .55s cubic-bezier(.2,.7,.2,1) both;animation-delay:.04s}
+  .card:not(.hero){animation:rise .55s cubic-bezier(.2,.7,.2,1) both}
+  .card:nth-of-type(2){animation-delay:.10s}
+  .card:nth-of-type(3){animation-delay:.16s}
+
+  @media(max-width:720px){
+    .hero .amount{font-size:42px}
+    .plan-stats{grid-template-columns:1fr}
+    .grid-2{grid-template-columns:1fr}
+    .actions{grid-template-columns:1fr}
+    .ba-grid{grid-template-columns:1fr;gap:20px}
+    .ytd{gap:20px}
+  }
+</style>
+</head>
+<body><div style="position:fixed;bottom:8px;right:8px;z-index:99999;background:rgba(20,20,20,0.82);color:#fff;font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:4px 9px;border-radius:6px;pointer-events:none;opacity:0.88;letter-spacing:.01em;">Created 2026-07-09 (mtime, untracked in git) &middot; Author unknown (untracked in git)</div>
+
+<!-- PROPOSAL ribbon -->
+<div class="ribbon">
+  <b>PROPOSAL</b> — Owner Finances redesign
+  <span class="tag">WIREFRAME · NOT BUILT</span>
+</div>
+
+<!-- Owner Portal top bar -->
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">Y</div>
+    <div class="wm">
+      <div class="t1">YourCondoManager</div>
+      <div class="t2">Owner Portal</div>
+    </div>
+  </div>
+  <div class="who">
+    <div class="name">
+      <div class="n1">William Ruiz</div>
+      <div class="n2">Cherry Hill Court · 3 units</div>
+    </div>
+    <div class="av">WR</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="pagehead fade">
+    <h1>My Finances</h1>
+    <p>Your dues and payment plans across all 3 units, in one place.</p>
+  </div>
+
+  <!-- ============ HERO: PAY THIS PERIOD ============ -->
+  <div class="card hero">
+    <div class="status-row">
+      <span class="chip ok"><span class="dot"></span>You're on track</span>
+      <span class="reassure">Nothing is overdue. Here's what's due this month.</span>
+    </div>
+
+    <div class="label">Pay this period · July 2026</div>
+    <div class="amount">$4,470<span class="cents">.00</span></div>
+
+    <div class="breakdown">
+      <span class="seg"><span class="k dues"></span>Monthly dues <b>$2,970.00</b></span>
+      <span class="seg"><span class="k inst"></span>Assessment installment <b>$1,500.00</b></span>
+    </div>
+
+    <div class="cta">
+      <button class="btn btn-primary">Pay $4,470.00<span class="sub">This month · all 3 units</span></button>
+      <button class="link-quiet">Pay a different amount →</button>
+      <span class="due">Due Jul 31, 2026</span>
+    </div>
+  </div>
+
+  <!-- ============ SPECIAL ASSESSMENT = PAYMENT PLAN ============ -->
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="eyebrow">Payment plan</div>
+        <h2>Roof &amp; façade special assessment</h2>
+      </div>
+      <span class="chip ok"><span class="dot"></span>On track</span>
+    </div>
+
+    <div class="plan-note">
+      <span>◷</span> Paid over time in monthly installments — <b style="margin-left:3px">not due all at once</b>
+    </div>
+
+    <div class="plan-stats">
+      <div class="stat">
+        <div class="sk">Assessment total</div>
+        <div class="sv">$18,000.00</div>
+      </div>
+      <div class="stat">
+        <div class="sk">Paid so far</div>
+        <div class="sv">$6,000.00</div>
+      </div>
+      <div class="stat remain">
+        <div class="sk">Remaining (over time)</div>
+        <div class="sv">$12,000.00</div>
+      </div>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-top">
+        <span class="pct">33% paid</span>
+        <span class="cnt">4 of 12 installments paid</span>
+      </div>
+      <div class="bar">
+        <div class="fill"></div>
+        <div class="ticks">
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="plan-foot">
+      <div class="next">Next installment: <b>$1,500.00</b> due <b>Jul 31, 2026</b></div>
+      <span class="chip info"><span class="dot"></span>Included in "Pay this period" above</span>
+    </div>
+  </div>
+
+  <!-- ============ PER-UNIT BREAKDOWN (units as columns) ============ -->
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="eyebrow">Breakdown</div>
+        <h2>By unit</h2>
+      </div>
+    </div>
+    <p class="units-note">You own <b>3 units</b>. Here's exactly what each one owes this period — so no single total hides which unit is behind.</p>
+
+    <div class="tscroll">
+      <table class="units">
+        <thead>
+          <tr>
+            <th class="row-label"></th>
+            <th class="unit-col">Unit&nbsp;204<span class="u2">Building A</span></th>
+            <th class="unit-col">Unit&nbsp;210<span class="u2">Building A</span></th>
+            <th class="unit-col">Unit&nbsp;315<span class="u2">Building B</span></th>
+            <th class="total-col">All units<span class="u2">Combined</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th class="row-label">Monthly dues</th>
+            <td class="unit-col">$990.00</td>
+            <td class="unit-col">$990.00</td>
+            <td class="unit-col">$990.00</td>
+            <td class="total-col">$2,970.00</td>
+          </tr>
+          <tr>
+            <th class="row-label">Assessment installment</th>
+            <td class="unit-col">$500.00</td>
+            <td class="unit-col">$500.00</td>
+            <td class="unit-col">$500.00</td>
+            <td class="total-col">$1,500.00</td>
+          </tr>
+          <tr class="total-row">
+            <th class="row-label">This period total</th>
+            <td class="unit-col">$1,490.00</td>
+            <td class="unit-col">$1,490.00</td>
+            <td class="unit-col">$1,490.00</td>
+            <td class="total-col">$4,470.00</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="legend">
+      <span class="li"><span class="sw" style="background:var(--teal)"></span>Dues</span>
+      <span class="li"><span class="sw" style="background:var(--accent)"></span>Assessment installment</span>
+      <span class="li"><span class="sw" style="background:var(--overdue)"></span>Shown only if a unit is <b style="color:var(--overdue);margin-left:3px">past due</b> (none right now)</span>
+    </div>
+  </div>
+
+  <!-- ============ SECONDARY / CONTEXT ============ -->
+  <div class="grid-2">
+    <!-- This year -->
+    <div class="card soft" style="margin-bottom:0">
+      <div class="card-head" style="margin-bottom:8px">
+        <h2>This year</h2>
+      </div>
+      <div class="ytd">
+        <div>
+          <div class="yk">Paid YTD</div>
+          <div class="yv">$22,350.00</div>
+        </div>
+        <div>
+          <div class="yk">Charged YTD</div>
+          <div class="yv">$22,350.00</div>
+        </div>
+      </div>
+      <div class="context-line">
+        <span>ⓘ</span> Billing began April 2026 — you're fully current for the year.
+      </div>
+    </div>
+
+    <!-- Total obligation, context only -->
+    <div class="card soft" style="margin-bottom:0">
+      <div class="card-head" style="margin-bottom:8px">
+        <h2>Total remaining — for reference</h2>
+      </div>
+      <div class="obligation">
+        <span class="ov">$12,000.00</span>
+        <span class="chip info"><span class="dot"></span>Not due now</span>
+      </div>
+      <div class="obligation-note">
+        This is the remaining special-assessment balance across all units. It's <b>paid over time in installments</b>, not a payment due today. Your actual amount due this month is the <b>$4,470.00</b> above.
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ ACTIONS ============ -->
+  <div class="card" style="margin-top:18px">
+    <div class="card-head">
+      <div><div class="eyebrow">Manage</div><h2>Payments &amp; account</h2></div>
+    </div>
+    <div class="actions">
+      <button class="act">
+        <div class="ai">💳</div>
+        <div class="at">Make a payment</div>
+        <div class="ad">This month $4,470 · or choose full balance</div>
+      </button>
+      <button class="act">
+        <div class="ai">🔁</div>
+        <div class="at">Payment methods &amp; autopay</div>
+        <div class="ad">Cards, bank, auto-pay each installment</div>
+      </button>
+      <button class="act">
+        <div class="ai">🧾</div>
+        <div class="at">View full ledger</div>
+        <div class="ad">Every charge &amp; payment, all units</div>
+      </button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ BEFORE vs AFTER note ============ -->
+<div class="ba">
+  <div class="ba-card">
+    <h3>What changed · before → after</h3>
+    <div class="ba-grid">
+      <div class="ba-item">
+        <div class="num">01</div>
+        <h4>Lead with what's actually due</h4>
+        <div class="ba-row"><span class="lbl">Before</span><span class="was">Red "WHAT'S DUE NOW $7,414.44"</span></div>
+        <div class="ba-row"><span class="lbl">After</span><span class="now">Calm "Pay this period $4,470" = this month's dues + one installment</span></div>
+      </div>
+      <div class="ba-item">
+        <div class="num">02</div>
+        <h4>Assessment is a plan, not a balance</h4>
+        <div class="ba-row"><span class="lbl">Before</span><span class="was">Full assessment lumped into a scary total</span></div>
+        <div class="ba-row"><span class="lbl">After</span><span class="now">Progress card: 4 of 12 paid · $1,500 next · "On track"</span></div>
+      </div>
+      <div class="ba-item">
+        <div class="num">03</div>
+        <h4>Red means past-due only</h4>
+        <div class="ba-row"><span class="lbl">Before</span><span class="was">Red = on-schedule balances (reads as debt)</span></div>
+        <div class="ba-row"><span class="lbl">After</span><span class="now">Brand teal for scheduled; red reserved for genuinely overdue</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer class="meta">
+  Wireframe mockup — figures are realistic placeholders for review, not live account data · YourCondoManager Owner Portal · 2026-07-09
+</footer>
+
+</body>
+</html>
