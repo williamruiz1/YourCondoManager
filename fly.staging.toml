@@ -56,6 +56,19 @@ primary_region = "ewr"
   size = "shared-cpu-1x"
   memory = "512mb"
 
+# 2026-07-12 — the staging machines already had a `ycm_uploads` Fly volume
+# attached (out-of-band, matching prod's fly.toml) but this config never
+# declared it, so every deploy warned "volume mounted but app config does
+# not specify a volume" and then hard-failed non-interactively ("yes flag
+# must be specified when not running interactively") because flyctl refuses
+# to proceed past that drift-warning without a live TTY confirm. Declaring
+# the mount here (mirroring prod's [mounts] block) removes the drift and the
+# confirmation prompt so `flyctl deploy --remote-only` works headless, same
+# as prod.
+[mounts]
+  source = "ycm_uploads"
+  destination = "/data"
+
 [env]
   NODE_ENV = "production"
   PORT = "5000"
@@ -64,3 +77,6 @@ primary_region = "ewr"
   APP_ENV = "staging"
   OUTBOUND_SIDE_EFFECTS_DISABLED = "1"
   YCM_STAGING = "1"
+  # Mirrors prod's UPLOAD_DIR — writes land on the persistent `ycm_uploads`
+  # volume instead of the machine's ephemeral local disk.
+  UPLOAD_DIR = "/data/uploads"
