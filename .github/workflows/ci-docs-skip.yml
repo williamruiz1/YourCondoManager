@@ -1,0 +1,44 @@
+name: CI (docs-only skip-success)
+
+# WHY (founder-os#10824): ci.yml path-ignores docs (`**/*.md`, `docs/**`), so its
+# three required status checks (tsc + lint / vitest / build) NEVER run on a
+# docs-only PR → they stay "expected" (pending) forever → the PR is unmergeable
+# even with `--admin` (a skipped/absent required check counts as "still waiting",
+# not "passed"). This mirror workflow triggers on EXACTLY those docs paths and
+# reports the same three required contexts as SUCCESS, so docs-only PRs can merge.
+#
+# `security gate (npm audit + tsc)` (security.yml) has no path filter — it already
+# runs on every PR — so it is intentionally NOT mirrored here.
+#
+# Mixed PRs (code + docs): BOTH ci.yml and this workflow trigger. GitHub resolves a
+# required context by its MOST-RECENT check-run; the real ci.yml jobs take minutes
+# while these echo jobs finish in seconds, so the real result always reports last
+# and wins — a real failure is never masked by the skip-success. (Known bound,
+# documented per hardened-design discipline.) Reversible: delete this file.
+#
+# Self-hosted (free) runner per this repo's no-metered-Actions policy (see ci.yml
+# header). An echo job is trivial on the shared runner.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.md"
+      - "docs/**"
+
+jobs:
+  check:
+    name: tsc + lint
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - run: echo "docs-only change — tsc + lint not required; reporting success"
+  test:
+    name: vitest
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - run: echo "docs-only change — vitest not required; reporting success"
+  build:
+    name: build
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - run: echo "docs-only change — build not required; reporting success"
