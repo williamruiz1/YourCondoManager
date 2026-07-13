@@ -1,0 +1,34 @@
+{
+  "stateCode": "CT",
+  "stateName": "Connecticut",
+  "cluster": "B",
+  "reserve": {
+    "reserveStudyRequired": false,
+    "reserveStudyCycleYears": null,
+    "fundingFloorPercent": null,
+    "structuralInspectionRequired": false,
+    "statutoryCitation": "CGS §47-261e(a)"
+  },
+  "disclosure": {
+    "budgetMustDiscloseReserve": true,
+    "resaleCertMustDiscloseReserve": true,
+    "additionalDisclosures": [
+      "basis on which reserves are calculated and funded (budget summary)"
+    ],
+    "statutoryCitation": "CGS §47-261e(a); CGS §47-270(a)(5)"
+  },
+  "election": {
+    "noticeMinDays": null,
+    "secretBallotRequired": false,
+    "cumulativeVotingRegulated": false,
+    "statutoryCitation": null
+  },
+  "assessmentLien": {
+    "lienMinDelinquentDays": null,
+    "preLienNoticeRequired": false,
+    "lateFeeCapPercent": null,
+    "statutoryCitation": null
+  },
+  "verifiedWithCounsel": false,
+  "note": "PLACEHOLDER — cluster-B baseline scaffold data, seeded loosely from the existing server/ct-reserve-disclosure.ts disclosure-only implementation. This is a draft hypothesis, NOT a legal opinion. Every field here (including the fields left null/false) needs review by a Connecticut-licensed attorney before this rule set is used for any real compliance decision. verifiedWithCounsel MUST stay false until that review happens."
+}
