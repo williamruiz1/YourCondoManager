@@ -979,10 +979,31 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   bankTransactionId: varchar("bank_transaction_id"),
   settledAt: timestamp("settled_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // A-WEBHOOK-001/002 (founder-os#10737): the ONE canonical cross-path payment
+  // identity — normally the Stripe payment_intent id — shared across every
+  // endpoint/event that can observe the SAME underlying payment
+  // (checkout.session.completed, payment_intent.succeeded, charge.succeeded,
+  // payout.paid belt-and-suspenders, autopay's synchronous off-session charge).
+  // Populated ONLY for entryType='payment' credit writes made through
+  // `postPaymentLedgerEntry` (server/services/ledger-payment-identity.ts); NULL
+  // for reversal/adjustment rows and for legacy/non-Stripe callers that have no
+  // PI id to key on (those keep the pre-existing referenceType+referenceId
+  // check — no new protection, no regression). See the partial unique index
+  // below, which is what actually makes a cross-namespace or concurrent
+  // double-credit for the same payment_intent impossible at the DB layer.
+  paymentIdentityKey: text("payment_identity_key"),
 }, (table) => ({
   // Phase 1 (P0-1): unit-scoped statement + aging reads group by
   // (associationId, unitId, postedAt). Additive index — no column change.
   byAssocUnitPosted: index("owner_ledger_entries_assoc_unit_posted_idx").on(table.associationId, table.unitId, table.postedAt),
+  // A-WEBHOOK-001/002: ONE payment (associationId + payment_intent id) can post
+  // AT MOST ONE 'payment' ledger row, no matter which of the three disjoint
+  // write paths (payment-webhook / autopay_payment_transaction / stripe_charge)
+  // gets there first. Partial (WHERE paymentIdentityKey IS NOT NULL) so legacy
+  // rows with no key are never compared against each other.
+  uniquePaymentIdentity: uniqueIndex("owner_ledger_entries_payment_identity_uq")
+    .on(table.associationId, table.entryType, table.paymentIdentityKey)
+    .where(sql`${table.paymentIdentityKey} is not null`),
 }));
 
 export const paymentPlanStatusEnum = pgEnum("payment_plan_status", ["active", "completed", "defaulted", "cancelled"]);

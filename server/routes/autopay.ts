@@ -23,7 +23,6 @@ import {
   autopayEnrollments,
   autopayRuns,
   insertAutopayEnrollmentSchema,
-  ownerLedgerEntries,
   paymentTransactions,
   persons,
   savedPaymentMethods,
@@ -40,6 +39,7 @@ import { markTransactionForRetry, getDelinquencySettings } from "../services/ret
 import { resolveConnectChargeRouting } from "../services/stripe-connect-resolver";
 import { computeApplicationFeeCents } from "../services/stripe-charge-metadata";
 import { maybeSyncAssociationGl } from "../services/gl/runtime-sync";
+import { postPaymentLedgerEntry } from "../services/ledger-payment-identity";
 
 // ── Re-usable types (mirrored from routes.ts) ────────────────────────────────
 // `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
@@ -267,24 +267,31 @@ export async function runAutopayCollectionForAssociation(
         failureReason: chargeResult.failureReason,
       });
 
-      // Create ledger entry only if immediately succeeded
+      // Create ledger entry only if immediately succeeded.
+      // A-WEBHOOK-001/002 (founder-os#10737): routed through the ONE canonical
+      // payment-ledger writer, keyed on the Stripe payment_intent id
+      // (chargeResult.intentId — the SAME value the webhook confirmation for
+      // this same charge later resolves in server/routes.ts, and the SAME
+      // value the per-HOA payment-webhook path would resolve for this PI).
+      // Closes both the cross-path collision (this synchronous write racing
+      // — or being duplicated by — the webhook's own ledger write for the
+      // same payment_intent) and any concurrent-delivery race, via the DB
+      // unique index rather than a check-then-insert.
       let ledgerEntryId: string | null = null;
       if (chargeResult.status === "succeeded") {
-        const [entry] = await db
-          .insert(ownerLedgerEntries)
-          .values({
-            associationId,
-            unitId: enrollment.unitId,
-            personId: enrollment.personId,
-            entryType: "payment",
-            amount: -chargeAmount,
-            postedAt: now,
-            description: enrollment.description || "Autopay HOA dues",
-            referenceType: "autopay_payment_transaction",
-            referenceId: txn.id,
-          })
-          .returning();
-        ledgerEntryId = entry.id;
+        const ledgerResult = await postPaymentLedgerEntry({
+          associationId,
+          unitId: enrollment.unitId,
+          personId: enrollment.personId,
+          amount: -chargeAmount,
+          postedAt: now,
+          description: enrollment.description || "Autopay HOA dues",
+          referenceType: "autopay_payment_transaction",
+          referenceId: txn.id,
+          paymentIdentityKey: chargeResult.intentId?.trim() || null,
+          source: "autopay-sync",
+        });
+        ledgerEntryId = ledgerResult.entry?.id ?? null;
 
         // YCM Financial Core — dues-to-GL wiring. The confirmed autopay charge is
         // now in the owner ledger (system of record). Post it into the PARALLEL

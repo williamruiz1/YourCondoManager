@@ -390,13 +390,19 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
         case "charge.succeeded": {
           // Gap C — write the ledger entry immediately (don't wait for payout).
           const charge = event.data?.object as
-            | { id?: string; amount?: number; metadata?: Record<string, string> | null }
+            | { id?: string; amount?: number; metadata?: Record<string, string> | null; payment_intent?: string | null }
             | undefined;
           if (!charge?.id) {
             return res.status(400).json({ message: "Event missing charge payload" });
           }
           const result = await writeLedgerEntryForCharge({
             chargeId: charge.id,
+            // A-WEBHOOK-001: the payment_intent id is the canonical cross-path
+            // identity shared with the per-HOA payment-webhook / autopay write
+            // paths — passing it through is what makes this endpoint's write
+            // collide correctly with a checkout.session.completed /
+            // payment_intent.succeeded credit for the SAME payment.
+            paymentIntentId: charge.payment_intent ?? null,
             amountCents: typeof charge.amount === "number" ? charge.amount : 0,
             metadata: charge.metadata,
             source: "charge.succeeded",

@@ -21,6 +21,7 @@ type DbOrTx =
 import { isPortalAccessIdleExpired } from "./portal-expiry";
 import { sendPlatformEmail } from "./email-provider";
 import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
+import { postPaymentLedgerEntry } from "./services/ledger-payment-identity";
 import {
   agentActions,
   adminAssociationScopes,
@@ -8456,20 +8457,51 @@ export class DatabaseStorage implements IStorage {
       };
     }
 
-    const [ownerLedgerEntry] = await db
-      .insert(ownerLedgerEntries)
-      .values({
-        associationId: payload.associationId,
-        unitId,
-        personId,
-        entryType: "payment",
-        amount: Number((-Math.abs(amount)).toFixed(2)),
-        postedAt: new Date(),
-        description: payload.eventType ? `Payment webhook (${payload.eventType})` : "Payment webhook",
-        referenceType: "payment-webhook",
-        referenceId: receivedEvent.id,
-      })
-      .returning();
+    // A-WEBHOOK-001/002 (founder-os#10737): route through the ONE canonical
+    // payment-ledger writer, keyed on the Stripe payment_intent id
+    // (payload.gatewayReference — resolved by normalizeStripeWebhookPayload to
+    // object.payment_intent / object.id, the SAME value for
+    // checkout.session.completed AND payment_intent.succeeded for one PI, and
+    // shared with the autopay / stripe_charge write paths). This is what makes
+    // a payment that surfaces through more than one event/endpoint post
+    // EXACTLY ONCE, no matter which arrives first — the DB unique index
+    // enforces it, not a check-then-insert race. Legacy/non-Stripe callers
+    // with no gatewayReference fall back to the pre-existing
+    // (referenceType, referenceId) check — unchanged behavior for that case.
+    const ledgerResult = await postPaymentLedgerEntry({
+      associationId: payload.associationId,
+      unitId,
+      personId,
+      amount: Number((-Math.abs(amount)).toFixed(2)),
+      postedAt: new Date(),
+      description: payload.eventType ? `Payment webhook (${payload.eventType})` : "Payment webhook",
+      referenceType: "payment-webhook",
+      referenceId: receivedEvent.id,
+      paymentIdentityKey: payload.gatewayReference?.trim() || null,
+      source: "payment-webhook",
+    });
+    const ownerLedgerEntry = ledgerResult.entry;
+    if (!ownerLedgerEntry) {
+      // Should be unreachable (postPaymentLedgerEntry always returns an entry
+      // — either the one it just created or the pre-existing one it collided
+      // with) but guard defensively rather than crash the webhook handler.
+      const [failedEvent] = await db
+        .update(paymentWebhookEvents)
+        .set({
+          status: "failed",
+          errorMessage: "Could not resolve owner ledger entry after payment-identity write.",
+          processedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(paymentWebhookEvents.id, receivedEvent.id))
+        .returning();
+      return {
+        duplicate: false,
+        event: failedEvent,
+        ownerLedgerEntry: null,
+        message: "Payment event could not be posted to owner ledger",
+      };
+    }
 
     if (link && link.status === "active") {
       await db
@@ -8504,7 +8536,9 @@ export class DatabaseStorage implements IStorage {
       duplicate: false,
       event: processedEvent,
       ownerLedgerEntry,
-      message: "Payment webhook processed and owner ledger updated",
+      message: ledgerResult.created
+        ? "Payment webhook processed and owner ledger updated"
+        : "Payment webhook processed; payment was already recorded via another event/endpoint for the same payment_intent (A-WEBHOOK-001 dedup) — no duplicate credit posted",
     };
   }
 

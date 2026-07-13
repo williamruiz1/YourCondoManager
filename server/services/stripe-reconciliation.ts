@@ -34,6 +34,7 @@ import {
   type StripePayoutItem,
 } from "../../shared/schema";
 import { log } from "../logger";
+import { postPaymentLedgerEntry } from "./ledger-payment-identity";
 import {
   listPayoutBalanceTransactions,
   retrievePayout,
@@ -123,6 +124,16 @@ export interface WriteReversalLedgerEntryInput {
 
 export interface WriteLedgerEntryInput {
   chargeId: string;
+  /**
+   * A-WEBHOOK-001 (founder-os#10737): the Stripe payment_intent id backing
+   * this charge, when known — the canonical cross-path identity shared with
+   * the per-HOA payment-webhook and autopay write paths. When omitted/absent
+   * (rare — legacy direct charges with no PaymentIntent), falls back to
+   * `chargeId`, which still protects THIS charge from a concurrent duplicate
+   * (A-WEBHOOK-002) but cannot cross-collide with a payment-webhook/autopay
+   * write for the same payment (those key on the PI id, not the charge id).
+   */
+  paymentIntentId?: string | null;
   amountCents: number;
   metadata: Record<string, string> | null | undefined;
   /** Where this write originated, for the audit log. */
@@ -135,8 +146,18 @@ export interface WriteLedgerEntryInput {
  * Idempotently write an `owner_ledger_entries` "payment" row for a succeeded
  * Stripe charge (Gap C fix). Payments are stored as NEGATIVE amounts (they
  * reduce the owner's outstanding balance), mirroring the existing autopay
- * ledger-write at server/routes.ts. Idempotency key:
- * (referenceType='stripe_charge', referenceId=chargeId).
+ * ledger-write at server/routes.ts.
+ *
+ * TWO layers of idempotency:
+ *   1. (referenceType='stripe_charge', referenceId=chargeId) — the original
+ *      per-charge check; a plain webhook re-delivery of THIS charge short-
+ *      circuits here exactly as before (skip reason 'already_exists').
+ *   2. A-WEBHOOK-001/002: the payment_intent-keyed canonical write via
+ *      `postPaymentLedgerEntry` — closes the cross-path collision (this SAME
+ *      payment_intent already credited via `payment-webhook` or
+ *      `autopay_payment_transaction`) AND the concurrency race (two
+ *      deliveries of this charge racing each other), both enforced by the DB
+ *      unique index, not a check-then-insert race.
  *
  * Per spec scope: "every webhook-driven ledger write logs source +
  * idempotency key + timestamp".
@@ -162,7 +183,8 @@ export async function writeLedgerEntryForCharge(
     return { created: false, ledgerEntryId: null, skipped: "missing_metadata" };
   }
 
-  // Idempotency: a prior charge.succeeded (or payout.paid) may have written it.
+  // Layer 1 — exact retry of THIS charge (webhook re-delivery). Preserves the
+  // pre-existing per-charge idempotency check + skip-reason unchanged.
   const existing = await db
     .select({ id: ownerLedgerEntries.id })
     .from(ownerLedgerEntries)
@@ -178,26 +200,35 @@ export async function writeLedgerEntryForCharge(
     return { created: false, ledgerEntryId: existing[0].id, skipped: "already_exists" };
   }
 
-  const [created] = await db
-    .insert(ownerLedgerEntries)
-    .values({
-      associationId: meta.associationId,
-      unitId: meta.unitId,
-      personId: meta.personId,
-      entryType: "payment",
-      amount: -(input.amountCents / 100),
-      postedAt: input.postedAt ?? new Date(),
-      description: input.description?.trim() || "Stripe payment",
-      referenceType: CHARGE_REFERENCE_TYPE,
-      referenceId: input.chargeId,
-    })
-    .returning({ id: ownerLedgerEntries.id });
+  // Layer 2 — A-WEBHOOK-001/002: the canonical, DB-enforced cross-path write.
+  const paymentIdentityKey = input.paymentIntentId?.trim() || input.chargeId;
+  const amount = -(input.amountCents / 100);
+  const result = await postPaymentLedgerEntry({
+    associationId: meta.associationId,
+    unitId: meta.unitId,
+    personId: meta.personId,
+    amount,
+    postedAt: input.postedAt,
+    description: input.description?.trim() || "Stripe payment",
+    referenceType: CHARGE_REFERENCE_TYPE,
+    referenceId: input.chargeId,
+    paymentIdentityKey,
+    source: input.source,
+  });
+
+  if (!result.created) {
+    log(
+      `[${input.source}] skip ledger write — payment already recorded via another path key=${idempotencyKey} identity=${paymentIdentityKey} existing=${result.entry?.id ?? "unknown"}`,
+      AUDIT_SOURCE,
+    );
+    return { created: false, ledgerEntryId: result.entry?.id ?? null, skipped: "already_exists" };
+  }
 
   log(
-    `[${input.source}] wrote ledger entry id=${created.id} key=${idempotencyKey} amount=${-(input.amountCents / 100)} at=${new Date().toISOString()}`,
+    `[${input.source}] wrote ledger entry id=${result.entry!.id} key=${idempotencyKey} identity=${paymentIdentityKey} amount=${amount} at=${new Date().toISOString()}`,
     AUDIT_SOURCE,
   );
-  return { created: true, ledgerEntryId: created.id, skipped: undefined };
+  return { created: true, ledgerEntryId: result.entry!.id, skipped: undefined };
 }
 
 /**
@@ -408,9 +439,13 @@ export async function reconcilePayout(input: ReconcilePayoutInput): Promise<Reco
     const meta = extractChargeMetadata(charge?.metadata);
 
     // Gap C / belt-and-suspenders: ensure the ledger entry exists. Usually
-    // charge.succeeded already wrote it; this is idempotent.
+    // charge.succeeded already wrote it; this is idempotent — A-WEBHOOK-001/002
+    // dedup keys on the payment_intent id, so this belt-and-suspenders call
+    // for a charge already credited by charge.succeeded (or by the per-HOA
+    // payment-webhook / autopay path for the same PI) is always a safe no-op.
     const ledgerResult = await writeLedgerEntryForCharge({
       chargeId,
+      paymentIntentId: charge?.payment_intent ?? null,
       amountCents: txn.amount,
       metadata: charge?.metadata,
       source: "payout.paid",
