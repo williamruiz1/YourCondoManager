@@ -6,6 +6,18 @@ import path from "path";
 import { promisify } from "util";
 import { inflateRawSync } from "zlib";
 import { db } from "./db";
+
+/**
+ * A drizzle executor: either the base `db` handle or a `db.transaction` handle.
+ * DATA-B-009 — lets a single-row write helper participate in a caller's atomic
+ * transaction (so a multi-row money write commits or rolls back as a unit)
+ * without duplicating the write. Defaults to `db` so existing single callers
+ * are unaffected.
+ */
+type DbOrTx =
+  | typeof db
+  | Parameters<Parameters<(typeof db)["transaction"]>[0]>[0];
+
 import { isPortalAccessIdleExpired } from "./portal-expiry";
 import { sendPlatformEmail } from "./email-provider";
 import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
@@ -8594,8 +8606,11 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(ownerLedgerEntries.postedAt));
   }
 
-  async createOwnerLedgerEntry(data: InsertOwnerLedgerEntry): Promise<OwnerLedgerEntry> {
-    const [result] = await db.insert(ownerLedgerEntries).values(data).returning();
+  async createOwnerLedgerEntry(
+    data: InsertOwnerLedgerEntry,
+    executor: DbOrTx = db,
+  ): Promise<OwnerLedgerEntry> {
+    const [result] = await executor.insert(ownerLedgerEntries).values(data).returning();
     return result;
   }
 
@@ -11154,6 +11169,10 @@ export class DatabaseStorage implements IStorage {
     if (!record.associationId) {
       return this.emptyImportSummary("owner-ledger", "Association is required for bank statement import.", dryRun);
     }
+    // Capture the narrowed (non-null) associationId: the transaction closure
+    // below is a nested function, so TS control-flow narrowing from the guard
+    // above does not persist into it.
+    const associationId = record.associationId;
     const canonicalTransactions = extractCanonicalBankTransactions(record.payloadJson);
     const { transactions, invalidCount } = normalizeBankStatementTransactions(
       canonicalTransactions.length > 0 ? { transactions: canonicalTransactions } : record.payloadJson,
@@ -11176,6 +11195,12 @@ export class DatabaseStorage implements IStorage {
     let skippedRows = invalidCount;
     const details: AiIngestionImportSummary["details"] = [];
 
+    // DATA-B-009: import the whole statement inside ONE atomic transaction so a
+    // mid-loop failure rolls back EVERY ledger row (no partially-imported
+    // statement). Per-row `referenceId` idempotency (below) still makes a
+    // re-run after a rolled-back import safe. Reads + writes both go through
+    // `tx` so the dedup check sees this batch's own in-flight inserts.
+    await db.transaction(async (tx) => {
     for (let index = 0; index < transactions.length; index += 1) {
       const txn = transactions[index];
       if (txn.amount == null || !txn.postedAt) {
@@ -11255,7 +11280,7 @@ export class DatabaseStorage implements IStorage {
       }
 
       const referenceId = `${record.id}:${index}`;
-      const [existing] = await db
+      const [existing] = await tx
         .select({ id: ownerLedgerEntries.id })
         .from(ownerLedgerEntries)
         .where(and(
@@ -11275,7 +11300,7 @@ export class DatabaseStorage implements IStorage {
 
       if (!dryRun) {
         const created = await this.createOwnerLedgerEntry({
-          associationId: record.associationId,
+          associationId,
           unitId: unit.id,
           personId: person.id,
           entryType: txn.entryType,
@@ -11284,7 +11309,7 @@ export class DatabaseStorage implements IStorage {
           description: txn.description ?? "Imported from bank statement",
           referenceType: "ai-bank-statement",
           referenceId,
-        });
+        }, tx);
         createdOwnerLedgerEntryIds.push(created.id);
       }
       createdOwnerLedgerEntries += 1;
@@ -11305,6 +11330,7 @@ export class DatabaseStorage implements IStorage {
           },
         });
     }
+    });
 
     const imported = createdOwnerLedgerEntries > 0;
     return {

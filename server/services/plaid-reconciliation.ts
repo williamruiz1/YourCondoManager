@@ -26,7 +26,7 @@
  * If no exact match: the credit is left untouched and surfaced as "pending
  * reconciliation" in the admin UI for manual matching.
  */
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../db";
 import {
   bankTransactions,
@@ -35,6 +35,38 @@ import {
 } from "@shared/schema";
 
 const MATCH_DATE_WINDOW_DAYS = 3;
+
+/**
+ * Bank-credit ids that are ALREADY consumed by this ledger-reconciliation
+ * pipeline — i.e. some owner-ledger entry already links back to them via
+ * `bankTransactionId`. A-RECON-004: `applyMatch` writes the link on the LEDGER
+ * side but the matcher's credit query only excluded credits reconciled to a
+ * *payment_transaction* (`reconciledToPaymentTransactionId`), never the
+ * ledger-linked ones. So a matched credit stayed "unmatched" in the matcher's
+ * own input and could settle a SECOND same-amount entry on the next run
+ * (one deposit → two settled intents). We exclude any already-linked credit so
+ * a consumed credit is never re-evaluated. The existing ledger link IS the
+ * consumed marker — no schema change / denormalized state to keep in sync, and
+ * it cannot alter correct existing behavior (only excludes already-settled
+ * credits). NOTE: `reconciledToPaymentTransactionId` is an FK to
+ * `payment_transactions.id` and MUST NOT be repurposed for a ledger-entry id.
+ */
+async function consumedCreditIds(associationId: string): Promise<Set<string>> {
+  const linked = await db
+    .select({ bankTransactionId: ownerLedgerEntries.bankTransactionId })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        isNotNull(ownerLedgerEntries.bankTransactionId),
+      ),
+    );
+  return new Set(
+    linked
+      .map((row) => row.bankTransactionId)
+      .filter((id): id is string => id != null),
+  );
+}
 
 export type ReconciliationOutcome = {
   bankTransactionId: string;
@@ -95,13 +127,18 @@ export async function reconcileBankTransactions(
     )
     .orderBy(asc(ownerLedgerEntries.createdAt));
 
+  // 2b. A-RECON-004: drop credits already consumed by a prior ledger match so a
+  //     single deposit can never settle a second entry on a later run.
+  const consumed = await consumedCreditIds(associationId);
+  const availableCredits = unmatchedCredits.filter((c) => !consumed.has(c.id));
+
   const matched: ReconciliationOutcome[] = [];
   const usedEntryIds = new Set<string>();
   const matchedCreditIds = new Set<string>();
 
   // 3. Greedy match: for each credit, find best-fitting pending entry by
   //    smallest |dateDelta| (cap at MATCH_DATE_WINDOW_DAYS).
-  for (const credit of unmatchedCredits) {
+  for (const credit of availableCredits) {
     if (!isCredit(credit)) continue;
     const creditAbsCents = Math.abs(credit.amountCents);
     const creditDate = new Date(credit.date);
@@ -147,7 +184,7 @@ export async function reconcileBankTransactions(
 
   return {
     matched,
-    unmatchedCreditIds: unmatchedCredits
+    unmatchedCreditIds: availableCredits
       .filter((c) => isCredit(c) && !matchedCreditIds.has(c.id))
       .map((c) => c.id),
     unmatchedLedgerEntryIds: pendingEntries
@@ -167,18 +204,25 @@ async function applyMatch(input: {
   associationId: string;
 }): Promise<void> {
   const now = new Date();
-  await db
-    .update(ownerLedgerEntries)
-    .set({
-      bankTransactionId: input.bankTransactionId,
-      settledAt: now,
-    })
-    .where(
-      and(
-        eq(ownerLedgerEntries.id, input.ledgerEntryId),
-        eq(ownerLedgerEntries.associationId, input.associationId),
-      ),
-    );
+  // DATA-B-009: wrap the match write in an atomic transaction. Today this is a
+  // single ledger-side update; the transaction boundary is the correct, load-
+  // bearing contract so any future write added to a match (e.g. a bank-side
+  // consumed marker) commits or rolls back with the ledger link — never
+  // half-applied.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(ownerLedgerEntries)
+      .set({
+        bankTransactionId: input.bankTransactionId,
+        settledAt: now,
+      })
+      .where(
+        and(
+          eq(ownerLedgerEntries.id, input.ledgerEntryId),
+          eq(ownerLedgerEntries.associationId, input.associationId),
+        ),
+      );
+  });
 }
 
 /**
@@ -213,6 +257,27 @@ export async function manualMatchBankTransaction(input: {
   }
   if (!isCredit(credit)) {
     return { ok: false, reason: "Bank transaction is a debit, not a credit", code: "NOT_A_CREDIT" };
+  }
+
+  // A-RECON-004: reject a credit already linked to a ledger entry so a manual
+  // match can't double-settle a deposit the auto-matcher (or an earlier manual
+  // match) already consumed.
+  const [alreadyLinked] = await db
+    .select({ id: ownerLedgerEntries.id })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.associationId, input.associationId),
+        eq(ownerLedgerEntries.bankTransactionId, input.bankTransactionId),
+      ),
+    )
+    .limit(1);
+  if (alreadyLinked) {
+    return {
+      ok: false,
+      reason: "Bank transaction is already reconciled to a ledger entry",
+      code: "BANK_TX_ALREADY_CONSUMED",
+    };
   }
 
   const [entry] = await db
@@ -282,7 +347,12 @@ export async function listPendingReconciliation(
     )
     .orderBy(asc(bankTransactions.date));
 
-  const unmatchedCredits = credits.filter(isCredit);
+  // A-RECON-004: hide credits already consumed by a ledger match so the admin
+  // "Pending reconciliation" UI never offers a settled credit for re-matching.
+  const consumed = await consumedCreditIds(associationId);
+  const unmatchedCredits = credits.filter(
+    (c) => isCredit(c) && !consumed.has(c.id),
+  );
 
   const pending = await db
     .select({

@@ -70,6 +70,9 @@ const state = vi.hoisted(() => ({
     description?: string | null;
   }>,
   updates: [] as UpdateCall[],
+  // When true, the NEXT update() throws before mutating — models a DB failure
+  // for the applyMatch-atomicity test (DATA-B-009). Self-resets.
+  failNextUpdate: false,
 }));
 
 vi.mock("../server/db", () => {
@@ -110,6 +113,12 @@ vi.mock("../server/db", () => {
     update: (_table: unknown) => ({
       set: (patch: { bankTransactionId: string; settledAt: Date }) => ({
         where: (filter: (row: any) => boolean) => {
+          // Model a DB failure BEFORE any mutation, so a rolled-back match
+          // leaves zero partial writes (applyMatch atomicity, DATA-B-009).
+          if (state.failNextUpdate) {
+            state.failNextUpdate = false;
+            return Promise.reject(new Error("simulated DB failure mid-match"));
+          }
           const targets = state.entries.filter(filter);
           for (const t of targets) {
             state.updates.push({
@@ -125,6 +134,10 @@ vi.mock("../server/db", () => {
         },
       }),
     }),
+    // Atomic boundary: run the callback with the same fake handle. A throw
+    // inside propagates (a real tx rolls back; our update() mock only mutates
+    // on the success path, so nothing is left half-applied).
+    transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(fakeDb),
   };
 
   return { db: fakeDb };
@@ -137,6 +150,8 @@ vi.mock("drizzle-orm", async (orig) => {
     eq: (col: any, value: any) => (row: any) => row[col.__testCol] === value,
     isNull: (col: any) => (row: any) =>
       row[col.__testCol] === null || row[col.__testCol] === undefined,
+    isNotNull: (col: any) => (row: any) =>
+      row[col.__testCol] !== null && row[col.__testCol] !== undefined,
     and: (...preds: Array<(r: any) => boolean>) => (row: any) =>
       preds.every((p) => p(row)),
     asc: (_col: any) => null,
@@ -205,6 +220,7 @@ beforeEach(() => {
   state.credits = [];
   state.entries = [];
   state.updates = [];
+  state.failNextUpdate = false;
 });
 
 describe("Issue #448 — Plaid bank-tx reconciliation", () => {
@@ -384,5 +400,96 @@ describe("Issue #448 — Plaid bank-tx reconciliation", () => {
 
     expect(r.matched).toHaveLength(0);
     expect(state.updates).toHaveLength(0);
+  });
+});
+
+describe("A-RECON-004 — a consumed credit cannot double-settle", () => {
+  it("excludes a credit already linked to a ledger entry from the next run", async () => {
+    // btx-A already settled ole-settled; a second same-amount entry is pending.
+    // Pre-fix: btx-A (reconciledToPaymentTransactionId=null) was re-fetched and
+    // matched to ole-pending → one deposit settling two intents. Post-fix: the
+    // ledger link marks btx-A consumed, so it is never re-evaluated.
+    state.credits = [credit({ id: "btx-A", amountCents: -25000, date: new Date("2026-05-10") })];
+    state.entries = [
+      entry({ id: "ole-settled", amount: -250, bankTransactionId: "btx-A", settledAt: new Date("2026-05-09") }),
+      entry({ id: "ole-pending", amount: -250, createdAt: new Date("2026-05-10") }),
+    ];
+
+    const r = await reconcileBankTransactions(ASSOC_A);
+
+    expect(r.matched).toHaveLength(0);
+    expect(state.updates).toHaveLength(0);
+    expect(r.unmatchedLedgerEntryIds).toEqual(["ole-pending"]);
+    expect(r.unmatchedCreditIds).toHaveLength(0); // consumed, not "unmatched"
+  });
+
+  it("two equal-amount pending entries + one credit → only ONE settled, and a re-run never settles the second", async () => {
+    state.credits = [credit({ id: "btx-A", amountCents: -25000, date: new Date("2026-05-10") })];
+    state.entries = [
+      entry({ id: "ole-X", amount: -250, createdAt: new Date("2026-05-10") }),
+      entry({ id: "ole-Y", amount: -250, createdAt: new Date("2026-05-10") }),
+    ];
+
+    // Run 1 — exactly one entry settles; the other stays pending.
+    const run1 = await reconcileBankTransactions(ASSOC_A);
+    expect(run1.matched).toHaveLength(1);
+    expect(state.updates).toHaveLength(1);
+    const settledFirst = run1.matched[0].ledgerEntryId;
+    expect(["ole-X", "ole-Y"]).toContain(settledFirst);
+
+    // Run 2 — the credit is now consumed (a ledger entry links it); the second
+    // equal-amount entry must NOT be settled by the same deposit.
+    const run2 = await reconcileBankTransactions(ASSOC_A);
+    expect(run2.matched).toHaveLength(0);
+    expect(state.updates).toHaveLength(1); // still just the run-1 write
+  });
+
+  it("applyMatch is atomic — a mid-match DB failure leaves zero partial writes", async () => {
+    state.credits = [credit({ id: "btx-A", amountCents: -25000, date: new Date("2026-05-10") })];
+    state.entries = [entry({ id: "ole-A", amount: -250, createdAt: new Date("2026-05-10") })];
+    state.failNextUpdate = true;
+
+    await expect(reconcileBankTransactions(ASSOC_A)).rejects.toThrow(/simulated DB failure/);
+    expect(state.updates).toHaveLength(0);
+    // The ledger entry was never linked — no half-applied match.
+    expect(state.entries[0].bankTransactionId).toBeNull();
+    expect(state.entries[0].settledAt).toBeNull();
+  });
+
+  it("manualMatchBankTransaction rejects a credit already consumed by a ledger link", async () => {
+    state.credits = [credit({ id: "btx-A", amountCents: -25000 })];
+    state.entries = [
+      entry({ id: "ole-settled", amount: -250, bankTransactionId: "btx-A", settledAt: new Date("2026-05-09") }),
+      entry({ id: "ole-target", amount: -250 }),
+    ];
+
+    const r = await manualMatchBankTransaction({
+      associationId: ASSOC_A,
+      bankTransactionId: "btx-A",
+      ledgerEntryId: "ole-target",
+    });
+
+    expect(r.ok).toBe(false);
+    if (r.ok === false) {
+      expect(r.code).toBe("BANK_TX_ALREADY_CONSUMED");
+    }
+    expect(state.updates).toHaveLength(0);
+  });
+
+  it("listPendingReconciliation hides a credit already consumed by a ledger match", async () => {
+    state.credits = [
+      credit({ id: "btx-consumed", amountCents: -25000 }),
+      credit({ id: "btx-open", amountCents: -25000 }),
+    ];
+    state.entries = [
+      entry({ id: "ole-links-consumed", amount: -250, bankTransactionId: "btx-consumed", settledAt: new Date("2026-05-09") }),
+      entry({ id: "ole-pending", amount: -250 }),
+    ];
+
+    const pending = await listPendingReconciliation(ASSOC_A);
+
+    const ids = pending.unmatchedCredits.map((c) => c.id);
+    expect(ids).toContain("btx-open");
+    expect(ids).not.toContain("btx-consumed");
   });
 });
