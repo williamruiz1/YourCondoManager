@@ -10,6 +10,7 @@ import {
   communityAnnouncements,
   budgets, budgetVersions, budgetLines,
   ownerLedgerEntries,
+  ownerBalanceConfidence,
   lateFeeRules, lateFeeEvents,
   residentFeedbacks,
   onboardingInvites,
@@ -4126,6 +4127,148 @@ export async function seedDatabase() {
     } else {
       log("[seed] chc opening balance entries :: already exist, skipping", "seed");
     }
+  });
+
+
+  await runBlock("chc-may9-reconcile-11196", async () => {
+    // ── CHC May-9-2026 reconcile + confidence tiers (founder-os#11196) ─────────
+    //
+    // PROTECTED, FOUNDER-SUPERVISED financial data. This block RECONCILES the
+    // CHC opening assessment balances from the earlier 2026-05-08 Master-Tracker
+    // snapshot (seeded above) to the RATIFIED 2026-05-09 Luz-Miranda association
+    // snapshot (research #832 §5), and attaches per-unit confidence tiers + the
+    // documented 1419/Tillman dispute + audit provenance into the additive
+    // `owner_balance_confidence` table.
+    //
+    // GATED OFF BY DEFAULT (CHC_MAY9_RECONCILE !== "1"): a normal prod seed does
+    // NOT change any real balance — the reconcile only runs when William
+    // consciously enables it (dev review, then the deliberate live deploy).
+    // Fail-safe: the default (flag unset) leaves the seed exactly as before.
+    // Idempotent: amount updates set the same value on re-run; confidence rows
+    // upsert on (unit_id, category).
+    if (process.env.CHC_MAY9_RECONCILE !== "1") {
+      log("[seed] chc may-9 reconcile :: skipped (set CHC_MAY9_RECONCILE=1 to apply — founder-os#11196)", "seed");
+      return;
+    }
+
+    const SRC = "founder-os#832";
+    const PREP = "Luz Miranda";
+    const AS_OF = new Date("2026-05-09T00:00:00Z");
+    const DESC_ASSESS = "Imported balance — driveway assessment as of 2026-05-09 (research #832 §5, prepared by Luz Miranda)";
+
+    // Per-unit ratified May-9 §5 state. `assessBalId` = the existing chbal002
+    // assessment ledger row to reconcile (null = $0 paid-off, no ledger row).
+    type Row = {
+      code: string; unitId: string; assessBalId: string | null;
+      assess: number; aTier: "high" | "medium" | "low" | "disputed";
+      dues: number; dTier: "high" | "medium" | "low" | "disputed";
+      dispute?: number;
+    };
+    const CHC_MAY9: Row[] = [
+      { code: "1415-A", unitId: "7adb3521-845b-41de-8054-3281ddfc0f3c", assessBalId: "chbal002-0000-4000-8000-000000000001", assess: 1369.05, aTier: "high",     dues: 0,      dTier: "high" },
+      { code: "1415-B", unitId: "909ed4e8-fb53-49f8-aecf-5b56c10e1e30", assessBalId: "chbal002-0000-4000-8000-000000000002", assess: 1321.86, aTier: "high",     dues: 560,    dTier: "high" },
+      { code: "1415-C", unitId: "341b2050-28cf-4d3d-bc44-ef5a0f6584d9", assessBalId: "chbal002-0000-4000-8000-000000000003", assess: 1218.17, aTier: "high",     dues: 0,      dTier: "high" },
+      { code: "1417-A", unitId: "34575428-ea77-4013-bd0f-593e0c7dbbbb", assessBalId: null,                                     assess: 0,       aTier: "high",     dues: 280,    dTier: "high" },
+      { code: "1417-B", unitId: "b1f60b15-3cec-4cca-8c1c-0a0ba7bf4d7f", assessBalId: "chbal002-0000-4000-8000-000000000004", assess: 1016.24, aTier: "high",     dues: 280,    dTier: "high" },
+      { code: "1417-C", unitId: "a5b46109-1514-4207-9ed3-2b587ead617f", assessBalId: null,                                     assess: 0,       aTier: "high",     dues: 0,      dTier: "high" },
+      { code: "1417-D", unitId: "978bacef-824f-471e-80ea-891a8eaa01f8", assessBalId: null,                                     assess: 0,       aTier: "high",     dues: 560,    dTier: "high" },
+      { code: "1417-E", unitId: "3b5e2a2f-81cc-4199-9333-858c8f0fca9c", assessBalId: "chbal002-0000-4000-8000-000000000005", assess: 1466.52, aTier: "high",     dues: 415.70, dTier: "high" },
+      // William's units — LOW / under-review (variance unresolved; §6 OQ, out of scope to resolve).
+      { code: "1417-F", unitId: "8b029a2d-c7e4-4cb1-ad82-9f9829877208", assessBalId: "chbal002-0000-4000-8000-000000000006", assess: 1525.42, aTier: "low",      dues: 0,      dTier: "high" },
+      { code: "1417-G", unitId: "91e77ac7-b0dc-4bab-a169-f167b20e5cce", assessBalId: null,                                     assess: 0,       aTier: "high",     dues: -0.06,  dTier: "high" },
+      // 1419/Tillman — DISPUTED, $606.86 opening-balance gap (board-only).
+      { code: "1419",   unitId: "a882cbbb-1061-4764-8b2b-d9398e2ccedb", assessBalId: "chbal002-0000-4000-8000-000000000007", assess: 1368.44, aTier: "disputed", dues: 280,    dTier: "high", dispute: 606.86 },
+      { code: "1421-A", unitId: "bfa54c14-9fcd-4ed4-a810-61f193aa7d4b", assessBalId: "chbal002-0000-4000-8000-000000000008", assess: 1291.70, aTier: "medium",   dues: 0,      dTier: "high" },
+      { code: "1421-B", unitId: "96696dfe-9feb-439a-ba29-88b79c5a74fd", assessBalId: "chbal002-0000-4000-8000-000000000009", assess: 2121.77, aTier: "low",      dues: 0,      dTier: "high" },
+      { code: "1421-C", unitId: "16795e0e-2a66-4a5a-9977-0d93e7790c6e", assessBalId: "chbal002-0000-4000-8000-000000000010", assess: 1971.42, aTier: "low",      dues: 0,      dTier: "high" },
+      { code: "1421-D", unitId: "f5d74705-ef3d-439d-bf89-a2c1c2a17f34", assessBalId: "chbal002-0000-4000-8000-000000000011", assess: 1061.71, aTier: "high",     dues: 0,      dTier: "high" },
+      { code: "1421-E", unitId: "3d308aff-6712-4628-b812-e247c38ab92b", assessBalId: "chbal002-0000-4000-8000-000000000012", assess: 1021.48, aTier: "medium",   dues: 0,      dTier: "high" },
+      { code: "1421-F", unitId: "968ed680-252a-4be9-ae77-9312e8a5a150", assessBalId: null,                                     assess: 0,       aTier: "high",     dues: 0,      dTier: "high" },
+      { code: "1421-G", unitId: "a1a7aef1-3b07-414c-ae6a-3093cf5105cd", assessBalId: "chbal002-0000-4000-8000-000000000013", assess: 1321.92, aTier: "high",     dues: 0,      dTier: "high" },
+    ];
+
+    // 1) Reconcile the existing assessment ledger amounts to the May-9 §5 value.
+    let updated = 0;
+    for (const r of CHC_MAY9) {
+      if (!r.assessBalId) continue;
+      await db
+        .update(ownerLedgerEntries)
+        .set({ amount: r.assess, description: DESC_ASSESS })
+        .where(eq(ownerLedgerEntries.id, r.assessBalId));
+      updated++;
+    }
+
+    // 1b) §5 fidelity: 1417-G HOA dues is a $0.06 overpayment (credit), not
+    // arrears — add it as an idempotent credit entry if absent.
+    const [existingPennyCredit] = await db
+      .select()
+      .from(ownerLedgerEntries)
+      .where(eq(ownerLedgerEntries.id, "chbal002-0000-4000-8000-000000000020"));
+    if (!existingPennyCredit) {
+      await db.insert(ownerLedgerEntries).values({
+        id: "chbal002-0000-4000-8000-000000000020",
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: "91e77ac7-b0dc-4bab-a169-f167b20e5cce",
+        personId: "chper002-0000-4000-8000-000000000011",
+        entryType: "credit",
+        amount: -0.06,
+        postedAt: new Date("2026-05-09T00:00:00Z"),
+        description: "Imported balance — HOA dues overpayment (penny credit) as of 2026-05-09 (research #832 §5)",
+      }).onConflictDoNothing();
+    }
+
+    // 2) Upsert per-unit confidence rows for BOTH categories (all 18 units).
+    const confRows: (typeof ownerBalanceConfidence.$inferInsert)[] = [];
+    for (const r of CHC_MAY9) {
+      confRows.push({
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: r.unitId,
+        category: "assessment",
+        tier: r.aTier,
+        balanceAsAssessed: r.assess,
+        disputeAmount: r.dispute ?? null,
+        disputeVisibleToBoardOnly: 1,
+        sourceArtifactId: SRC,
+        preparedBy: PREP,
+        asOfDate: AS_OF,
+        note: r.dispute
+          ? `Driveway assessment ${r.code}. DISPUTED opening-balance gap $${r.dispute.toFixed(2)} (research #832 §6 item 1) — visible to board only.`
+          : `Driveway assessment ${r.code} — May-9-2026 §5 snapshot.`,
+      });
+      confRows.push({
+        associationId: CHERRY_HILL_CONDO_ID,
+        unitId: r.unitId,
+        category: "dues",
+        tier: r.dTier,
+        balanceAsAssessed: r.dues,
+        disputeAmount: null,
+        disputeVisibleToBoardOnly: 1,
+        sourceArtifactId: SRC,
+        preparedBy: PREP,
+        asOfDate: AS_OF,
+        note: `HOA common-charges ${r.code} — YTD-2026 §5 snapshot.`,
+      });
+    }
+    for (const c of confRows) {
+      await db
+        .insert(ownerBalanceConfidence)
+        .values(c)
+        .onConflictDoUpdate({
+          target: [ownerBalanceConfidence.unitId, ownerBalanceConfidence.category],
+          set: {
+            tier: c.tier,
+            balanceAsAssessed: c.balanceAsAssessed,
+            disputeAmount: c.disputeAmount,
+            disputeVisibleToBoardOnly: c.disputeVisibleToBoardOnly,
+            sourceArtifactId: c.sourceArtifactId,
+            preparedBy: c.preparedBy,
+            asOfDate: c.asOfDate,
+            note: c.note,
+            updatedAt: new Date(),
+          },
+        });
+    }
+    log(`[seed] chc may-9 reconcile :: ${updated} assessment balances reconciled to §5; ${confRows.length} confidence rows upserted (18 units × 2 categories); 1419 DISPUTED $606.86 (board-only) — founder-os#11196`, "seed");
   });
 
 
