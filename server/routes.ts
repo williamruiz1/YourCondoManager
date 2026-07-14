@@ -971,6 +971,15 @@ type PortalRequest = Request & {
   portalEmail?: string;
   portalRole?: string;
   portalBoardRoleId?: string | null;
+  /**
+   * The board officer's specific title (e.g. "Treasurer", "Secretary",
+   * "President") as stored on `board_roles.role` — free text, so callers
+   * should normalize case before matching. Null when the caller has no
+   * board seat at all (a plain owner). Used to lens the pressing-items
+   * widget to the right officer's bucket instead of defaulting every
+   * portal caller to the full "board" (sees-everything) lens.
+   */
+  portalBoardRoleTitle?: string | null;
   portalHasBoardAccess?: boolean;
   portalEffectiveRole?: string;
 };
@@ -1359,6 +1368,7 @@ async function requirePortal(req: PortalRequest, res: Response, next: NextFuncti
   // boolean augmentation via `portalHasBoardAccess`.
   req.portalRole = getEffectivePortalRole(access.role, hasBoardAccess);
   req.portalBoardRoleId = boardRole?.id ?? null;
+  req.portalBoardRoleTitle = boardRole?.role ?? null;
   req.portalHasBoardAccess = hasBoardAccess;
   req.portalEffectiveRole = effectiveRole;
   await storage.touchPortalAccessLogin(access.id);

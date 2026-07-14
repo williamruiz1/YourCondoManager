@@ -4307,6 +4307,12 @@ export const pressingItems = pgTable("pressing_items", {
   severity: text("severity").notNull().default("medium"),
   title: text("title").notNull(),
   description: text("description"),
+  // The original, unmodified bank-feed memo (ACH addenda dump, etc.) for
+  // classes like `unidentified_txn` whose title is a HUMANIZED summary of
+  // this raw text. Never shown as the title — surfaced in an expandable
+  // "original bank memo" affordance for auditors/treasurers. Null for
+  // classes with no underlying raw memo.
+  rawDetail: text("raw_detail"),
   actorRole: text("actor_role").notNull().default("board"),
   relatedRecordType: text("related_record_type"),
   relatedRecordId: varchar("related_record_id"),

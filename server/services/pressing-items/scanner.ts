@@ -33,6 +33,7 @@ import {
   type PressingItemClass,
   PRESSING_ITEM_ROLE_LENS,
 } from "@shared/schema";
+import { humanizeUnidentifiedTxnTitle } from "./bank-memo";
 
 const UNIDENTIFIED_TXN_LOOKBACK_DAYS = 60;
 const VENDOR_INSURANCE_HORIZON_DAYS = 30;
@@ -53,6 +54,8 @@ interface DetectedItem {
   severity: "low" | "medium" | "high" | "critical";
   title: string;
   description: string | null;
+  /** Original, unmodified bank-feed memo — see server/services/pressing-items/bank-memo.ts. */
+  rawDetail: string | null;
   actorRole: PressingItemActorRole;
   relatedRecordType: string | null;
   relatedRecordId: string | null;
@@ -94,14 +97,16 @@ async function detectUnidentifiedTransactions(associationId: string): Promise<De
     );
 
   return rows.map((tx) => {
-    const dollarAmount = (tx.amountCents / 100).toFixed(2);
-    const merchant = tx.merchantName || tx.name || "(no merchant)";
     return {
       associationId,
       itemClass: "unidentified_txn" as const,
       severity: Math.abs(tx.amountCents) >= 50_000 ? "high" : "medium",
-      title: `Unidentified $${dollarAmount} txn — ${merchant}`,
+      title: humanizeUnidentifiedTxnTitle(tx),
       description: `Bank transaction on ${tx.date} not yet matched to a payment in YCM. Treasurer should review + match or categorize.`,
+      // Original raw memo, preserved for the widget's "original bank memo"
+      // expand affordance — never shown as the title (founder-os/YCM
+      // pressing-items plain-English fix, 2026-07-14).
+      rawDetail: tx.name,
       actorRole: "treasurer" as PressingItemActorRole,
       relatedRecordType: "bank_transaction",
       relatedRecordId: tx.id,
@@ -145,6 +150,7 @@ async function detectDelinquencyRising(associationId: string): Promise<DetectedI
         severity,
         title: `Owner ${e.daysPastDue}d past due ($${e.balance.toFixed(2)})`,
         description: `Delinquency stage ${e.currentStage}. Treasurer + president action recommended.`,
+        rawDetail: null,
         actorRole: "treasurer" as PressingItemActorRole,
         relatedRecordType: "delinquency_escalation",
         relatedRecordId: e.id,
@@ -186,6 +192,7 @@ async function detectDocumentAttention(associationId: string): Promise<DetectedI
       severity,
       title,
       description: `Request a Certificate of Insurance refresh from this vendor before it expires.`,
+      rawDetail: null,
       actorRole: "secretary" as PressingItemActorRole,
       relatedRecordType: "vendor",
       relatedRecordId: v.id,
@@ -219,6 +226,7 @@ async function detectComplianceDeadlines(associationId: string): Promise<Detecte
     severity: e.currentStage >= 3 ? "high" : "medium",
     title: `Delinquency stage-${e.currentStage} action due ${e.nextActionAt!.toISOString().slice(0, 10)}`,
     description: `Scheduled escalation step is approaching. Secretary / president action.`,
+    rawDetail: null,
     actorRole: "secretary" as PressingItemActorRole,
     relatedRecordType: "delinquency_escalation",
     relatedRecordId: e.id,
@@ -256,6 +264,7 @@ async function upsertItems(
           severity: item.severity,
           title: item.title,
           description: item.description,
+          rawDetail: item.rawDetail,
           actorRole: item.actorRole,
           relatedRecordType: item.relatedRecordType,
           relatedRecordId: item.relatedRecordId,
@@ -271,6 +280,7 @@ async function upsertItems(
         severity: item.severity,
         title: item.title,
         description: item.description,
+        rawDetail: item.rawDetail,
         actorRole: item.actorRole,
         relatedRecordType: item.relatedRecordType,
         relatedRecordId: item.relatedRecordId,
@@ -408,6 +418,7 @@ export async function getRoleLensedPressingItems(opts: {
     severity: string;
     title: string;
     description: string | null;
+    rawDetail: string | null;
     actorRole: string;
     relatedRecordType: string | null;
     relatedRecordId: string | null;
@@ -425,6 +436,7 @@ export async function getRoleLensedPressingItems(opts: {
       severity: pressingItems.severity,
       title: pressingItems.title,
       description: pressingItems.description,
+      rawDetail: pressingItems.rawDetail,
       actorRole: pressingItems.actorRole,
       relatedRecordType: pressingItems.relatedRecordType,
       relatedRecordId: pressingItems.relatedRecordId,
