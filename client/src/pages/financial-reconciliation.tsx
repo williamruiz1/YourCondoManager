@@ -18,7 +18,7 @@ import { financeSubPages } from "@/lib/sub-page-nav";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,6 +28,8 @@ import { AlertCircle, CheckCircle2, RefreshCw, Plus, GitMerge, Lock, LockOpen, C
 import type { BankStatementImport, BankStatementTransaction, OwnerLedgerEntry, ReconciliationPeriod } from "@shared/schema";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useIsMobile } from "@/hooks/use-mobile";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 // Parse a bank CSV — supports common formats: Date, Description, Amount (positive/negative)
 function parseBankCsv(csvText: string): { date: string; description: string; amount: number }[] {
@@ -51,15 +53,15 @@ function parseBankCsv(csvText: string): { date: string; description: string; amo
 }
 
 function matchStatusBadge(status: string) {
-  const map: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-    unmatched: { label: "Unmatched", variant: "destructive" },
-    auto_matched: { label: "Auto-matched", variant: "default" },
-    manual_matched: { label: "Manual", variant: "default" },
-    disputed: { label: "Disputed", variant: "destructive" },
-    excluded: { label: "Excluded", variant: "secondary" },
+  const map: Record<string, { label: string; tone: PillTone }> = {
+    unmatched: { label: "Unmatched", tone: "bad" },
+    auto_matched: { label: "Auto-matched", tone: "ok" },
+    manual_matched: { label: "Manual", tone: "ok" },
+    disputed: { label: "Disputed", tone: "bad" },
+    excluded: { label: "Excluded", tone: "muted" },
   };
-  const m = map[status] ?? { label: status, variant: "outline" };
-  return <Badge variant={m.variant}>{m.label}</Badge>;
+  const m = map[status] ?? { label: status, tone: "info" as PillTone };
+  return <Pill tone={m.tone}>{m.label}</Pill>;
 }
 
 export function FinancialReconciliationContent() {
@@ -603,10 +605,10 @@ export function FinancialReconciliationContent() {
                             {new Date(p.startDate).toLocaleDateString()} – {new Date(p.endDate).toLocaleDateString()}
                           </div>
                         </div>
-                        <Badge variant={p.status === "locked" ? "destructive" : p.status === "closed" ? "default" : "secondary"}>
+                        <Pill tone={p.status === "locked" ? "bad" : p.status === "closed" ? "ok" : "muted"}>
                           {p.status === "locked" && <Lock className="h-3 w-3 mr-1" />}
                           {p.status}
-                        </Badge>
+                        </Pill>
                       </div>
                       <div className="grid grid-cols-1 gap-2 text-xs text-muted-foreground">
                         <div>Closed by: {p.closedBy ? `${p.closedBy}${p.closedAt ? ` · ${new Date(p.closedAt).toLocaleDateString()}` : ""}` : "—"}</div>
@@ -660,10 +662,10 @@ export function FinancialReconciliationContent() {
                           {new Date(p.startDate).toLocaleDateString()} – {new Date(p.endDate).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={p.status === "locked" ? "destructive" : p.status === "closed" ? "default" : "secondary"}>
+                          <Pill tone={p.status === "locked" ? "bad" : p.status === "closed" ? "ok" : "muted"}>
                             {p.status === "locked" && <Lock className="h-3 w-3 mr-1" />}
                             {p.status}
-                          </Badge>
+                          </Pill>
                         </TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {p.closedBy ? `${p.closedBy}${p.closedAt ? ` · ${new Date(p.closedAt).toLocaleDateString()}` : ""}` : "—"}
@@ -827,7 +829,7 @@ export function FinancialReconciliationContent() {
 
 export default function FinancialReconciliationPage() {
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex flex-col min-h-0 ds-scope fin-ds">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Bank Reconciliation"
