@@ -79,6 +79,19 @@ primary_region = "ewr"
   NODE_ENV = "production"
   PORT = "5000"
   APP_BASE_URL = "https://app.yourcondomanager.org"
+  # Neon usage RCA (2026-07-14): server/index.ts's automation sweep
+  # (autopay, notices, board packages, bank-feed sync, etc.) defaults to
+  # 300_000ms (5 min) if this isn't set. Each tick opens a real Postgres
+  # advisory-lock connection (withSchedulerLock) even when every
+  # subsystem is a no-op that tick, and Neon autosuspends after ~5
+  # continuous idle minutes with zero connections — a 5-minute poll sat
+  # right on that boundary and effectively never let the DB suspend.
+  # Bumping to 10 minutes gives a real idle window; every subsystem
+  # inside the sweep already gates its own real-world cadence internally
+  # (e.g. access-review reminder is ~85-day, onboarding reminder is
+  # per-day), so this only changes how often the outer dispatcher wakes
+  # up to check, not how promptly time-sensitive work actually fires.
+  AUTOMATION_SWEEPS_INTERVAL_MS = "600000"
   # Durable uploads (#363/#379). Governing-doc uploads previously wrote to the
   # machine's ephemeral root fs (/app/uploads) and were destroyed on every
   # deploy / machine replacement. UPLOAD_DIR points them at the "ycm_uploads"
