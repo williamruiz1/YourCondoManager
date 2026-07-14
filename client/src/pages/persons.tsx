@@ -1,5 +1,10 @@
 // zone: Operations
 // persona: Manager, Board Officer, Assisted Board, PM Assistant
+//
+// YCM Redesign — People (Owners & Units companion) restyled onto the shared
+// @ycm/design-system (F1, founder-os#10187), mirroring the M1 Dashboard
+// restyle pattern. All live data wiring is preserved verbatim -- role
+// chips (Owner/Tenant/Owner-Occupant/board role) use the DS Pill component.
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -21,7 +26,7 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+import { Pill } from "@ycm/design-system";
 import { Plus, Users, Mail, Phone, Search, MapPin, Home, FileUp, Pencil, Shield, X } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,6 +44,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 const formSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -403,7 +410,7 @@ export default function PersonsPage() {
   // Wave 23 a11y: page wrapper is a <section aria-labelledby="persons-heading">
   // so assistive tech identifies the page region by its visible heading below.
   return (
-    <section className="p-6 space-y-6" aria-labelledby="persons-heading">
+    <section className="p-6 space-y-6 ds-scope fin-ds" aria-labelledby="persons-heading">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 id="persons-heading" className="font-headline text-3xl font-bold tracking-tight text-on-surface" data-testid="text-page-title">{t("persons.title")}</h1>
@@ -712,17 +719,17 @@ export default function PersonsPage() {
                       <TableCell className="align-top">
                         <div className="flex flex-wrap gap-1">
                           {dir?.isOwnerOccupant ? (
-                            <Badge variant="default" className="text-xs">Owner-Occupant</Badge>
+                            <Pill tone="ok">Owner-Occupant</Pill>
                           ) : (
                             <>
-                              {dir?.isOwner ? <Badge variant="default" className="text-xs">Owner</Badge> : null}
-                              {dir?.isTenant ? <Badge variant="secondary" className="text-xs">Tenant</Badge> : null}
+                              {dir?.isOwner ? <Pill tone="ok">Owner</Pill> : null}
+                              {dir?.isTenant ? <Pill tone="info">Tenant</Pill> : null}
                             </>
                           )}
                           {activeBoardRoles.map((br) => (
-                            <Badge key={br.id} variant="outline" className="text-xs border-amber-500 text-amber-700 dark:text-amber-400">
+                            <Pill key={br.id} tone="warn">
                               {br.role}
-                            </Badge>
+                            </Pill>
                           ))}
                           {!dir?.isOwner && !dir?.isTenant && activeBoardRoles.length === 0 ? (
                             <span className="text-xs text-muted-foreground">No role</span>
