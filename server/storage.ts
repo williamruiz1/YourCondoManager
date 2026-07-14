@@ -297,8 +297,10 @@ import {
   type AdminRole,
   type DeletionRequest,
   type ConsentRecord,
+  paymentTransactions,
 } from "@shared/schema";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
+import { recordPlatformProcessingFee, netLedgerCreditDollars } from "./services/convenience-fee";
 import { governanceStateTemplateLibrary } from "@shared/governance-state-template-library";
 
 type WorkState = "not-started" | "in-progress" | "complete";
@@ -3936,6 +3938,15 @@ export interface IStorage {
     paymentLinkToken?: string | null;
     gatewayReference?: string | null;
     rawPayloadJson?: unknown;
+    /**
+     * CT convenience-fee structure (founder-os
+     * wiki/research/chc-processing-fee-legality-2026-07-14.md §6). When set,
+     * the owner-ledger credit is `amount - (platformFeeCents / 100)`
+     * (assessment at face value) instead of the full `amount`; the fee
+     * portion books separately to `platform_processing_fees`. Omit/null for
+     * every payment without a fee — unchanged behavior.
+     */
+    platformFeeCents?: number | null;
   }): Promise<{
     duplicate: boolean;
     event: PaymentWebhookEvent;
@@ -8341,6 +8352,7 @@ export class DatabaseStorage implements IStorage {
     paymentLinkToken?: string | null;
     gatewayReference?: string | null;
     rawPayloadJson?: unknown;
+    platformFeeCents?: number | null;
   }): Promise<{ duplicate: boolean; event: PaymentWebhookEvent; ownerLedgerEntry: OwnerLedgerEntry | null; message: string }> {
     const [existing] = await db
       .select()
@@ -8457,6 +8469,21 @@ export class DatabaseStorage implements IStorage {
       };
     }
 
+    // CT convenience-fee structure (founder-os
+    // wiki/research/chc-processing-fee-legality-2026-07-14.md §6). Net the
+    // fee OUT of the owner-ledger credit — the association's ledger records
+    // the assessment AT FACE VALUE, never the fee-inclusive total. `amount`
+    // above is the FULL Stripe amount_total (unchanged — still recorded
+    // verbatim on `paymentWebhookEvents.amount` for audit); only the ledger
+    // CREDIT computed here is netted. netLedgerCreditDollars is the single,
+    // independently-unit-tested source of truth for this math — see
+    // server/services/__tests__/convenience-fee.test.ts.
+    const platformFeeDollars =
+      typeof payload.platformFeeCents === "number" && payload.platformFeeCents > 0
+        ? Number((payload.platformFeeCents / 100).toFixed(2))
+        : 0;
+    const ledgerCreditDollars = netLedgerCreditDollars(amount, payload.platformFeeCents);
+
     // A-WEBHOOK-001/002 (founder-os#10737): route through the ONE canonical
     // payment-ledger writer, keyed on the Stripe payment_intent id
     // (payload.gatewayReference — resolved by normalizeStripeWebhookPayload to
@@ -8472,7 +8499,7 @@ export class DatabaseStorage implements IStorage {
       associationId: payload.associationId,
       unitId,
       personId,
-      amount: Number((-Math.abs(amount)).toFixed(2)),
+      amount: Number((-Math.abs(ledgerCreditDollars)).toFixed(2)),
       postedAt: new Date(),
       description: payload.eventType ? `Payment webhook (${payload.eventType})` : "Payment webhook",
       referenceType: "payment-webhook",
@@ -8481,6 +8508,45 @@ export class DatabaseStorage implements IStorage {
       source: "payment-webhook",
     });
     const ownerLedgerEntry = ledgerResult.entry;
+
+    // Book the platform processing fee — ONLY when this call actually
+    // created the ledger entry (ledgerResult.created), so a duplicate/replay
+    // delivery of the SAME payment_intent never double-books the fee. Never
+    // writes to owner_ledger_entries — structurally separate table (see
+    // server/services/convenience-fee.ts). Best-effort: a fee-booking
+    // failure must not fail the webhook — the ledger credit (the money that
+    // matters to the association) is already recorded.
+    if (ledgerResult.created && platformFeeDollars > 0) {
+      try {
+        let paymentTransactionId: string | null = null;
+        if (payload.gatewayReference?.trim()) {
+          const [txnRow] = await db
+            .select({ id: paymentTransactions.id })
+            .from(paymentTransactions)
+            .where(
+              or(
+                eq(paymentTransactions.providerIntentId, payload.gatewayReference.trim()),
+                eq(paymentTransactions.providerPaymentId, payload.gatewayReference.trim()),
+              ),
+            )
+            .limit(1);
+          paymentTransactionId = txnRow?.id ?? null;
+        }
+        await recordPlatformProcessingFee({
+          associationId: payload.associationId,
+          paymentTransactionId,
+          unitId,
+          personId,
+          feeType: "card_processing",
+          amountCents: Math.round(platformFeeDollars * 100),
+          currency: normalizeCurrency(payload.currency || link?.currency) ?? "USD",
+          stripePaymentIntentId: payload.gatewayReference?.trim() || null,
+        });
+      } catch (feeErr) {
+        console.error("[payment-webhook] platform fee booking failed (non-fatal):", feeErr);
+      }
+    }
+
     if (!ownerLedgerEntry) {
       // Should be unreachable (postPaymentLedgerEntry always returns an entry
       // — either the one it just created or the pre-existing one it collided

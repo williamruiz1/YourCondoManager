@@ -5,7 +5,11 @@
  *   GET  /api/portal/balance-summary            — balance, open charges, pending payments
  *   GET  /api/portal/payment-transactions        — owner payment history
  *   GET  /api/portal/payment-transactions/:id    — single transaction detail / receipt
- *   POST /api/portal/pay                         — initiate ACH payment via Stripe Checkout
+ *   POST /api/portal/pay                         — initiate payment via Stripe Checkout (ACH by
+ *                                                   default; `paymentMethod: "card"` when the
+ *                                                   association's CT convenience-fee flag is on —
+ *                                                   see server/services/convenience-fee.ts)
+ *   GET  /api/portal/payment-fee-preview         — CT convenience-fee preview for a given amount
  *
  * Admin routes:
  *   GET  /api/admin/payment-transactions         — all transactions with filters
@@ -30,6 +34,7 @@ import {
 } from "../services/payment-service";
 import { resolveConnectChargeRouting } from "../services/stripe-connect-resolver";
 import { computeApplicationFeeCents } from "../services/stripe-charge-metadata";
+import { resolveCheckoutFeeCents } from "../services/convenience-fee";
 
 // ── Types (mirrored from routes.ts / autopay.ts) ────────────────────────────
 // `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
@@ -150,11 +155,21 @@ export function registerPaymentPortalRoutes(
         return res.status(403).json({ message: "Not authorized" });
       }
 
-      const { amountCents, unitId, description } = req.body as {
+      const { amountCents, unitId, description, paymentMethod: paymentMethodRaw } = req.body as {
         amountCents: number;
         unitId: string;
         description?: string;
+        /**
+         * CT convenience-fee structure (founder-os
+         * wiki/research/chc-processing-fee-legality-2026-07-14.md §6).
+         * "ach" (default, omit entirely for legacy callers) or "card". `card`
+         * is only honored when the association's `cardFeeEnabled` flag is on
+         * — otherwise this endpoint stays byte-identical to its pre-existing
+         * ACH-only behavior.
+         */
+        paymentMethod?: "ach" | "card";
       };
+      const paymentMethod: "ach" | "card" = paymentMethodRaw === "card" ? "card" : "ach";
 
       if (!amountCents || typeof amountCents !== "number" || amountCents <= 0 || !Number.isInteger(amountCents)) {
         return res.status(400).json({ message: "amountCents must be a positive integer" });
@@ -162,6 +177,25 @@ export function registerPaymentPortalRoutes(
       if (!unitId || typeof unitId !== "string") {
         return res.status(400).json({ message: "unitId is required" });
       }
+
+      // `amountCents` here is the ASSESSMENT amount the owner wants applied to
+      // their account — the fee (if any) is computed on top of it, never
+      // folded silently in by the caller. `resolveCheckoutFeeCents` returns 0
+      // for "card" when the association's flag is off, so requesting "card"
+      // on a not-enabled association degrades to a request with no fee — we
+      // reject it explicitly below instead, so the owner never silently pays
+      // (or silently doesn't pay) a fee they weren't shown.
+      const { feeCents, settings: feeSettings } = await resolveCheckoutFeeCents({
+        associationId: req.portalAssociationId,
+        assessmentCents: amountCents,
+        method: paymentMethod,
+      });
+      if (paymentMethod === "card" && !feeSettings.cardFeeEnabled) {
+        return res.status(400).json({
+          message: "Card payments are not available for this association yet. Pay by bank transfer (ACH) instead.",
+        });
+      }
+      const totalAmountCents = amountCents + feeCents;
 
       // Verify the unit belongs to this owner
       const unitIds = await getOwnerUnitIds(req.portalAssociationId, req.portalPersonId);
@@ -209,18 +243,32 @@ export function registerPaymentPortalRoutes(
         .where(eq(persons.id, req.portalPersonId))
         .limit(1);
 
-      // Create internal payment record
+      // Create internal payment record. `amountCents` here is the TOTAL
+      // actually charged (assessment + fee) — matches what Stripe will
+      // report on `amount_total`, so reconciliation against the real Stripe
+      // charge keeps working unchanged. `platformFeeCents` carves out the
+      // fee portion for the ledger-split + platform-revenue booking (see
+      // storage.ts processPaymentWebhookEvent).
       const txn = await createPaymentTransaction({
         associationId: req.portalAssociationId,
         unitId,
         personId: req.portalPersonId,
-        amountCents,
+        amountCents: totalAmountCents,
         description: description || undefined,
+        platformFeeCents: feeCents,
+        checkoutMethod: paymentMethod,
       });
 
       // Initiate Stripe Checkout. When routing through Connect, attach the
       // §1.2 application fee (dues are the only line item here, so the fee
       // applies to the full amount) + the §2.3 "DUES" descriptor suffix.
+      // NOTE: the Connect application fee (platform's own cut of a direct
+      // charge) and the CT convenience fee (owner-borne, this dispatch) are
+      // independent concepts — Cherry Hill runs Flow 1 (single account, no
+      // Connect), so `connectRouting` is always null here today and the two
+      // never interact in practice. `computeApplicationFeeCents` is left
+      // computed off `amountCents` (unchanged) since Connect stays out of
+      // scope for this dispatch.
       const appBaseUrl = `${req.protocol}://${req.get("host")}`;
       const result = await initiateStripeCheckout({
         transactionId: txn.id,
@@ -232,6 +280,7 @@ export function registerPaymentPortalRoutes(
         stripeAccountHeader: connectRouting?.stripeAccountHeader ?? null,
         applicationFeeCents: connectRouting ? computeApplicationFeeCents(amountCents) : null,
         statementDescriptorSuffix: connectRouting ? "DUES" : null,
+        paymentMethodType: paymentMethod,
       });
 
       res.status(201).json({
@@ -239,6 +288,42 @@ export function registerPaymentPortalRoutes(
         transactionId: txn.id,
         receiptReference: txn.receiptReference,
         status: "initiated",
+        feeCents,
+        totalAmountCents,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Portal: Convenience-Fee Preview (CT structure, §6) ──────────────────
+  //
+  // Lets the client show "Assessment $X.XX + processing fee $Y.YY = $Z.ZZ"
+  // BEFORE the owner confirms — the memo's §6.5 disclosure requirement —
+  // without duplicating the fee formula client-side. Returns
+  // `cardFeeEnabled: false` (and feeCents: 0) for every association until its
+  // flag is explicitly turned on; the client hides the card option entirely
+  // in that case, keeping the UI byte-identical to pre-existing ACH-only.
+  app.get("/api/portal/payment-fee-preview", requirePortal, async (req: PortalRequest, res: Response) => {
+    try {
+      if (!req.portalAssociationId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const amountCents = Number(req.query.amountCents);
+      if (!Number.isFinite(amountCents) || amountCents <= 0 || !Number.isInteger(amountCents)) {
+        return res.status(400).json({ message: "amountCents query param must be a positive integer" });
+      }
+      const [cardFee, achFee] = await Promise.all([
+        resolveCheckoutFeeCents({ associationId: req.portalAssociationId, assessmentCents: amountCents, method: "card" }),
+        resolveCheckoutFeeCents({ associationId: req.portalAssociationId, assessmentCents: amountCents, method: "ach" }),
+      ]);
+      res.json({
+        assessmentCents: amountCents,
+        cardFeeEnabled: cardFee.settings.cardFeeEnabled,
+        cardFeeCents: cardFee.feeCents,
+        cardTotalCents: amountCents + cardFee.feeCents,
+        achFeeCents: achFee.feeCents,
+        achTotalCents: amountCents + achFee.feeCents,
       });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
