@@ -41,6 +41,7 @@ import {
 import { runAutoMatch, type AutoMatchResult } from "../services/reconciliation/auto-matcher";
 import { refundConnectCharge, isRefundsEnabled } from "../services/refund-service";
 import { reversePayment } from "../services/payment-edge-cases";
+import { getAssociationFeeSettings, setAssociationFeeSettings } from "../services/convenience-fee";
 
 // ── Reusable request shape (mirrored from routes.ts) ─────────────────────────
 
@@ -77,6 +78,12 @@ const READ_ROLES: AdminRole[] = [
   "manager",
   "viewer",
 ];
+// CT convenience-fee structure (founder-os
+// wiki/research/chc-processing-fee-legality-2026-07-14.md §6) — the
+// card-fee master switch is legal-compliance-sensitive (needs the
+// association's attorney to sign off before it goes live, memo §7), so it's
+// gated tighter than RECORD_ROLES: platform-admin only.
+const FEE_SETTINGS_ROLES: AdminRole[] = ["platform-admin"];
 
 // ── Schema ───────────────────────────────────────────────────────────────────
 
@@ -111,6 +118,18 @@ const bulkRecordSchema = z.object({
   associationId: z.string().min(1),
   rows: z.array(recordPaymentSchema).min(1).max(100),
   attemptBankMatch: z.boolean().optional().default(true),
+});
+
+// CT convenience-fee structure (founder-os
+// wiki/research/chc-processing-fee-legality-2026-07-14.md §6). All fields
+// optional — a PATCH only touches the keys it supplies; `cardFeeEnabled` is
+// the master switch (defaults OFF for every association until this is
+// explicitly called with `true`).
+const feeSettingsPatchSchema = z.object({
+  cardFeeEnabled: z.boolean().optional(),
+  cardFeePercentBps: z.coerce.number().int().min(0).max(10000).optional(),
+  cardFeeFixedCents: z.coerce.number().int().min(0).optional(),
+  achFeeCents: z.coerce.number().int().min(0).optional(),
 });
 
 // Refund a Connect direct charge. `amountCents` omitted = full refund.
@@ -865,6 +884,60 @@ export function registerAdminPaymentsRoutes(
         return res
           .status(500)
           .json({ error: error.message, code: "RECENT_PAYMENTS_ERROR" });
+      }
+    },
+  );
+
+  // ── CT convenience-fee structure (founder-os
+  // wiki/research/chc-processing-fee-legality-2026-07-14.md §6) ────────────
+  //
+  // GET/PATCH the per-association fee settings. `cardFeeEnabled` defaults to
+  // false for every association — this is the "one-command enable" the dark
+  // ship depends on: flipping it to true is the ONLY thing that turns the
+  // card-fee checkout option on for that association, and it stays
+  // reversible. Gated to platform-admin ONLY (tighter than the general
+  // RECORD_ROLES) — this is a legal-compliance-sensitive switch that must
+  // not go live before the association's attorney signs off (memo §7).
+  app.get(
+    "/api/admin/associations/:associationId/fee-settings",
+    requireAdmin,
+    requireAdminRole(FEE_SETTINGS_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = String(req.params.associationId);
+        assertAssociationScope(req, associationId);
+        const settings = await getAssociationFeeSettings(associationId);
+        res.json(settings);
+      } catch (error: any) {
+        res.status(400).json({ error: error.message, code: "FEE_SETTINGS_READ_ERROR" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/admin/associations/:associationId/fee-settings",
+    requireAdmin,
+    requireAdminRole(FEE_SETTINGS_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = String(req.params.associationId);
+        assertAssociationScope(req, associationId);
+        const parsed = feeSettingsPatchSchema.parse(req.body);
+        const updated = await setAssociationFeeSettings(associationId, parsed, req.adminUserEmail ?? "admin");
+        res.json({
+          associationId: updated.associationId,
+          cardFeeEnabled: updated.cardFeeEnabled === 1,
+          cardFeePercentBps: updated.cardFeePercentBps,
+          cardFeeFixedCents: updated.cardFeeFixedCents,
+          achFeeCents: updated.achFeeCents,
+          updatedBy: updated.updatedBy,
+          updatedAt: updated.updatedAt,
+        });
+      } catch (error: any) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ error: "Invalid input", code: "INVALID_INPUT", issues: error.issues });
+        }
+        res.status(400).json({ error: error.message, code: "FEE_SETTINGS_WRITE_ERROR" });
       }
     },
   );

@@ -64,6 +64,16 @@ export async function createPaymentTransaction(params: {
    * Per Issue founder-os#969 dispatch §Scope.
    */
   chargeMetadata?: Record<string, string> | null;
+  /**
+   * CT convenience-fee structure (founder-os
+   * wiki/research/chc-processing-fee-legality-2026-07-14.md §6). The portion
+   * of `amountCents` that is the platform processing fee — 0 (default) for
+   * every association with the fee flag off, and every legacy caller.
+   * `amountCents` itself is the TOTAL actually charged (assessment + fee).
+   */
+  platformFeeCents?: number;
+  /** Which payment method the owner chose at checkout — display/receipt only. */
+  checkoutMethod?: "ach" | "card" | null;
 }): Promise<PaymentTransaction> {
   const receiptReference = generateReceiptReference();
   const metadataJson = params.chargeMetadata
@@ -81,6 +91,8 @@ export async function createPaymentTransaction(params: {
       provider: params.provider ?? "stripe",
       receiptReference,
       status: "draft",
+      platformFeeCents: params.platformFeeCents ?? 0,
+      checkoutMethod: params.checkoutMethod ?? null,
       source: params.source ?? "owner_initiated",
       paymentMethodId: params.paymentMethodId ?? null,
       autopayEnrollmentId: params.autopayEnrollmentId ?? null,
@@ -114,6 +126,17 @@ export async function initiateStripeCheckout(params: {
   applicationFeeCents?: number | null;
   /** Spec §2.3 statement descriptor suffix (e.g. "DUES"); attached to the PaymentIntent. */
   statementDescriptorSuffix?: string | null;
+  /**
+   * CT convenience-fee structure (founder-os
+   * wiki/research/chc-processing-fee-legality-2026-07-14.md §6). Which
+   * payment method the owner is checking out with. Defaults to "ach"
+   * (`us_bank_account`) — UNCHANGED legacy behavior when omitted. "card"
+   * scopes the Checkout Session to card ONLY (never both), which is what
+   * makes it safe to include a card-only convenience-fee line item — an
+   * owner who picks "card" can't silently pay the fee-inclusive total via
+   * ACH instead.
+   */
+  paymentMethodType?: "ach" | "card";
 }): Promise<{ checkoutUrl: string; sessionId: string }> {
   const [txn] = await db
     .select()
@@ -126,6 +149,15 @@ export async function initiateStripeCheckout(params: {
 
   const description = txn.description || `${params.associationName} owner payment`;
   const currency = (txn.currency || "USD").toLowerCase();
+  const paymentMethodType = params.paymentMethodType ?? "ach";
+
+  // CT convenience-fee split (memo §6). `txn.amountCents` is the TOTAL
+  // actually charged; `txn.platformFeeCents` (0 by default, for every
+  // association with the fee flag off) carves out the fee portion so it can
+  // be itemized as its own disclosed Checkout line item, never folded
+  // silently into the assessment line.
+  const feeCents = Math.max(0, txn.platformFeeCents ?? 0);
+  const assessmentCents = Math.max(0, txn.amountCents - feeCents);
 
   const successUrl = `${params.appBaseUrl}/portal?payment=success&txn=${txn.id}`;
   const cancelUrl = `${params.appBaseUrl}/portal?payment=cancelled`;
@@ -134,16 +166,31 @@ export async function initiateStripeCheckout(params: {
   sessionParams.set("mode", "payment");
   sessionParams.set("success_url", successUrl);
   sessionParams.set("cancel_url", cancelUrl);
-  sessionParams.set("payment_method_types[0]", "us_bank_account");
+  sessionParams.set("payment_method_types[0]", paymentMethodType === "card" ? "card" : "us_bank_account");
   sessionParams.set("billing_address_collection", "auto");
   if (params.ownerEmail?.trim()) {
     sessionParams.set("customer_email", params.ownerEmail.trim());
   }
-  sessionParams.set("payment_method_options[us_bank_account][verification_method]", "instant");
+  if (paymentMethodType !== "card") {
+    sessionParams.set("payment_method_options[us_bank_account][verification_method]", "instant");
+  }
   sessionParams.set("line_items[0][quantity]", "1");
   sessionParams.set("line_items[0][price_data][currency]", currency);
-  sessionParams.set("line_items[0][price_data][unit_amount]", String(txn.amountCents));
+  sessionParams.set("line_items[0][price_data][unit_amount]", String(assessmentCents));
   sessionParams.set("line_items[0][price_data][product_data][name]", description);
+  if (feeCents > 0) {
+    // Disclosed as its own line item — never folded into the assessment
+    // amount — per the memo §6.5 disclosure requirement. Charged AND KEPT BY
+    // THE PLATFORM (booked to platform_processing_fees, never the
+    // association's owner ledger — see storage.ts processPaymentWebhookEvent).
+    sessionParams.set("line_items[1][quantity]", "1");
+    sessionParams.set("line_items[1][price_data][currency]", currency);
+    sessionParams.set("line_items[1][price_data][unit_amount]", String(feeCents));
+    sessionParams.set(
+      "line_items[1][price_data][product_data][name]",
+      "Platform processing fee (card payments)",
+    );
+  }
   sessionParams.set("payment_intent_data[description]", `${params.associationName} payment for ${params.unitNumber}`);
 
   // Metadata on payment_intent (appears on payment_intent webhook events)
@@ -153,6 +200,13 @@ export async function initiateStripeCheckout(params: {
   sessionParams.set("payment_intent_data[metadata][transactionId]", txn.id);
   sessionParams.set("payment_intent_data[metadata][currency]", txn.currency || "USD");
   sessionParams.set("payment_intent_data[metadata][amount]", (txn.amountCents / 100).toFixed(2));
+  sessionParams.set("payment_intent_data[metadata][checkoutMethod]", paymentMethodType);
+  if (feeCents > 0) {
+    // Read back by normalizeStripeWebhookPayload (server/routes.ts) so the
+    // ledger credit nets the fee out — assessment-at-face-value, never the
+    // fee-inclusive total.
+    sessionParams.set("payment_intent_data[metadata][platformFeeCents]", String(feeCents));
+  }
 
   // Session-level metadata (appears on checkout.session webhook events)
   sessionParams.set("metadata[associationId]", txn.associationId);
@@ -161,6 +215,10 @@ export async function initiateStripeCheckout(params: {
   sessionParams.set("metadata[transactionId]", txn.id);
   sessionParams.set("metadata[currency]", txn.currency || "USD");
   sessionParams.set("metadata[amount]", (txn.amountCents / 100).toFixed(2));
+  sessionParams.set("metadata[checkoutMethod]", paymentMethodType);
+  if (feeCents > 0) {
+    sessionParams.set("metadata[platformFeeCents]", String(feeCents));
+  }
 
   // Stripe Connect direct-charge routing (spec §1.1 + §1.2). When routing to a
   // connected HOA account, attach the application fee + statement descriptor

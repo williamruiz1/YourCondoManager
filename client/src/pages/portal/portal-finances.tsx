@@ -39,6 +39,51 @@ import {
 } from "@/components/payment-receipt-view";
 import { PortalShell, usePortalContext } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+
+// ── CT convenience-fee preview (founder-os
+// wiki/research/chc-processing-fee-legality-2026-07-14.md §6) ─────────────
+//
+// GET /api/portal/payment-fee-preview?amountCents=N — server-computed so the
+// fee formula lives in exactly one place (server/services/convenience-fee.ts).
+// Returns cardFeeEnabled: false (feeCents: 0) for every association until
+// its flag is explicitly turned on — so this hook is safe to call
+// unconditionally; the picker UI it drives only renders when enabled.
+interface PaymentFeePreview {
+  assessmentCents: number;
+  cardFeeEnabled: boolean;
+  cardFeeCents: number;
+  cardTotalCents: number;
+  achFeeCents: number;
+  achTotalCents: number;
+}
+
+function usePaymentFeePreview(amountDollars: number) {
+  const { portalFetch } = usePortalContext();
+  const amountCents = Math.round((Number.isFinite(amountDollars) ? amountDollars : 0) * 100);
+  return useQuery<PaymentFeePreview>({
+    queryKey: ["portal/payment-fee-preview", amountCents],
+    queryFn: async () => {
+      const res = await portalFetch(`/api/portal/payment-fee-preview?amountCents=${amountCents}`);
+      if (!res.ok) {
+        // Fail closed to "no fee, ACH only" — never block or mis-price a
+        // payment because the preview endpoint hiccuped.
+        return {
+          assessmentCents: amountCents,
+          cardFeeEnabled: false,
+          cardFeeCents: 0,
+          cardTotalCents: amountCents,
+          achFeeCents: 0,
+          achTotalCents: amountCents,
+        };
+      }
+      return res.json();
+    },
+    enabled: amountCents > 0,
+    staleTime: 60_000,
+  });
+}
 
 // Default statement period helpers — last full calendar month.
 function defaultStatementPeriod(): { from: string; to: string } {
@@ -493,6 +538,13 @@ function FinancesHubContent() {
   // 2026-06-30 — surface pay-flow errors so the owner sees WHY a payment
   // didn't start, rather than a silently-dead button (William finding #2).
   const [payError, setPayError] = useState<string | null>(null);
+  // CT convenience-fee structure (founder-os
+  // wiki/research/chc-processing-fee-legality-2026-07-14.md §6). Shared
+  // across the hero "Pay this period" CTA and the custom-amount CTA below —
+  // only rendered as a picker when the association's card-fee flag is on
+  // (see the fee-preview query); defaults to "ach" (today's only option)
+  // everywhere else, so the UI is byte-identical when the flag is off.
+  const [paymentMethod, setPaymentMethod] = useState<"ach" | "card">("ach");
 
   const { data: dashboard } = useQuery<FinancialDashboard>({
     queryKey: ["portal/financial-dashboard", session.id],
@@ -521,7 +573,7 @@ function FinancesHubContent() {
   });
 
   const startCheckout = useMutation({
-    mutationFn: async (amount: number) => {
+    mutationFn: async ({ amount, method }: { amount: number; method: "ach" | "card" }) => {
       // 2026-06-30 — fix the request/response contract to match the server.
       // `POST /api/portal/pay` (server/routes/payment-portal.ts) expects
       // `{ amountCents: integer, unitId }` and returns `{ checkoutUrl }`.
@@ -546,7 +598,12 @@ function FinancesHubContent() {
         headers: { "Content-Type": "application/json" },
         // 2026-05-25 (live session) — neutral "Online payment" phrase rather
         // than asserting a category the owner didn't pick.
-        body: JSON.stringify({ amountCents, unitId, description: "Online payment" }),
+        // CT convenience-fee structure (memo §6) — `paymentMethod: "card"`
+        // only takes effect when the association's fee flag is on; the
+        // server rejects it otherwise (400), which the picker below never
+        // lets happen since it only offers "card" when the preview says
+        // it's enabled.
+        body: JSON.stringify({ amountCents, unitId, description: "Online payment", paymentMethod: method }),
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json() as Promise<{ checkoutUrl?: string }>;
@@ -583,6 +640,20 @@ function FinancesHubContent() {
     () => computeDueNow(byUnit, upcoming),
     [byUnit, upcoming],
   );
+  // CT convenience-fee structure (memo §6) — preview for the hero "Pay this
+  // period" amount. `cardFeeEnabled` is false for every association until
+  // its flag is explicitly turned on, so the picker below stays hidden and
+  // the hero CTA is byte-identical to today everywhere except an explicitly
+  // enabled association.
+  const heroFeePreview = usePaymentFeePreview(totalDueNow);
+  const heroCardFeeEnabled = heroFeePreview.data?.cardFeeEnabled ?? false;
+  const heroAmountForMethod =
+    paymentMethod === "card" && heroFeePreview.data
+      ? heroFeePreview.data.cardTotalCents / 100
+      : totalDueNow;
+  // Same preview, scoped to whatever the owner has typed in the custom-amount
+  // box below (0 while empty/invalid — the hook no-ops when amountCents <= 0).
+  const customFeePreview = usePaymentFeePreview(Number(paymentAmount) || 0);
   // 2026-05-25 (live session) — server-resolved "Amount due this period".
   // null when no active plan OR mid-quarter on a quarterly plan.
   const amountDueThisPeriod = dashboard?.amountDueThisPeriod ?? null;
@@ -731,13 +802,52 @@ function FinancesHubContent() {
                 ) : null}
               </div>
 
+              {/* CT convenience-fee structure (memo §6) — payment-method
+                  picker + disclosure. Only rendered when the association's
+                  card-fee flag is on; every other association sees nothing
+                  here (byte-identical to pre-existing). */}
+              {totalDueNow > 0 && heroCardFeeEnabled ? (
+                <div className="mt-4" data-testid="portal-finances-payment-method-picker">
+                  <RadioGroup
+                    value={paymentMethod}
+                    onValueChange={(v) => setPaymentMethod(v === "card" ? "card" : "ach")}
+                    className="flex flex-wrap gap-4"
+                  >
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="ach" id="hero-pay-ach" data-testid="portal-finances-pay-method-ach" />
+                      <Label htmlFor="hero-pay-ach" className="text-sm font-normal">
+                        Bank transfer (ACH) — no fee
+                      </Label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem value="card" id="hero-pay-card" data-testid="portal-finances-pay-method-card" />
+                      <Label htmlFor="hero-pay-card" className="text-sm font-normal">
+                        Card
+                        {heroFeePreview.data
+                          ? ` — $${formatCurrency(heroFeePreview.data.cardFeeCents / 100)} processing fee applies`
+                          : ""}
+                      </Label>
+                    </div>
+                  </RadioGroup>
+                  {paymentMethod === "card" && heroFeePreview.data ? (
+                    <p className="mt-2 text-xs text-on-surface-variant" data-testid="portal-finances-fee-disclosure-hero">
+                      A ${formatCurrency(heroFeePreview.data.cardFeeCents / 100)} processing fee is charged by the
+                      payment platform for card payments — it is never collected by the association. Assessment $
+                      {formatCurrency(totalDueNow)} + fee ${formatCurrency(heroFeePreview.data.cardFeeCents / 100)} = $
+                      {formatCurrency(heroFeePreview.data.cardTotalCents / 100)} charged to your card. Pay by bank
+                      transfer (ACH) to avoid it.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
               {/* CTA — primary pays THIS period; secondary jumps to the amount box */}
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 {totalDueNow > 0 ? (
                   <Button
                     onClick={() => {
                       setPayError(null);
-                      startCheckout.mutate(Number(totalDueNow.toFixed(2)));
+                      startCheckout.mutate({ amount: Number(heroAmountForMethod.toFixed(2)), method: paymentMethod });
                     }}
                     disabled={startCheckout.isPending}
                     className="min-h-11"
@@ -745,7 +855,7 @@ function FinancesHubContent() {
                   >
                     {startCheckout.isPending
                       ? t("portal.finances.makePayment.redirecting")
-                      : `Pay $${formatCurrency(totalDueNow)}`}
+                      : `Pay $${formatCurrency(heroAmountForMethod)}${paymentMethod === "card" && heroCardFeeEnabled ? " by card" : ""}`}
                   </Button>
                 ) : null}
                 <a
@@ -1033,7 +1143,13 @@ function FinancesHubContent() {
                 onClick={() => {
                   setPayError(null);
                   const amt = Number(paymentAmount);
-                  if (Number.isFinite(amt) && amt > 0) startCheckout.mutate(amt);
+                  if (Number.isFinite(amt) && amt > 0) {
+                    const chargeAmt =
+                      paymentMethod === "card" && customFeePreview.data
+                        ? customFeePreview.data.cardTotalCents / 100
+                        : amt;
+                    startCheckout.mutate({ amount: Number(chargeAmt.toFixed(2)), method: paymentMethod });
+                  }
                 }}
                 disabled={startCheckout.isPending || !paymentAmount}
                 data-testid="portal-finances-pay-now"
@@ -1042,6 +1158,38 @@ function FinancesHubContent() {
                 {startCheckout.isPending ? t("portal.finances.makePayment.redirecting") : t("portal.finances.makePayment.cta")}
               </Button>
             </div>
+            {/* CT convenience-fee structure (memo §6) — same picker pattern as
+                the hero CTA above, scoped to the custom amount typed here. */}
+            {customFeePreview.data?.cardFeeEnabled ? (
+              <div data-testid="portal-finances-payment-method-picker-custom">
+                <RadioGroup
+                  value={paymentMethod}
+                  onValueChange={(v) => setPaymentMethod(v === "card" ? "card" : "ach")}
+                  className="flex flex-wrap gap-4"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="ach" id="custom-pay-ach" data-testid="portal-finances-pay-method-ach-custom" />
+                    <Label htmlFor="custom-pay-ach" className="text-sm font-normal">
+                      Bank transfer (ACH) — no fee
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="card" id="custom-pay-card" data-testid="portal-finances-pay-method-card-custom" />
+                    <Label htmlFor="custom-pay-card" className="text-sm font-normal">
+                      Card — ${formatCurrency(customFeePreview.data.cardFeeCents / 100)} processing fee applies
+                    </Label>
+                  </div>
+                </RadioGroup>
+                {paymentMethod === "card" ? (
+                  <p className="mt-2 text-xs text-on-surface-variant" data-testid="portal-finances-fee-disclosure-custom">
+                    A ${formatCurrency(customFeePreview.data.cardFeeCents / 100)} processing fee is charged by the
+                    payment platform for card payments — it is never collected by the association. Total charged to
+                    your card: ${formatCurrency(customFeePreview.data.cardTotalCents / 100)}. Pay by bank transfer
+                    (ACH) to avoid it.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {payError ? (
               <p className="text-xs text-destructive" role="alert" data-testid="portal-finances-pay-error">
                 {payError}

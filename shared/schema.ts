@@ -3888,6 +3888,26 @@ export const paymentTransactions = pgTable("payment_transactions", {
    * already set we skip re-sending (P0-2 / Issue #205).
    */
   receiptEmailSentAt: timestamp("receipt_email_sent_at"),
+  /**
+   * CT convenience-fee structure (founder-os wiki/research/chc-processing-fee-legality-2026-07-14.md
+   * §6). `amountCents` above is the TOTAL actually charged via Stripe
+   * (assessment + fee, when a fee applies) — unchanged meaning, so existing
+   * reconciliation/receipt code that reads `amountCents` as "what Stripe
+   * charged" keeps working byte-for-byte. `platformFeeCents` carves out the
+   * portion of `amountCents` that is the platform processing fee (0 when no
+   * fee applies — every existing row and every association with the fee flag
+   * off gets 0 here, so nothing downstream changes for them). The
+   * association's owner-ledger credit is computed as
+   * `amountCents - platformFeeCents` (assessment at face value) — see
+   * server/services/ledger-payment-identity.ts + storage.ts
+   * processPaymentWebhookEvent. The fee itself books to `platform_processing_fees`,
+   * never to `owner_ledger_entries`.
+   */
+  platformFeeCents: integer("platform_fee_cents").notNull().default(0),
+  /** Which payment method the owner chose at checkout ('ach' | 'card'). Null for
+   *  legacy/off-session rows created before this field existed. Display/receipt
+   *  only — never drives money logic. */
+  checkoutMethod: text("checkout_method"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
@@ -3897,6 +3917,94 @@ export const paymentTransactions = pgTable("payment_transactions", {
 export type PaymentTransaction = typeof paymentTransactions.$inferSelect;
 export type InsertPaymentTransaction = typeof paymentTransactions.$inferInsert;
 export const insertPaymentTransactionSchema = createInsertSchema(paymentTransactions);
+
+// ── CT convenience-fee structure (founder-os wiki/research/chc-processing-fee-legality-2026-07-14.md) ──
+//
+// Two additive tables, both DEFAULT-OFF / DEFAULT-EMPTY for every existing
+// association — no behavior changes anywhere until an association's row in
+// `association_fee_settings` explicitly sets `cardFeeEnabled = 1`.
+//
+// `association_fee_settings` — per-association configuration (one row per
+// association, upserted). While `cardFeeEnabled` is 0/false (the default),
+// `/api/portal/pay` behaves byte-identically to today (ACH-only, no fee),
+// mirroring the existing `isMultiPartyConnectEnabled()` flag philosophy
+// (server/services/multi-party-connect/flag.ts).
+//
+// `platform_processing_fees` — the platform-revenue record. This is
+// STRUCTURALLY SEPARATE from `owner_ledger_entries`: the association's ledger
+// never contains a fee row, and this table never contains an assessment row.
+// The card fee is charged AND KEPT BY THE PLATFORM (YCM as an independent
+// third-party processor) per the memo's §6 recommended structure — the
+// association never sets, collects, or receives it.
+//
+// IMPORTANT (single-Stripe-account constraint): today YCM runs ONE Stripe
+// account for Cherry Hill Court (no Stripe Connect) — see
+// server/services/multi-party-connect/flag.ts + stripe-connect-resolver.ts.
+// So this split is an ACCOUNTING split only: both the assessment and the fee
+// land in the SAME Stripe balance from ONE combined charge; this table is
+// what keeps them apart in YCM's own books. Onboarding a SECOND
+// fee-collecting association onto a DIFFERENT bank account would require
+// Stripe Connect + a real `application_fee_amount` split (the mechanism
+// already scaffolded for Flows 2/3 — see stripe-connect.ts +
+// computeApplicationFeeCents in stripe-charge-metadata.ts) so the fee
+// actually routes to a separate balance instead of just a separate ledger row.
+
+export const associationFeeSettings = pgTable("association_fee_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  /** Master switch. 0 (default) = card-fee feature is fully inert; the owner
+   *  checkout stays ACH-only, byte-identical to pre-existing behavior. */
+  cardFeeEnabled: integer("card_fee_enabled").notNull().default(0),
+  /** Percentage component of the card fee, in basis points (e.g. 290 = 2.90%,
+   *  matching Stripe's real blended card rate per the memo §4/§6.3 — "keep it
+   *  tied to actual cost rather than a round flat number"). */
+  cardFeePercentBps: integer("card_fee_percent_bps").notNull().default(290),
+  /** Fixed-cents component of the card fee (e.g. 30 = $0.30, Stripe's real
+   *  per-transaction card fee). */
+  cardFeeFixedCents: integer("card_fee_fixed_cents").notNull().default(30),
+  /** ACH fee in cents. Default 0 (free) per the memo §6.4 — ACH's real Stripe
+   *  cost (~0.8%, capped at $5) is cheap enough that absorbing it keeps ACH
+   *  clearly the cheaper, encouraged rail. Kept configurable (not hardcoded)
+   *  in case the association's attorney/board later approves the memo's
+   *  small-flat-fee alternative ($1-2). */
+  achFeeCents: integer("ach_fee_cents").notNull().default(0),
+  updatedBy: text("updated_by"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueAssociation: uniqueIndex("association_fee_settings_association_uq").on(table.associationId),
+}));
+export type AssociationFeeSettings = typeof associationFeeSettings.$inferSelect;
+export type InsertAssociationFeeSettings = typeof associationFeeSettings.$inferInsert;
+export const insertAssociationFeeSettingsSchema = createInsertSchema(associationFeeSettings).omit({ id: true, createdAt: true, updatedAt: true });
+
+export const platformProcessingFeeTypeEnum = pgEnum("platform_processing_fee_type", ["card_processing", "ach"]);
+
+export const platformProcessingFees = pgTable("platform_processing_fees", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  paymentTransactionId: varchar("payment_transaction_id").references(() => paymentTransactions.id),
+  unitId: varchar("unit_id").references(() => units.id),
+  personId: varchar("person_id").references(() => persons.id),
+  feeType: platformProcessingFeeTypeEnum("fee_type").notNull().default("card_processing"),
+  amountCents: integer("amount_cents").notNull(),
+  currency: text("currency").notNull().default("USD"),
+  /** Stripe payment_intent id — the same cross-path identity key
+   *  `owner_ledger_entries.paymentIdentityKey` uses (see
+   *  ledger-payment-identity.ts). The partial unique index below makes a
+   *  duplicate webhook delivery for the SAME payment_intent a safe no-op,
+   *  mirroring the owner-ledger idempotency pattern exactly. */
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  uniquePaymentIntent: uniqueIndex("platform_processing_fees_payment_intent_uq")
+    .on(table.stripePaymentIntentId)
+    .where(sql`${table.stripePaymentIntentId} is not null`),
+  associationIdx: index("platform_processing_fees_association_idx").on(table.associationId, table.createdAt),
+}));
+export type PlatformProcessingFee = typeof platformProcessingFees.$inferSelect;
+export type InsertPlatformProcessingFee = typeof platformProcessingFees.$inferInsert;
+export const insertPlatformProcessingFeeSchema = createInsertSchema(platformProcessingFees).omit({ id: true, createdAt: true });
 
 // ── Stripe Connect payout reconciliation (founder-os#970 / dispatch #3) ──────
 // Canonical spec: wiki/products/ycm/stripe-connect-spec.md §4 (reconciliation

@@ -590,6 +590,16 @@ function normalizeStripeWebhookPayload(payload: unknown): {
   gatewayReference: string | null;
   transactionId: string | null;
   rawPayloadJson: unknown;
+  /**
+   * CT convenience-fee structure (founder-os
+   * wiki/research/chc-processing-fee-legality-2026-07-14.md §6). The portion
+   * of `amount` (in cents) that is the platform processing fee, read back
+   * from `metadata.platformFeeCents` (set at checkout-creation time in
+   * server/services/payment-service.ts initiateStripeCheckout). Null for
+   * every payment without a fee — every association with the fee flag off,
+   * and every non-checkout event.
+   */
+  platformFeeCents: number | null;
 } | null {
   if (!isStripeEventPayload(payload)) return null;
   const object = payload.data.object;
@@ -618,6 +628,14 @@ function normalizeStripeWebhookPayload(payload: unknown): {
     status = "failed";
   }
 
+  const platformFeeCentsRaw = metadata.platformFeeCents;
+  const platformFeeCentsParsed =
+    typeof platformFeeCentsRaw === "string"
+      ? Number(platformFeeCentsRaw)
+      : typeof platformFeeCentsRaw === "number"
+        ? platformFeeCentsRaw
+        : null;
+
   return {
     associationId: typeof metadata.associationId === "string" ? metadata.associationId : null,
     providerEventId: payload.id,
@@ -636,6 +654,10 @@ function normalizeStripeWebhookPayload(payload: unknown): {
           : null,
     transactionId: typeof metadata.transactionId === "string" ? metadata.transactionId : null,
     rawPayloadJson: payload,
+    platformFeeCents:
+      typeof platformFeeCentsParsed === "number" && Number.isFinite(platformFeeCentsParsed) && platformFeeCentsParsed > 0
+        ? Math.round(platformFeeCentsParsed)
+        : null,
   };
 }
 
@@ -6504,6 +6526,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           paymentLinkToken: normalizedStripeEvent.paymentLinkToken,
           gatewayReference: normalizedStripeEvent.gatewayReference,
           rawPayloadJson: normalizedStripeEvent.rawPayloadJson,
+          // CT convenience-fee structure (memo §6) — nets the fee out of the
+          // owner-ledger credit so the association's books show the
+          // assessment at face value; the fee itself books separately to
+          // platform_processing_fees. Null/undefined for every payment
+          // without a fee (the vast majority) — no behavior change there.
+          platformFeeCents: normalizedStripeEvent.platformFeeCents,
         });
 
         // Update payment_transactions if this webhook corresponds to a payment
