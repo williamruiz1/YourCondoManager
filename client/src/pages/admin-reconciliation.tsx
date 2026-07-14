@@ -30,7 +30,9 @@ import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Pill } from "@ycm/design-system";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -486,7 +488,7 @@ export default function AdminReconciliationPage() {
 
   if (!activeAssociationId) {
     return (
-      <div className="space-y-6 p-6">
+      <div className="space-y-6 p-6 ds-scope fin-ds">
         <WorkspacePageHeader
         title="Reconciliation"
         summary="Auto-match bank deposits to owner ledger entries. Anything that can't be matched automatically lands here for one-click review."
@@ -667,9 +669,9 @@ export default function AdminReconciliationPage() {
                         {row.bankTransactionId.slice(0, 8)}…
                       </TableCell>
                       <TableCell>
-                        <Badge variant={row.reason === "ambiguous" ? "secondary" : "outline"}>
+                        <Pill tone={row.reason === "ambiguous" ? "muted" : "info"}>
                           {row.reason}
-                        </Badge>
+                        </Pill>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
@@ -872,11 +874,11 @@ export default function AdminReconciliationPage() {
                       </TableCell>
                       <TableCell className="text-right font-mono">
                         {o.gapCents === 0 ? (
-                          <Badge variant="outline" className="text-green-700 border-green-400">
+                          <Pill tone="ok">
                             $0
-                          </Badge>
+                          </Pill>
                         ) : (
-                          <Badge variant="secondary">{dollarFromCents(o.gapCents)}</Badge>
+                          <Pill tone="warn">{dollarFromCents(o.gapCents)}</Pill>
                         )}
                       </TableCell>
                     </TableRow>
@@ -993,17 +995,17 @@ export default function AdminReconciliationPage() {
                       {dollarFromCents(s.bankAmountCents)}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
+                      <Pill
+                        tone={
                           s.tier === "auto-create"
-                            ? "default"
+                            ? "ok"
                             : s.tier === "ambiguous"
-                              ? "destructive"
-                              : "secondary"
+                              ? "bad"
+                              : "muted"
                         }
                       >
                         {s.tier}
-                      </Badge>
+                      </Pill>
                     </TableCell>
                     <TableCell>
                       <div className="space-y-1">
@@ -1193,7 +1195,7 @@ export default function AdminReconciliationPage() {
                       {s.unmatchedBankTransactions.map((t) => (
                         <TableRow key={`bank-${t.id}`} data-testid={`row-unmatched-bank-${t.id}`}>
                           <TableCell>
-                            <Badge variant="secondary">Bank</Badge>
+                            <Pill tone="info">Bank</Pill>
                           </TableCell>
                           <TableCell>{t.date}</TableCell>
                           <TableCell>{t.merchantName ?? t.name}</TableCell>
@@ -1205,7 +1207,7 @@ export default function AdminReconciliationPage() {
                       {s.unmatchedLedgerEntries.map((e) => (
                         <TableRow key={`ledger-${e.id}`} data-testid={`row-unmatched-ledger-${e.id}`}>
                           <TableCell>
-                            <Badge variant="outline">Ledger</Badge>
+                            <Pill tone="muted">Ledger</Pill>
                           </TableCell>
                           <TableCell>{e.postedAt.slice(0, 10)}</TableCell>
                           <TableCell>
@@ -1319,7 +1321,7 @@ export default function AdminReconciliationPage() {
                     {new Date(e.createdAt).toLocaleString()}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline">{e.action}</Badge>
+                    <Pill tone="muted">{e.action}</Pill>
                   </TableCell>
                   <TableCell className="text-xs">{e.actorEmail}</TableCell>
                   <TableCell className="text-xs font-mono">
@@ -1339,7 +1341,7 @@ export default function AdminReconciliationPage() {
   }
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="space-y-6 p-6 ds-scope fin-ds">
       <WorkspacePageHeader
         title="Reconciliation"
         summary="Auto-match bank deposits to owner ledger entries. Anything that can't be matched automatically lands here for one-click review."
@@ -1360,13 +1362,11 @@ export default function AdminReconciliationPage() {
           <TabsTrigger value="suggestions" data-testid="tab-suggestions">
             Suggestions
             {pendingSuggestionCount > 0 && (
-              <Badge
-                variant="secondary"
-                className="ml-2"
-                data-testid="badge-suggestions-count"
-              >
-                {pendingSuggestionCount}
-              </Badge>
+              <span className="ml-2" data-testid="badge-suggestions-count">
+                <Pill tone="info">
+                  {pendingSuggestionCount}
+                </Pill>
+              </span>
             )}
           </TabsTrigger>
           <TabsTrigger value="unmatched" data-testid="tab-unmatched">
