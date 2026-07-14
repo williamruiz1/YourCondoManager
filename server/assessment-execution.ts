@@ -57,6 +57,7 @@ import { getFeatureFlagForAssociation } from "@shared/feature-flags";
 
 import { db } from "./db";
 import { invalidateAlertCache } from "./alerts";
+import { sendInvoiceAssessmentEmail } from "./services/invoice-assessment-email";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -895,6 +896,24 @@ async function executeSingle(
         errorMessage,
       };
     }
+  }
+
+  // founder-os#11194 — email the owner their invoice (with a Stripe pay link)
+  // the moment a real assessment posts. Pure side effect: NON-blocking to the
+  // posting (never throws; the assessment is already committed above), gated
+  // on a successful real (non-dry-run) ledger insert. Idempotent + kill-
+  // switchable inside the service.
+  if (ledgerEntryId && !dryRun && outcome.status === "success" && outcome.ledgerEntryPayload) {
+    await sendInvoiceAssessmentEmail({
+      ledgerEntryId,
+      associationId: entry.associationId,
+      unitId: entry.unit.id,
+      personId: outcome.ledgerEntryPayload.personId,
+      amount: outcome.ledgerEntryPayload.amount,
+      entryType: outcome.ledgerEntryPayload.entryType,
+      description: outcome.ledgerEntryPayload.description,
+      dueDate: entry.dueDate,
+    });
   }
 
   // Resolve the run-log status. In dry-run mode everything routes to

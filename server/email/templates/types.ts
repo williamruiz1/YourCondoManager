@@ -43,6 +43,8 @@ export type InvoiceAssessmentData = {
   description: string;     // e.g., "May 2026 dues" or "2026 Q2 assessment"
   dueDate: string;         // e.g., "2026-05-31"
   paymentLinkUrl: string;
+  /** Owner's full outstanding balance after this assessment posts, e.g. "$450.00". Optional. */
+  currentBalanceFormatted?: string;
 };
 
 export type ReceiptPaymentData = {
