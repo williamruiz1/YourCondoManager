@@ -550,7 +550,7 @@ export default function SolutionsPage({
 
       <SiteFooter />
 
-      <DemoRequestModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
+      <DemoRequestModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} audience={persona} />
     </div>
   );
 }
