@@ -13,6 +13,7 @@ import {
   defaultModeForRole,
   setViewModeAdminId,
   getViewModeSnapshot,
+  applyServerViewMode,
 } from "./view-mode";
 
 beforeEach(() => {
@@ -94,5 +95,52 @@ describe("choosing + switching + persistence", () => {
     chooseMode("board");
     setViewModeAdminId("admin-B");
     expect(getViewModeSnapshot().modeChosen).toBe(false); // B has not chosen
+  });
+});
+
+// founder-os#11345 — server-authoritative mode + lock enforcement.
+describe("applyServerViewMode + lock enforcement", () => {
+  it("applies the server mode and marks it chosen (no picker)", () => {
+    applyServerViewMode("manager", false);
+    const s = getViewModeSnapshot();
+    expect(s.mode).toBe("manager");
+    expect(s.modeChosen).toBe(true);
+    expect(s.locked).toBe(false);
+  });
+
+  it("a LOCKED board account cannot switch to manager via setMode/chooseMode", () => {
+    applyServerViewMode("board", true);
+    setMode("manager");
+    expect(getViewModeSnapshot().mode).toBe("board"); // refused
+    chooseMode("manager");
+    expect(getViewModeSnapshot().mode).toBe("board"); // refused
+    expect(getViewModeSnapshot().locked).toBe(true);
+  });
+
+  it("a LOCKED board account cannot reveal advanced (manager-like) view", () => {
+    applyServerViewMode("board", true);
+    setAdvancedView(true);
+    expect(getViewModeSnapshot().advancedView).toBe(false); // refused
+  });
+
+  it("a locked mode survives a store reload (localStorage-backed)", () => {
+    applyServerViewMode("board", true);
+    // simulate reload via a re-scope to the same admin id
+    const id = "locked-admin-1";
+    setViewModeAdminId(id);
+    applyServerViewMode("board", true);
+    setViewModeAdminId(id);
+    const s = getViewModeSnapshot();
+    expect(s.mode).toBe("board");
+    expect(s.locked).toBe(true);
+    expect(s.advancedView).toBe(false);
+  });
+
+  it("an UNLOCKED account can still toggle (dual-role managers)", () => {
+    applyServerViewMode("manager", false);
+    setMode("board");
+    expect(getViewModeSnapshot().mode).toBe("board");
+    setMode("manager");
+    expect(getViewModeSnapshot().mode).toBe("manager");
   });
 });

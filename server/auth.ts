@@ -9,6 +9,7 @@ import { storage } from "./storage";
 import { log } from "./logger";
 import { sendPlatformEmail } from "./email-provider";
 import { geoResolver, formatGeoLocation } from "./geo-resolver";
+import { resolveViewModeEntitlement } from "@shared/view-mode-entitlement";
 
 type SessionWithOAuth = {
   oauthReturnTo?: string;
@@ -584,6 +585,10 @@ export function registerAuthRoutes(app: Express) {
     const adminUser = authUser.adminUserId
       ? await storage.getAdminUserById(authUser.adminUserId)
       : (authUser.email ? await storage.getAdminUserByEmail(authUser.email) : undefined);
+    const viewModeEntitlement =
+      adminUser && adminUser.isActive === 1
+        ? resolveViewModeEntitlement({ role: adminUser.role, email: adminUser.email })
+        : null;
     return res.json({
       authenticated: true,
       user: req.user,
@@ -592,6 +597,10 @@ export function registerAuthRoutes(app: Express) {
             id: adminUser.id,
             email: adminUser.email,
             role: adminUser.role,
+            // founder-os#11345 — server-authoritative view mode (board vs
+            // manager) derived from role/entitlement; NOT a client-chosen value.
+            viewMode: viewModeEntitlement!.viewMode,
+            viewModeLocked: viewModeEntitlement!.locked,
           }
         : null,
     });
