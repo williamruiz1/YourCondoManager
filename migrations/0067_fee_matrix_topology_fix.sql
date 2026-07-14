@@ -35,7 +35,7 @@ ALTER TABLE "association_fee_settings" ADD COLUMN IF NOT EXISTS "manual_fee_enab
 ALTER TABLE "association_fee_settings" ADD COLUMN IF NOT EXISTS "manual_fee_cents" integer DEFAULT 500 NOT NULL;
 --> statement-breakpoint
 
-ALTER TABLE "platform_processing_fee_type" ADD VALUE IF NOT EXISTS 'manual_processing';
+ALTER TYPE "platform_processing_fee_type" ADD VALUE IF NOT EXISTS 'manual_processing';
 --> statement-breakpoint
 
 DO $$ BEGIN
