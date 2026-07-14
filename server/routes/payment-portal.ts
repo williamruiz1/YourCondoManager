@@ -34,7 +34,7 @@ import {
 } from "../services/payment-service";
 import { resolveConnectChargeRouting } from "../services/stripe-connect-resolver";
 import { computeApplicationFeeCents } from "../services/stripe-charge-metadata";
-import { resolveCheckoutFeeCents } from "../services/convenience-fee";
+import { resolveCheckoutFeeCents, listOwedPlatformFees } from "../services/convenience-fee";
 
 // ── Types (mirrored from routes.ts / autopay.ts) ────────────────────────────
 // `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
@@ -260,15 +260,30 @@ export function registerPaymentPortalRoutes(
       });
 
       // Initiate Stripe Checkout. When routing through Connect, attach the
-      // §1.2 application fee (dues are the only line item here, so the fee
-      // applies to the full amount) + the §2.3 "DUES" descriptor suffix.
-      // NOTE: the Connect application fee (platform's own cut of a direct
-      // charge) and the CT convenience fee (owner-borne, this dispatch) are
-      // independent concepts — Cherry Hill runs Flow 1 (single account, no
-      // Connect), so `connectRouting` is always null here today and the two
-      // never interact in practice. `computeApplicationFeeCents` is left
-      // computed off `amountCents` (unchanged) since Connect stays out of
-      // scope for this dispatch.
+      // §1.2 base application fee (the platform's existing, pre-2026-07-14
+      // cut of every Connect direct charge) PLUS the CT convenience/manual
+      // fee — see server/services/convenience-fee.ts topology note.
+      //
+      // CORRECTED 2026-07-14 (William, voice — verified live against prod):
+      // Cherry Hill Court Condominiums HAS an active Stripe Connect
+      // sub-merchant (acct_1TnzDnArorHrelxs). The original PR wrongly
+      // assumed a single shared platform account, so it only itemized the
+      // convenience fee as a second Checkout line item without touching
+      // `application_fee_amount` — meaning the fee money would have
+      // actually landed in Cherry Hill's own connected account (the
+      // opposite of "charged and kept by the platform"). The fix: when
+      // Connect routing is active, fold `feeCents` INTO the
+      // application_fee_amount too, so Stripe itself transfers the fee to
+      // YCM's platform balance — a REAL money split, not just an
+      // owner_ledger_entries bookkeeping split. When Connect is NOT active
+      // (legacy manual-key, single account), there's no Connect mechanism
+      // to route through — the accounting-only split (via platformFeeCents
+      // netted out of the ledger credit) is the only separation available,
+      // unchanged from the original design.
+      const baseApplicationFeeCents = connectRouting ? computeApplicationFeeCents(amountCents) : 0;
+      const totalApplicationFeeCents = connectRouting ? baseApplicationFeeCents + feeCents : null;
+      const settlementMethod: "connect_application_fee" | "accounting_only" =
+        connectRouting && feeCents > 0 ? "connect_application_fee" : "accounting_only";
       const appBaseUrl = `${req.protocol}://${req.get("host")}`;
       const result = await initiateStripeCheckout({
         transactionId: txn.id,
@@ -278,9 +293,12 @@ export function registerPaymentPortalRoutes(
         associationName: assoc?.name ?? "HOA",
         unitNumber: unit?.unitNumber ?? "Unit",
         stripeAccountHeader: connectRouting?.stripeAccountHeader ?? null,
-        applicationFeeCents: connectRouting ? computeApplicationFeeCents(amountCents) : null,
+        applicationFeeCents: totalApplicationFeeCents,
         statementDescriptorSuffix: connectRouting ? "DUES" : null,
         paymentMethodType: paymentMethod,
+        // Read back by normalizeStripeWebhookPayload so the webhook handler
+        // knows which settlement actually applies for this charge's fee.
+        feeSettlementMethod: feeCents > 0 ? settlementMethod : null,
       });
 
       res.status(201).json({
@@ -324,6 +342,39 @@ export function registerPaymentPortalRoutes(
         cardTotalCents: amountCents + cardFee.feeCents,
         achFeeCents: achFee.feeCents,
         achTotalCents: amountCents + achFee.feeCents,
+      });
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Portal: Platform Fees Owed (read-only — cash/check manual fee) ───────
+  //
+  // "collected with their next payment or payable directly" (William,
+  // 2026-07-14) — this is the "directly" half: a read-only view so the
+  // owner can see what they owe the PLATFORM (never the association).
+  // Collecting it is still a treasurer/admin action
+  // (POST /api/admin/platform-fees/:id/collect) — a self-serve owner
+  // payment flow for this specific receivable is a follow-on, out of scope
+  // here.
+  app.get("/api/portal/platform-fees-owed", requirePortal, async (req: PortalRequest, res: Response) => {
+    try {
+      if (!req.portalAssociationId || !req.portalPersonId) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const fees = await listOwedPlatformFees({
+        associationId: req.portalAssociationId,
+        personId: req.portalPersonId,
+      });
+      res.json({
+        fees: fees.map((f) => ({
+          id: f.id,
+          feeType: f.feeType,
+          amountCents: f.amountCents,
+          currency: f.currency,
+          createdAt: f.createdAt,
+        })),
+        totalOwedCents: fees.reduce((sum, f) => sum + f.amountCents, 0),
       });
     } catch (error: any) {
       res.status(400).json({ message: error.message });

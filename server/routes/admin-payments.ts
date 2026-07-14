@@ -36,12 +36,20 @@ import { db } from "../db";
 import {
   auditLogs,
   ownerLedgerEntries,
+  platformProcessingFees,
   type AdminRole,
 } from "@shared/schema";
 import { runAutoMatch, type AutoMatchResult } from "../services/reconciliation/auto-matcher";
 import { refundConnectCharge, isRefundsEnabled } from "../services/refund-service";
 import { reversePayment } from "../services/payment-edge-cases";
-import { getAssociationFeeSettings, setAssociationFeeSettings } from "../services/convenience-fee";
+import {
+  getAssociationFeeSettings,
+  setAssociationFeeSettings,
+  computeManualProcessingFeeCents,
+  recordPlatformProcessingFee,
+  markPlatformFeeCollected,
+  listOwedPlatformFees,
+} from "../services/convenience-fee";
 
 // ── Reusable request shape (mirrored from routes.ts) ─────────────────────────
 
@@ -120,16 +128,19 @@ const bulkRecordSchema = z.object({
   attemptBankMatch: z.boolean().optional().default(true),
 });
 
-// CT convenience-fee structure (founder-os
-// wiki/research/chc-processing-fee-legality-2026-07-14.md §6). All fields
-// optional — a PATCH only touches the keys it supplies; `cardFeeEnabled` is
-// the master switch (defaults OFF for every association until this is
+// CT fee structure (founder-os
+// wiki/research/chc-processing-fee-legality-2026-07-14.md §6 + William's
+// 2026-07-14 voice extension for cash/check). All fields optional — a PATCH
+// only touches the keys it supplies; `cardFeeEnabled` / `manualFeeEnabled`
+// are the master switches (default OFF for every association until this is
 // explicitly called with `true`).
 const feeSettingsPatchSchema = z.object({
   cardFeeEnabled: z.boolean().optional(),
   cardFeePercentBps: z.coerce.number().int().min(0).max(10000).optional(),
   cardFeeFixedCents: z.coerce.number().int().min(0).optional(),
   achFeeCents: z.coerce.number().int().min(0).optional(),
+  manualFeeEnabled: z.boolean().optional(),
+  manualFeeCents: z.coerce.number().int().min(0).optional(),
 });
 
 // Refund a Connect direct charge. `amountCents` omitted = full refund.
@@ -315,6 +326,16 @@ interface RecordedPayment {
   method: PaymentMethod;
   receivedAt: Date;
   description: string;
+  /**
+   * CT fee structure — cash/check manual-processing fee (William, voice,
+   * 2026-07-14). Set only when this payment's method is cash/check AND the
+   * association's `manualFeeEnabled` flag is on. `status: "owed"` — this is
+   * a NEW receivable the owner now owes the PLATFORM (never the
+   * association), collected with their next payment or paid directly (see
+   * POST /api/admin/platform-fees/:id/collect). Null for every other case
+   * — unchanged behavior.
+   */
+  manualProcessingFee: { feeId: string; amountCents: number; status: "owed" } | null;
 }
 
 async function recordSinglePayment(
@@ -384,6 +405,45 @@ async function recordSinglePayment(
     },
   });
 
+  // CT fee structure — cash/check manual-processing fee (William, voice,
+  // 2026-07-14). The dues themselves ALWAYS register at face value on the
+  // association's ledger above, unaffected by this. A cash/check payment
+  // separately carries a flat platform manual-processing fee (the
+  // treasurer's manual handling work is a real platform cost) — owed to
+  // YCM, never the association, same separation principle as the card fee.
+  // Gated on the association's `manualFeeEnabled` flag (default OFF —
+  // inert for every association until explicitly turned on). Best-effort:
+  // a fee-booking failure must never fail the payment recording itself —
+  // the dues are already safely recorded.
+  let manualProcessingFee: RecordedPayment["manualProcessingFee"] = null;
+  if (input.method === "cash" || input.method === "check") {
+    try {
+      const feeSettings = await getAssociationFeeSettings(input.associationId);
+      if (feeSettings.manualFeeEnabled) {
+        const feeCents = computeManualProcessingFeeCents(feeSettings.manualFeeCents);
+        if (feeCents > 0) {
+          // Idempotency: one manual fee per manually-recorded ledger entry —
+          // a retry against the SAME ledger entry id can never double-book.
+          const { fee } = await recordPlatformProcessingFee({
+            associationId: input.associationId,
+            unitId,
+            personId: input.personId,
+            feeType: "manual_processing",
+            amountCents: feeCents,
+            status: "owed",
+            settlementMethod: "accounting_only",
+            idempotencyKey: `manual:${inserted.id}`,
+          });
+          if (fee) {
+            manualProcessingFee = { feeId: fee.id, amountCents: fee.amountCents, status: "owed" };
+          }
+        }
+      }
+    } catch (feeErr) {
+      console.error("[admin-payments] manual-processing fee booking failed (non-fatal):", feeErr);
+    }
+  }
+
   return {
     ledgerEntryId: inserted.id,
     associationId: inserted.associationId,
@@ -393,6 +453,7 @@ async function recordSinglePayment(
     method: input.method,
     receivedAt: inserted.postedAt,
     description: inserted.description ?? description,
+    manualProcessingFee,
   };
 }
 
@@ -888,16 +949,20 @@ export function registerAdminPaymentsRoutes(
     },
   );
 
-  // ── CT convenience-fee structure (founder-os
-  // wiki/research/chc-processing-fee-legality-2026-07-14.md §6) ────────────
+  // ── CT fee structure (founder-os
+  // wiki/research/chc-processing-fee-legality-2026-07-14.md §6 + William's
+  // 2026-07-14 voice extensions — cash/check manual fee; ship live, no
+  // attorney gate) ──────────────────────────────────────────────────────
   //
-  // GET/PATCH the per-association fee settings. `cardFeeEnabled` defaults to
-  // false for every association — this is the "one-command enable" the dark
-  // ship depends on: flipping it to true is the ONLY thing that turns the
-  // card-fee checkout option on for that association, and it stays
-  // reversible. Gated to platform-admin ONLY (tighter than the general
-  // RECORD_ROLES) — this is a legal-compliance-sensitive switch that must
-  // not go live before the association's attorney signs off (memo §7).
+  // GET/PATCH the per-association fee settings (card + ACH + manual/cash-check).
+  // Every fee defaults to OFF for every association — this is the
+  // "one-command enable" the ship-live path depends on: flipping
+  // `cardFeeEnabled` / `manualFeeEnabled` to true is the ONLY thing that
+  // turns that fee on for that association, and it stays reversible. Gated
+  // to platform-admin ONLY (tighter than the general RECORD_ROLES) — this
+  // is a legal-compliance-sensitive switch (William, 2026-07-14: verify the
+  // association's own bylaws/declaration don't prohibit it, then ship —
+  // no attorney gate required).
   app.get(
     "/api/admin/associations/:associationId/fee-settings",
     requireAdmin,
@@ -930,6 +995,8 @@ export function registerAdminPaymentsRoutes(
           cardFeePercentBps: updated.cardFeePercentBps,
           cardFeeFixedCents: updated.cardFeeFixedCents,
           achFeeCents: updated.achFeeCents,
+          manualFeeEnabled: updated.manualFeeEnabled === 1,
+          manualFeeCents: updated.manualFeeCents,
           updatedBy: updated.updatedBy,
           updatedAt: updated.updatedAt,
         });
@@ -938,6 +1005,60 @@ export function registerAdminPaymentsRoutes(
           return res.status(400).json({ error: "Invalid input", code: "INVALID_INPUT", issues: error.issues });
         }
         res.status(400).json({ error: error.message, code: "FEE_SETTINGS_WRITE_ERROR" });
+      }
+    },
+  );
+
+  // GET /api/admin/platform-fees?associationId=&personId=&status=owed —
+  // the "owed to the platform, not yet collected" view (cash/check manual
+  // fees, primarily). Read role list — same as the recent-payments read.
+  app.get(
+    "/api/admin/platform-fees",
+    requireAdmin,
+    requireAdminRole(READ_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res.status(400).json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+        const personId = typeof req.query.personId === "string" ? req.query.personId : undefined;
+        const fees = await listOwedPlatformFees({ associationId, personId });
+        res.json({ fees });
+      } catch (error: any) {
+        res.status(400).json({ error: error.message, code: "PLATFORM_FEES_READ_ERROR" });
+      }
+    },
+  );
+
+  // POST /api/admin/platform-fees/:id/collect — mark an owed fee collected
+  // (the treasurer collected it with the owner's next payment, or the owner
+  // paid it directly). RECORD_ROLES — the same roles who record payments do
+  // this in normal ops.
+  app.post(
+    "/api/admin/platform-fees/:id/collect",
+    requireAdmin,
+    requireAdminRole(RECORD_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const feeId = String(req.params.id);
+        // Scope check BEFORE mutating — look up the fee's association first
+        // so a cross-association collect attempt is rejected without ever
+        // touching the row.
+        const [preCheck] = await db
+          .select({ associationId: platformProcessingFees.associationId })
+          .from(platformProcessingFees)
+          .where(eq(platformProcessingFees.id, feeId))
+          .limit(1);
+        if (!preCheck) {
+          return res.status(404).json({ error: "Platform fee not found", code: "FEE_NOT_FOUND" });
+        }
+        assertAssociationScope(req, preCheck.associationId);
+        const fee = await markPlatformFeeCollected(feeId);
+        res.json({ fee });
+      } catch (error: any) {
+        res.status(400).json({ error: error.message, code: "PLATFORM_FEE_COLLECT_ERROR" });
       }
     },
   );

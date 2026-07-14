@@ -137,6 +137,17 @@ export async function initiateStripeCheckout(params: {
    * ACH instead.
    */
   paymentMethodType?: "ach" | "card";
+  /**
+   * CT convenience-fee structure — Stripe topology fix (2026-07-14). How
+   * `feeCents` (below) actually settled: 'connect_application_fee' when the
+   * caller already folded it into `applicationFeeCents` so Stripe's own
+   * transfer moves it to the platform balance (Connect-active association),
+   * or 'accounting_only' when there's no Connect mechanism to route through
+   * (single-account/manual-key association). Null when there's no fee at
+   * all. Carried as metadata so the webhook handler can record the SAME
+   * settlement method the checkout was actually created with.
+   */
+  feeSettlementMethod?: "connect_application_fee" | "accounting_only" | null;
 }): Promise<{ checkoutUrl: string; sessionId: string }> {
   const [txn] = await db
     .select()
@@ -206,6 +217,9 @@ export async function initiateStripeCheckout(params: {
     // ledger credit nets the fee out — assessment-at-face-value, never the
     // fee-inclusive total.
     sessionParams.set("payment_intent_data[metadata][platformFeeCents]", String(feeCents));
+    if (params.feeSettlementMethod) {
+      sessionParams.set("payment_intent_data[metadata][feeSettlementMethod]", params.feeSettlementMethod);
+    }
   }
 
   // Session-level metadata (appears on checkout.session webhook events)
@@ -218,6 +232,9 @@ export async function initiateStripeCheckout(params: {
   sessionParams.set("metadata[checkoutMethod]", paymentMethodType);
   if (feeCents > 0) {
     sessionParams.set("metadata[platformFeeCents]", String(feeCents));
+    if (params.feeSettlementMethod) {
+      sessionParams.set("metadata[feeSettlementMethod]", params.feeSettlementMethod);
+    }
   }
 
   // Stripe Connect direct-charge routing (spec §1.1 + §1.2). When routing to a

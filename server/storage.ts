@@ -3947,6 +3947,9 @@ export interface IStorage {
      * every payment without a fee — unchanged behavior.
      */
     platformFeeCents?: number | null;
+    /** Stripe-topology fix (2026-07-14) — how the fee actually settled;
+     *  see server/services/convenience-fee.ts. Null when there's no fee. */
+    feeSettlementMethod?: "connect_application_fee" | "accounting_only" | null;
   }): Promise<{
     duplicate: boolean;
     event: PaymentWebhookEvent;
@@ -8353,6 +8356,7 @@ export class DatabaseStorage implements IStorage {
     gatewayReference?: string | null;
     rawPayloadJson?: unknown;
     platformFeeCents?: number | null;
+    feeSettlementMethod?: "connect_application_fee" | "accounting_only" | null;
   }): Promise<{ duplicate: boolean; event: PaymentWebhookEvent; ownerLedgerEntry: OwnerLedgerEntry | null; message: string }> {
     const [existing] = await db
       .select()
@@ -8541,6 +8545,15 @@ export class DatabaseStorage implements IStorage {
           amountCents: Math.round(platformFeeDollars * 100),
           currency: normalizeCurrency(payload.currency || link?.currency) ?? "USD",
           stripePaymentIntentId: payload.gatewayReference?.trim() || null,
+          // Card fees collect in the SAME Stripe charge as the dues — the
+          // money has already moved by the time this webhook fires.
+          status: "collected",
+          // Stripe-topology fix (2026-07-14): record which mechanism ACTUALLY
+          // moved the money for this charge (set by initiateStripeCheckout at
+          // checkout-creation time, read back from Stripe metadata) — never
+          // assume; a webhook that somehow lacks the metadata falls back to
+          // the conservative 'accounting_only' (the pre-fix behavior).
+          settlementMethod: payload.feeSettlementMethod ?? "accounting_only",
         });
       } catch (feeErr) {
         console.error("[payment-webhook] platform fee booking failed (non-fatal):", feeErr);
