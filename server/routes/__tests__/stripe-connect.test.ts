@@ -230,6 +230,36 @@ vi.mock("../../services/stripe-reconciliation", () => ({
   getReconciliationReport: vi.fn(async () => reconciliationReportFixture),
 }));
 
+// ── P0 payment-confirmation-ux (2026-07-14) ──────────────────────────────────
+// Real terminal-status idempotency for updatePaymentTransactionStatus is
+// proven directly against the actual implementation in
+// server/services/__tests__/payment-service-status.test.ts (mocked db, not
+// mocked wholesale). Here we mock the module at the route boundary — same
+// style as stripe-reconciliation above — to assert the NEW webhook cases
+// call it with the right args in the right scenarios. This models the SAME
+// terminal-status guard (a fake in-memory paymentTransactions row keyed by
+// transactionId) so a route-level "replay after succeeded" test proves the
+// end-to-end wiring can't double-post either.
+const updateStatusCalls: Array<Record<string, unknown>> = [];
+const fakePaymentTransactions = new Map<string, { status: string; providerIntentId: string | null }>();
+const TERMINAL = new Set(["succeeded", "failed", "canceled", "reversed"]);
+vi.mock("../../services/payment-service", () => ({
+  updatePaymentTransactionStatus: vi.fn(
+    async (input: { transactionId?: string; providerIntentId?: string; status: string }) => {
+      updateStatusCalls.push(input);
+      const key = input.transactionId ?? input.providerIntentId ?? "";
+      const existing = fakePaymentTransactions.get(key) ?? { status: "initiated", providerIntentId: null };
+      if (TERMINAL.has(existing.status)) return existing; // idempotent no-op, mirrors the real guard
+      const updated = {
+        status: input.status,
+        providerIntentId: existing.providerIntentId ?? input.providerIntentId ?? null,
+      };
+      fakePaymentTransactions.set(key, updated);
+      return updated;
+    },
+  ),
+}));
+
 // Now import the route registrar (mocks above must be set first).
 import { registerStripeConnectRoutes } from "../stripe-connect";
 
@@ -294,6 +324,8 @@ beforeEach(() => {
   chargeWriteCalls.length = 0;
   reversalWriteCalls.length = 0;
   reconciliationReportFixture = [];
+  updateStatusCalls.length = 0;
+  fakePaymentTransactions.clear();
   stripeMockAccount = {
     id: "acct_test_001",
     charges_enabled: false,
@@ -865,4 +897,217 @@ describe("GET /api/financial/stripe-connect/connections", () => {
       }
     });
   });
+});
+
+// ── P0 payment-confirmation-ux (founder-os incident 2026-07-14) ─────────────
+// William's real Cherry Hill dues payment ($330 ACH) completed at Stripe
+// (checkout.session.completed / payment_intent.processing both fired) but
+// the owner portal showed nothing — the payment_transactions row sat mute
+// at "initiated" for the whole 3-5 business day ACH window, and the success
+// redirect (?payment=success&txn=) was never read by the frontend either
+// (see client/src/pages/portal/portal-home.tsx for that half of the fix).
+// These two new webhook cases surface a portal-visible "pending" status
+// immediately. Neither touches the ledger — that remains exclusively on
+// writeLedgerEntryForCharge's timing (charge.succeeded, unchanged above).
+describe("platform Connect webhook — checkout.session.completed (payment-confirmation-ux)", () => {
+  function signEventBody(rawBody: string): string {
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = createHmac("sha256", PLATFORM_WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest("hex");
+    return `t=${ts},v1=${sig}`;
+  }
+
+  it("marks the transaction pending + backfills the payment_intent id (ACH, payment_status=unpaid)", async () => {
+    await withApp(async (url) => {
+      const event = {
+        id: "evt_ach_1",
+        type: "checkout.session.completed",
+        account: "acct_test_001",
+        data: {
+          object: {
+            id: "cs_live_ach_1",
+            payment_intent: "pi_ach_1",
+            payment_status: "unpaid", // ACH — funds not yet cleared, normal
+            metadata: { transactionId: "txn-ach-1" },
+          },
+        },
+      };
+      const rawBody = JSON.stringify(event);
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+        body: rawBody,
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { type: string; action: string };
+      expect(payload.type).toBe("checkout.session.completed");
+      expect(payload.action).toBe("marked-pending");
+      expect(updateStatusCalls).toHaveLength(1);
+      expect(updateStatusCalls[0]).toMatchObject({
+        transactionId: "txn-ach-1",
+        providerIntentId: "pi_ach_1",
+        status: "pending",
+      });
+      expect(fakePaymentTransactions.get("txn-ach-1")).toMatchObject({ status: "pending" });
+    });
+  });
+
+  it("is a no-op (not-tracked) when the session has no transactionId or payment_intent", async () => {
+    await withApp(async (url) => {
+      const event = {
+        id: "evt_ach_2",
+        type: "checkout.session.completed",
+        account: "acct_test_001",
+        data: { object: { id: "cs_untracked", metadata: {} } },
+      };
+      const rawBody = JSON.stringify(event);
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+        body: rawBody,
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { action: string };
+      expect(payload.action).toBe("not-tracked");
+      expect(updateStatusCalls).toHaveLength(0);
+    });
+  });
+});
+
+describe("platform Connect webhook — payment_intent.processing (payment-confirmation-ux)", () => {
+  function signEventBody(rawBody: string): string {
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = createHmac("sha256", PLATFORM_WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest("hex");
+    return `t=${ts},v1=${sig}`;
+  }
+
+  it("marks the transaction pending (fires the instant an ACH debit is submitted)", async () => {
+    await withApp(async (url) => {
+      const event = {
+        id: "evt_proc_1",
+        type: "payment_intent.processing",
+        account: "acct_test_001",
+        data: { object: { id: "pi_proc_1", metadata: { transactionId: "txn-proc-1" } } },
+      };
+      const rawBody = JSON.stringify(event);
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+        body: rawBody,
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { action: string };
+      expect(payload.action).toBe("marked-pending");
+      expect(updateStatusCalls[0]).toMatchObject({
+        transactionId: "txn-proc-1",
+        providerIntentId: "pi_proc_1",
+        status: "pending",
+      });
+    });
+  });
+});
+
+describe("platform Connect webhook — charge.succeeded flips payment_transactions status too (payment-confirmation-ux)", () => {
+  function signEventBody(rawBody: string): string {
+    const ts = Math.floor(Date.now() / 1000);
+    const sig = createHmac("sha256", PLATFORM_WEBHOOK_SECRET).update(`${ts}.${rawBody}`).digest("hex");
+    return `t=${ts},v1=${sig}`;
+  }
+  const fullMeta = { hoa_id: "assoc-1", owner_id: "per_1", unit_id: "unt_1", charge_type: "dues" };
+
+  it("flips the transaction to succeeded alongside the ledger write, additively", async () => {
+    await withApp(async (url) => {
+      const event = {
+        id: "evt_charge_1",
+        type: "charge.succeeded",
+        account: "acct_test_001",
+        data: {
+          object: {
+            id: "ch_settle_1",
+            amount: 33000,
+            payment_intent: "pi_settle_1",
+            metadata: { ...fullMeta, transactionId: "txn-settle-1" },
+          },
+        },
+      };
+      const rawBody = JSON.stringify(event);
+      const res = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody) },
+        body: rawBody,
+      });
+      expect(res.status).toBe(200);
+      const payload = (await res.json()) as { action: string };
+      // The ledger write still happens exactly as before — untouched.
+      expect(payload.action).toBe("ledger-written");
+      expect(chargeWriteCalls).toHaveLength(1);
+      // ...and the NEW additive call flips the owner-facing status too.
+      expect(updateStatusCalls).toHaveLength(1);
+      expect(updateStatusCalls[0]).toMatchObject({
+        transactionId: "txn-settle-1",
+        providerIntentId: "pi_settle_1",
+        status: "succeeded",
+      });
+    });
+  });
+
+  it(
+    "REGRESSION GUARD — a late-arriving checkout.session.completed replay " +
+      "AFTER charge.succeeded already landed can NEVER regress the " +
+      "transaction back to pending (the exact scenario the review flagged)",
+    async () => {
+      await withApp(async (url) => {
+        // 1) charge.succeeded lands first — flips to succeeded.
+        const succeededEvent = {
+          id: "evt_charge_2",
+          type: "charge.succeeded",
+          account: "acct_test_001",
+          data: {
+            object: {
+              id: "ch_settle_2",
+              amount: 33000,
+              payment_intent: "pi_settle_2",
+              metadata: { ...fullMeta, transactionId: "txn-settle-2" },
+            },
+          },
+        };
+        const rawBody1 = JSON.stringify(succeededEvent);
+        await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody1) },
+          body: rawBody1,
+        });
+        expect(fakePaymentTransactions.get("txn-settle-2")).toMatchObject({ status: "succeeded" });
+
+        // 2) a re-delivered / out-of-order checkout.session.completed arrives
+        //    AFTER settlement — Stripe's at-least-once delivery guarantee
+        //    makes this a real scenario, not a hypothetical.
+        const replayEvent = {
+          id: "evt_ach_replay",
+          type: "checkout.session.completed",
+          account: "acct_test_001",
+          data: {
+            object: {
+              id: "cs_live_settle_2",
+              payment_intent: "pi_settle_2",
+              payment_status: "unpaid",
+              metadata: { transactionId: "txn-settle-2" },
+            },
+          },
+        };
+        const rawBody2 = JSON.stringify(replayEvent);
+        const res2 = await fetch(`${url}/api/webhooks/stripe-connect/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Stripe-Signature": signEventBody(rawBody2) },
+          body: rawBody2,
+        });
+        expect(res2.status).toBe(200);
+
+        // Still succeeded — NOT regressed to pending. No second ledger write
+        // either (writeLedgerEntryForCharge is never even called by this
+        // event type — only charge.succeeded calls it, unchanged).
+        expect(fakePaymentTransactions.get("txn-settle-2")).toMatchObject({ status: "succeeded" });
+        expect(chargeWriteCalls).toHaveLength(1);
+      });
+    },
+  );
 });
