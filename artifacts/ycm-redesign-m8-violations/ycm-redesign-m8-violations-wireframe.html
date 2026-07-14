@@ -1,0 +1,256 @@
+<title>YCM Redesign — M8 Violations (wireframe)</title>
+<style>
+  :root{
+    --ds-teal:#014d4a; --ds-teal-700:#0a6a63; --ds-accent:#15a39c; --ds-light:#bfe8e4;
+    --ds-ink:#0f2e2c; --ds-muted:#5b7572; --ds-sub:#4a6b68; --ds-gray:#e5e7eb;
+    --ds-off:#f5f7f9; --ds-hairline:#f0f2f2;
+    --ds-good:#0f7a4c; --ds-goodsoft:#e0f5e9; --ds-bad:#c0392b; --ds-badsoft:#fbe9e7;
+    --ds-warn:#8a6d00; --ds-warnsoft:#fff4d6; --ds-info:#014d4a; --ds-infosoft:#bfe8e4;
+    --ds-radius:12px; --ds-radius-sm:8px; --ds-shadow:0 1px 3px rgba(1,77,74,.06);
+    --ds-font:"Inter Tight",system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--ds-font);color:var(--ds-ink);background:var(--ds-off);-webkit-font-smoothing:antialiased}
+  .stamp{background:#fff;border-bottom:1px solid var(--ds-gray);padding:10px 20px;font-size:12.5px;color:var(--ds-muted);display:flex;gap:16px;flex-wrap:wrap;align-items:center}
+  .stamp b{color:var(--ds-teal)}
+  .stamp .wf{background:var(--ds-warnsoft);color:var(--ds-warn);border:1px solid #eadfb0;border-radius:999px;padding:2px 10px;font-weight:600;font-size:11.5px}
+  .app{display:grid;grid-template-columns:236px 1fr;min-height:calc(100vh - 43px)}
+  /* Sidebar */
+  .side{background:var(--ds-teal);color:#dbeeeb;padding:18px 12px;display:flex;flex-direction:column;gap:4px}
+  .brand{display:flex;align-items:center;gap:10px;padding:6px 8px 16px;color:#fff;font-weight:700;font-size:16px}
+  .brand .mk{width:26px;height:26px;display:flex;align-items:flex-end;gap:2px}
+  .brand .mk i{width:5px;background:var(--ds-accent);border-radius:2px;display:block}
+  .brand .mk i:nth-child(1){height:10px}.brand .mk i:nth-child(2){height:16px}.brand .mk i:nth-child(3){height:24px}
+  .navlabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:#7fb4ae;padding:14px 8px 4px}
+  .nav{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:var(--ds-radius-sm);font-size:13.5px;color:#c8e6e2;cursor:default}
+  .nav .ico{width:15px;height:15px;border:1.6px solid currentColor;border-radius:4px;opacity:.75;flex:none}
+  .nav.active{background:rgba(255,255,255,.12);color:#fff;font-weight:600;position:relative}
+  .nav.active::before{content:"";position:absolute;left:-12px;top:6px;bottom:6px;width:3px;background:var(--ds-accent);border-radius:0 3px 3px 0}
+  /* Main */
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{background:#fff;border-bottom:1px solid var(--ds-gray);padding:12px 24px;display:flex;align-items:center;gap:16px}
+  .search{flex:1;max-width:420px;background:var(--ds-off);border:1px solid var(--ds-gray);border-radius:999px;padding:8px 14px;color:var(--ds-muted);font-size:13px}
+  .tb-act{margin-left:auto;display:flex;gap:10px;align-items:center}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--ds-light);color:var(--ds-teal);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+  .content{padding:24px;max-width:1180px;width:100%}
+  .pagehead{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px}
+  .eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--ds-accent);font-weight:700}
+  h1{font-size:24px;margin:4px 0 4px;color:var(--ds-teal)}
+  .sub{color:var(--ds-muted);font-size:13.5px;margin:0}
+  .btn{border:none;border-radius:var(--ds-radius-sm);padding:9px 15px;font-weight:600;font-size:13px;font-family:inherit;cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .btn.primary{background:var(--ds-teal);color:#fff}
+  .btn.accent{background:var(--ds-accent);color:#fff}
+  .btn.ghost{background:#fff;border:1px solid var(--ds-gray);color:var(--ds-ink)}
+  .btn .plus{font-size:15px;line-height:1}
+  .head-actions{margin-left:auto;display:flex;gap:10px}
+  /* Stat row */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  .stat{background:#fff;border:1px solid var(--ds-gray);border-radius:var(--ds-radius);box-shadow:var(--ds-shadow);padding:15px 16px}
+  .stat .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--ds-muted);font-weight:600}
+  .stat .v{font-size:27px;font-weight:700;color:var(--ds-teal);margin-top:5px;line-height:1}
+  .stat .d{font-size:12px;margin-top:5px;color:var(--ds-muted)}
+  .stat .d.bad{color:var(--ds-bad)} .stat .d.good{color:var(--ds-good)}
+  /* Filter bar */
+  .filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+  .fchip{background:#fff;border:1px solid var(--ds-gray);border-radius:999px;padding:7px 13px;font-size:12.5px;color:var(--ds-sub);display:inline-flex;gap:7px;align-items:center}
+  .fchip.on{background:var(--ds-light);border-color:#a6d8d2;color:var(--ds-teal);font-weight:600}
+  .fchip .cx{opacity:.5}
+  /* Card + table */
+  .card{background:#fff;border:1px solid var(--ds-gray);border-radius:var(--ds-radius);box-shadow:var(--ds-shadow);overflow:hidden}
+  .card-h{padding:14px 18px;border-bottom:1px solid var(--ds-hairline);display:flex;align-items:center;gap:10px}
+  .card-h h2{font-size:15px;margin:0;color:var(--ds-teal)}
+  .card-h .count{color:var(--ds-muted);font-size:12.5px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead th{text-align:left;padding:10px 18px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--ds-muted);font-weight:600;background:#fbfcfc;border-bottom:1px solid var(--ds-hairline)}
+  tbody td{padding:12px 18px;border-bottom:1px solid var(--ds-hairline);color:var(--ds-ink);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:#fafcfc;cursor:pointer}
+  .unit{font-weight:600;color:var(--ds-teal)}
+  .owner{color:var(--ds-muted);font-size:12px}
+  .fine{font-variant-numeric:tabular-nums;font-weight:600}
+  .muted{color:var(--ds-muted)}
+  /* Pills */
+  .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:3px 10px;font-size:11.5px;font-weight:600;line-height:1.4;border:1px solid transparent}
+  .pill.bad{background:var(--ds-badsoft);color:var(--ds-bad);border-color:#f3c8c1}
+  .pill.warn{background:var(--ds-warnsoft);color:var(--ds-warn);border-color:#eadfb0}
+  .pill.info{background:var(--ds-infosoft);color:var(--ds-info);border-color:#a6d8d2}
+  .pill.good{background:var(--ds-goodsoft);color:var(--ds-good);border-color:#bfe6cf}
+  .pill.muted{background:#eef1f1;color:var(--ds-muted);border-color:#e0e5e5}
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+  .rowact{color:var(--ds-accent);font-weight:600;font-size:12.5px}
+  /* Detail drawer */
+  .layout{display:grid;grid-template-columns:1fr 340px;gap:18px;align-items:start}
+  @media(max-width:1080px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}.app{grid-template-columns:1fr}.side{display:none}}
+  .drawer{background:#fff;border:1px solid var(--ds-gray);border-radius:var(--ds-radius);box-shadow:var(--ds-shadow);position:sticky;top:20px}
+  .dh{padding:16px 18px;border-bottom:1px solid var(--ds-hairline)}
+  .dh .u{font-size:16px;font-weight:700;color:var(--ds-teal)}
+  .dh .t{color:var(--ds-muted);font-size:12.5px;margin-top:2px}
+  .dbody{padding:16px 18px}
+  .kv{display:flex;justify-content:space-between;padding:7px 0;font-size:13px;border-bottom:1px dashed var(--ds-hairline)}
+  .kv .l{color:var(--ds-muted)} .kv .r{font-weight:600}
+  .sec-l{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ds-muted);font-weight:700;margin:16px 0 8px}
+  .tl{position:relative;padding-left:18px}
+  .tl .ev{position:relative;padding:0 0 14px 4px;font-size:12.5px}
+  .tl .ev::before{content:"";position:absolute;left:-13px;top:3px;width:8px;height:8px;border-radius:50%;background:var(--ds-accent);box-shadow:0 0 0 3px #fff,0 0 0 4px var(--ds-gray)}
+  .tl::after{content:"";position:absolute;left:0;top:5px;bottom:8px;width:1.5px;background:var(--ds-gray)}
+  .tl .ev .w{color:var(--ds-muted);font-size:11px;margin-top:1px}
+  .note{background:var(--ds-warnsoft);border:1px solid #eadfb0;color:#6b5600;border-radius:var(--ds-radius-sm);padding:11px 13px;font-size:12.5px;margin-top:8px}
+  .flag{background:var(--ds-infosoft);border:1px solid #a6d8d2;color:var(--ds-teal);border-radius:var(--ds-radius-sm);padding:11px 13px;font-size:12.5px;margin:0 24px 18px}
+  .flag b{font-weight:700}
+</style>
+
+<div class="stamp">
+  <span class="wf">WIREFRAME · not built</span>
+  <span><b>YCM Redesign M8</b> — Violations management page</span>
+  <span>Created <b>2026-07-14</b></span>
+  <span>Author <b>YCM GM (founder-os-20)</b></span>
+  <span>founder-os#10569 · staging-only · needs William signoff before build</span>
+</div>
+
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="mk"><i></i><i></i><i></i></span> Your Condo Manager</div>
+    <div class="navlabel">Manage</div>
+    <div class="nav"><span class="ico"></span> Dashboard</div>
+    <div class="nav"><span class="ico"></span> Payments</div>
+    <div class="nav"><span class="ico"></span> Reports</div>
+    <div class="nav active"><span class="ico"></span> Violations</div>
+    <div class="nav"><span class="ico"></span> Work Orders</div>
+    <div class="navlabel">Community</div>
+    <div class="nav"><span class="ico"></span> Owners &amp; Units</div>
+    <div class="nav"><span class="ico"></span> Documents</div>
+    <div class="nav"><span class="ico"></span> Communications</div>
+    <div class="nav"><span class="ico"></span> Calendar</div>
+    <div class="nav"><span class="ico"></span> Settings</div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="search">Search units, owners, violations…</div>
+      <div class="tb-act">
+        <button class="btn ghost">Cherry Hill Court ▾</button>
+        <div class="avatar">WR</div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="pagehead">
+        <div>
+          <div class="eyebrow">Compliance</div>
+          <h1>Violations</h1>
+          <p class="sub">Track CC&amp;R violations by unit — from first observation through notice, cure, or escalation.</p>
+        </div>
+        <div class="head-actions">
+          <button class="btn ghost">Export</button>
+          <button class="btn primary"><span class="plus">+</span> Log violation</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="k">Open</div><div class="v">7</div><div class="d bad">3 over 30 days</div></div>
+        <div class="stat"><div class="k">Notice sent</div><div class="v">4</div><div class="d muted">awaiting cure</div></div>
+        <div class="stat"><div class="k">Escalated</div><div class="v">1</div><div class="d bad">to counsel / fine</div></div>
+        <div class="stat"><div class="k">Cured (30d)</div><div class="v">12</div><div class="d good">resolved</div></div>
+      </div>
+
+      <div class="filters">
+        <span class="fchip on">Status: Open, Notice-sent <span class="cx">✕</span></span>
+        <span class="fchip">All types ▾</span>
+        <span class="fchip">All units ▾</span>
+        <span class="fchip">This year ▾</span>
+        <span class="muted" style="margin-left:auto;font-size:12.5px">Sorted by oldest open</span>
+      </div>
+
+      <div class="layout">
+        <div class="card">
+          <div class="card-h"><h2>All violations</h2><span class="count">· 12 active</span></div>
+          <table>
+            <thead><tr>
+              <th>Unit / Owner</th><th>Type</th><th>Observed</th><th>Status</th><th>Fine</th><th></th>
+            </tr></thead>
+            <tbody>
+              <tr>
+                <td><div class="unit">Unit 4B</div><div class="owner">M. Alvarez</div></td>
+                <td>Trash / bins</td><td class="muted">May 28</td>
+                <td><span class="pill bad"><span class="dot"></span>Open</span></td>
+                <td class="fine muted">—</td><td class="rowact">View</td>
+              </tr>
+              <tr>
+                <td><div class="unit">Unit 12A</div><div class="owner">J. Chen</div></td>
+                <td>Parking</td><td class="muted">Jun 02</td>
+                <td><span class="pill warn"><span class="dot"></span>Notice sent</span></td>
+                <td class="fine">$50.00</td><td class="rowact">View</td>
+              </tr>
+              <tr style="background:#f4faf9">
+                <td><div class="unit">Unit 7C</div><div class="owner">R. Okafor</div></td>
+                <td>Architectural</td><td class="muted">Jun 05</td>
+                <td><span class="pill bad"><span class="dot"></span>Escalated</span></td>
+                <td class="fine">$250.00</td><td class="rowact">View</td>
+              </tr>
+              <tr>
+                <td><div class="unit">Unit 3A</div><div class="owner">S. Patel</div></td>
+                <td>Noise</td><td class="muted">Jun 09</td>
+                <td><span class="pill warn"><span class="dot"></span>Notice sent</span></td>
+                <td class="fine muted">—</td><td class="rowact">View</td>
+              </tr>
+              <tr>
+                <td><div class="unit">Unit 9D</div><div class="owner">L. Brooks</div></td>
+                <td>Pets</td><td class="muted">Jun 11</td>
+                <td><span class="pill bad"><span class="dot"></span>Open</span></td>
+                <td class="fine muted">—</td><td class="rowact">View</td>
+              </tr>
+              <tr>
+                <td><div class="unit">Unit 2B</div><div class="owner">D. Nguyen</div></td>
+                <td>Landscaping</td><td class="muted">Jun 14</td>
+                <td><span class="pill good"><span class="dot"></span>Cured</span></td>
+                <td class="fine muted">—</td><td class="rowact">View</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Detail drawer: opens on a row (Unit 7C shown) -->
+        <div class="drawer">
+          <div class="dh">
+            <div class="u">Unit 7C · Architectural</div>
+            <div class="t">R. Okafor · observed Jun 05, 2026</div>
+          </div>
+          <div class="dbody">
+            <span class="pill bad" style="margin-bottom:10px"><span class="dot"></span>Escalated</span>
+            <div class="kv"><span class="l">Type</span><span class="r">Architectural</span></div>
+            <div class="kv"><span class="l">Fine posted</span><span class="r">$250.00</span></div>
+            <div class="kv"><span class="l">Linked ledger</span><span class="r" style="color:var(--ds-accent)">CHG-2041 ↗</span></div>
+            <div class="kv"><span class="l">Logged by</span><span class="r">board@cherryhill</span></div>
+
+            <div class="sec-l">Description</div>
+            <div class="muted" style="font-size:12.5px">Unapproved exterior paint color on front door; no ARC application on file.</div>
+
+            <div class="sec-l">Status &amp; notice history</div>
+            <div class="tl">
+              <div class="ev"><b>Escalated</b> — fine posted, referred to counsel<div class="w">Jun 20 · board@cherryhill</div></div>
+              <div class="ev"><b>2nd notice sent</b> — certified mail<div class="w">Jun 13 · Communications pipeline</div></div>
+              <div class="ev"><b>Notice sent</b> — email + portal<div class="w">Jun 06 · Communications pipeline</div></div>
+              <div class="ev"><b>Opened</b> — logged from inspection<div class="w">Jun 05 · board@cherryhill</div></div>
+            </div>
+
+            <div class="note">Notices reuse the existing <b>Communications / notice-send pipeline</b> — no separate notice engine.</div>
+            <div style="display:flex;gap:8px;margin-top:14px">
+              <button class="btn accent" style="flex:1">Send notice</button>
+              <button class="btn ghost" style="flex:1">Mark cured</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="flag" style="margin-top:8px">
+      <b>Build note (for William):</b> the data + API for this page already exist on the staging branch —
+      <code>violations</code> table + <code>violation_status</code> enum (open · notice-sent · cured · escalated · closed),
+      <code>GET/POST/PATCH /api/violations</code>, the <code>/api/agent/violations/triage</code> AI endpoint, and the existing
+      <b>Log-Violation wizard</b> (type / unit / description / optional fine → owner-ledger charge). This wireframe is the
+      <b>missing management surface</b> (list · filter · detail · status timeline · notice history) that ties them together.
+      It is <b>display + status-transition only</b>; fines already post through the existing ledger flow (money-safety: no new
+      payment logic). Approve this layout and I build it onto the design system on staging.
+    </div>
+  </div>
+</div>
