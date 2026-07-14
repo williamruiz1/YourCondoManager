@@ -26,7 +26,16 @@
 //
 // Owner Portal launcher removed from Platform group per 3.1 Q11 / 2.4 Q5.
 // Association switcher lives in the top app-bar only per 3.1 Q10.
-
+//
+// YCM Redesign M0 (founder-os#10569) — Manager shell restyle onto the
+// deep-teal brand-v2 tokens (already live app-wide via index.css --sidebar*
+// vars). This is a DISPLAY-ONLY fix: the sidebar container + active/hover
+// zone-button colors were still hardcoded to pre-rebrand slate/blue values
+// that fought the already-teal `bg-sidebar`/`--sidebar-accent` tokens;
+// swapped to the token-based classes so the shell renders on-brand. Zone
+// labels, hub URLs, role-gating (SUBSET-RENDER), and every `data-testid`
+// are UNCHANGED — six zones, same DOM shape, same tests. No routes moved,
+// nothing net-new; every existing route stays reachable in the new chrome.
 import { Fragment } from "react";
 import { useLocation, Link } from "wouter";
 import { BrandMark } from "@/components/brand-mark";
@@ -108,8 +117,8 @@ function ZoneGroup({ zone, location }: ZoneGroupProps) {
               tooltip={zone.label}
               className={`transition-all duration-150 ${
                 zoneActive
-                  ? "bg-white dark:bg-slate-800 shadow-sm text-blue-700 dark:text-blue-400 font-bold rounded-lg"
-                  : "hover:bg-slate-200/50 dark:hover:bg-slate-800/50 hover:translate-x-1"
+                  ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm font-bold rounded-lg"
+                  : "hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground hover:translate-x-1"
               }`}
             >
               <Link href={zone.hubUrl} data-testid={`link-nav-zone-${slugify(zone.label)}`}>
@@ -206,9 +215,9 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
   return (
     <Sidebar
       collapsible="icon"
-      className="border-r border-slate-200/50 dark:border-slate-800/50 bg-slate-50 dark:bg-slate-950"
+      className="border-r border-sidebar-border bg-sidebar"
     >
-      <SidebarHeader className="border-b border-slate-200/50 dark:border-slate-800/50">
+      <SidebarHeader className="border-b border-sidebar-border">
         <Link
           href="/"
           className="px-4 pt-4 pb-3 flex items-center gap-2.5 hover:opacity-80 transition-opacity"
@@ -287,7 +296,7 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
         ))}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-slate-200/50 dark:border-slate-800/50 group-data-[collapsible=icon]:hidden">
+      <SidebarFooter className="border-t border-sidebar-border group-data-[collapsible=icon]:hidden">
         <div className="px-3 py-3 space-y-2">
           {/* New Association CTA — Manager + Platform Admin per 3.1 Q12.
               Visible only when the persona has Settings access (proxy for

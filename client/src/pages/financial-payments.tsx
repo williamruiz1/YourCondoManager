@@ -1,5 +1,12 @@
 // zone: Financials
 // persona: Manager, Board Officer, Assisted Board, PM Assistant
+//
+// YCM Redesign — Payments restyled onto the shared @ycm/design-system (F1,
+// founder-os#10187), mirroring the M1 Dashboard restyle pattern. All live
+// data wiring (react-query hooks, mutations, Stripe Connect/webhook/autopay
+// tabs) is preserved verbatim -- status indicators use the DS Pill component
+// and the page is wrapped in .ds-scope.fin-ds for DS typography + card/table
+// chrome (see styles/financial-redesign.css).
 import { useEffect, useState, Fragment } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -11,7 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
@@ -49,6 +56,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Link } from "wouter";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 // ── Payment Methods Tab ───────────────────────────────────────────────────────
 
@@ -170,14 +179,14 @@ function PaymentMethodsTab({
           <p className="text-sm font-medium">Configured methods ({paymentMethods.length})</p>
           {paymentMethods.map((m) => (
             <div key={m.id} className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-start">
-              <Badge variant="secondary" className="shrink-0 self-start">{m.methodType}</Badge>
+              <Pill tone="muted">{m.methodType}</Pill>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium">{m.displayName}</p>
                 <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{m.instructions}</p>
               </div>
-              <Badge variant={m.isActive === 1 ? "default" : "secondary"} className="shrink-0 self-start">
+              <Pill tone={m.isActive === 1 ? "ok" : "muted"}>
                 {m.isActive === 1 ? "Active" : "Inactive"}
-              </Badge>
+              </Pill>
             </div>
           ))}
         </div>
@@ -377,10 +386,10 @@ export function gatewayPlainStatus(
   };
 }
 
-function plainStatusVariant(tone: GatewayPlainStatus["tone"]): "default" | "secondary" | "destructive" {
-  if (tone === "ok") return "default";
-  if (tone === "action") return "destructive";
-  return "secondary";
+function plainStatusTone(tone: GatewayPlainStatus["tone"]): PillTone {
+  if (tone === "ok") return "ok";
+  if (tone === "action") return "bad";
+  return "warn";
 }
 
 // Gap D — visually distinguish a sandbox connection from a production one.
@@ -388,12 +397,12 @@ function plainStatusVariant(tone: GatewayPlainStatus["tone"]): "default" | "seco
 // production-looking screen is impossible to mistake for live.
 function KeyModeBadge({ keyMode }: { keyMode?: "test" | "live" | "unknown" }) {
   if (!keyMode || keyMode === "unknown") {
-    return <Badge variant="outline" data-testid="badge-key-mode-unknown">Mode unknown</Badge>;
+    return <Pill tone="muted"><span data-testid="badge-key-mode-unknown">Mode unknown</span></Pill>;
   }
   if (keyMode === "live") {
-    return <Badge variant="default" data-testid="badge-key-mode-live">Live</Badge>;
+    return <Pill tone="ok"><span data-testid="badge-key-mode-live">Live</span></Pill>;
   }
-  return <Badge variant="secondary" data-testid="badge-key-mode-test">Test mode</Badge>;
+  return <Pill tone="warn"><span data-testid="badge-key-mode-test">Test mode</span></Pill>;
 }
 
 function StripeConnectSection({ associationId }: { associationId: string | null }) {
@@ -482,9 +491,7 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
                   <p className="text-sm font-medium">Payment status</p>
                   <div className="flex items-center gap-2">
                     <KeyModeBadge keyMode={associationConnection.keyMode} />
-                    <Badge variant={plainStatusVariant(plain.tone)} data-testid="badge-gateway-plain-status">
-                      {plain.label}
-                    </Badge>
+                    <Pill tone={plainStatusTone(plain.tone)}><span data-testid="badge-gateway-plain-status">{plain.label}</span></Pill>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground" data-testid="text-gateway-meaning">
@@ -556,9 +563,7 @@ function StripeConnectSection({ associationId }: { associationId: string | null 
                       <TableCell className="text-xs">{c.connectState.statementDescriptor ?? "—"}</TableCell>
                       <TableCell><KeyModeBadge keyMode={c.keyMode} /></TableCell>
                       <TableCell>
-                        <Badge variant={plainStatusVariant(plain.tone)}>
-                          {plain.label}
-                        </Badge>
+                        <Pill tone={plainStatusTone(plain.tone)}>{plain.label}</Pill>
                       </TableCell>
                     </TableRow>
                     );
@@ -722,12 +727,11 @@ function PayoutReconciliationSection({ associationId }: { associationId: string 
                     <TableCell className="text-right">{centsToUsd(p.payoutAmountCents)}</TableCell>
                     <TableCell className="text-right">{centsToUsd(p.reconciledNetCents)}</TableCell>
                     <TableCell className="text-right">
-                      <Badge
-                        variant={p.varianceCents === 0 ? "default" : "destructive"}
-                        data-testid={`badge-variance-${p.id}`}
-                      >
-                        {p.varianceCents === 0 ? "Matches" : `${centsToUsd(p.varianceCents)} off`}
-                      </Badge>
+                      <Pill tone={p.varianceCents === 0 ? "ok" : "bad"}>
+                        <span data-testid={`badge-variance-${p.id}`}>
+                          {p.varianceCents === 0 ? "Matches" : `${centsToUsd(p.varianceCents)} off`}
+                        </span>
+                      </Pill>
                     </TableCell>
                   </TableRow>
                   {expanded.has(p.id) && (
@@ -870,7 +874,7 @@ function GatewayTab({
                   </p>
                 )}
               </div>
-              <Badge variant="default">Active</Badge>
+              <Pill tone="ok">Active</Pill>
             </div>
           ))}
         </div>
@@ -1407,8 +1411,8 @@ function WebhookSecurityCard({ associationId }: { associationId: string | null }
               <div key={s.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
                 <span className="font-mono">{s.secretHint}</span>
                 <div className="flex gap-2 items-center">
-                  <Badge variant="outline">{s.provider}</Badge>
-                  <Badge variant={s.isActive ? "default" : "secondary"}>{s.isActive ? "Active" : "Rotated"}</Badge>
+                  <Pill tone="muted">{s.provider}</Pill>
+                  <Pill tone={s.isActive ? "ok" : "muted"}>{s.isActive ? "Active" : "Rotated"}</Pill>
                   {s.rotatedAt && <span className="text-xs text-muted-foreground">Rotated {new Date(s.rotatedAt).toLocaleDateString()}</span>}
                 </div>
               </div>
@@ -1488,11 +1492,11 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
 
   if (events.length === 0) return null;
 
-  const statusColors: Record<string, string> = {
-    received: "secondary",
-    processed: "default",
-    ignored: "outline",
-    failed: "destructive",
+  const statusColors: Record<string, PillTone> = {
+    received: "muted",
+    processed: "ok",
+    ignored: "muted",
+    failed: "bad",
   };
 
   return (
@@ -1532,7 +1536,7 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
                   <TableCell className="text-xs capitalize">{e.provider}</TableCell>
                   <TableCell className="text-xs text-muted-foreground">{e.eventType ?? "—"}</TableCell>
                   <TableCell className="text-sm">{e.amount != null ? `$${e.amount.toFixed(2)}` : "—"}</TableCell>
-                  <TableCell><Badge variant={(statusColors[e.status] ?? "outline") as any}>{e.status}</Badge></TableCell>
+                  <TableCell><Pill tone={statusColors[e.status] ?? "muted"}>{e.status}</Pill></TableCell>
                   <TableCell className="text-xs text-muted-foreground">{new Date(e.createdAt).toLocaleString()}</TableCell>
                   <TableCell className="text-right">
                     <Button size="sm" variant="ghost" onClick={() => setSelectedEventId(prev => prev === e.id ? null : e.id)}>
@@ -1552,7 +1556,7 @@ function PaymentEventStateCard({ associationId }: { associationId: string | null
                   <div className="font-mono text-xs">{e.providerEventId?.slice(0, 20) || e.id.slice(0, 12)}</div>
                   <div className="mt-1 text-xs text-muted-foreground capitalize">{e.provider} · {e.eventType ?? "—"}</div>
                 </div>
-                <Badge variant={(statusColors[e.status] ?? "outline") as any}>{e.status}</Badge>
+                <Pill tone={statusColors[e.status] ?? "muted"}>{e.status}</Pill>
               </div>
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span>{e.amount != null ? `$${e.amount.toFixed(2)}` : "—"}</span>
@@ -1716,7 +1720,7 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                     {entries.slice().reverse().map((e) => (
                       <tr key={e.id} className="border-b last:border-0">
                         <td className="py-1.5 pr-4 text-muted-foreground">{new Date(e.postedAt).toLocaleDateString()}</td>
-                        <td className="py-1.5 pr-4"><Badge variant={e.entryType === "payment" ? "default" : "secondary"} className="text-xs">{e.entryType}</Badge></td>
+                        <td className="py-1.5 pr-4"><Pill tone={e.entryType === "payment" ? "ok" : "muted"}>{e.entryType}</Pill></td>
                         <td className={`py-1.5 pr-4 font-medium ${e.amount < 0 ? "text-green-600 dark:text-green-400" : "text-red-500 dark:text-red-400"}`}>{e.amount < 0 ? "-" : "+"}${Math.abs(e.amount).toFixed(2)}</td>
                         <td className="py-1.5 pr-4 font-mono text-xs">{e.unitId.slice(0, 8)}</td>
                         <td className="py-1.5 pr-4 font-mono text-xs">{e.personId.slice(0, 8)}</td>
@@ -1752,9 +1756,9 @@ function PaymentActivityTab({ associationId }: { associationId: string | null })
                       </div>
                     </div>
                     <div className="mt-3 flex flex-wrap gap-2">
-                      <Badge variant={e.entryType === "payment" ? "default" : "secondary"} className="text-xs">{e.entryType}</Badge>
-                      <Badge variant="outline" className="font-mono text-[10px]">{e.unitId.slice(0, 8)}</Badge>
-                      <Badge variant="outline" className="font-mono text-[10px]">Person {e.personId.slice(0, 8)}</Badge>
+                      <Pill tone={e.entryType === "payment" ? "ok" : "muted"}>{e.entryType}</Pill>
+                      <Pill tone="muted">{e.unitId.slice(0, 8)}</Pill>
+                      <Pill tone="muted">Person {e.personId.slice(0, 8)}</Pill>
                     </div>
                     {e.description ? (
                       <div className="mt-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
@@ -1870,18 +1874,18 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
 
   const transactions = data?.transactions ?? [];
 
-  const statusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      succeeded: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
-      initiated: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-      pending: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-      failed: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-      canceled: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-      reversed: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-      draft: "bg-muted text-muted-foreground",
-    };
-    return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[status] ?? "bg-muted text-muted-foreground"}`}>{status}</span>;
+  const statusTones: Record<string, PillTone> = {
+    succeeded: "ok",
+    initiated: "warn",
+    pending: "warn",
+    failed: "bad",
+    canceled: "bad",
+    reversed: "bad",
+    draft: "muted",
   };
+  const statusBadge = (status: string) => (
+    <Pill tone={statusTones[status] ?? "muted"}>{status}</Pill>
+  );
 
   return (
     <Card>
@@ -1980,7 +1984,7 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
                     <tr key={ex.id} className="border-b last:border-0">
                       <td className="py-1.5 pr-4 text-muted-foreground">{new Date(ex.postedAt).toLocaleDateString()}</td>
                       <td className="py-1.5 pr-4">
-                        <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
+                        <Pill tone="bad">{exceptionTypeLabel[ex.type] ?? ex.type}</Pill>
                       </td>
                       <td className="py-1.5 pr-4 font-medium text-red-500 dark:text-red-400">${Math.abs(ex.amount).toFixed(2)}</td>
                       <td className="py-1.5 pr-4 font-mono text-xs">{ex.unitId.slice(0, 8)}</td>
@@ -2002,9 +2006,9 @@ function ExceptionsTab({ associationId }: { associationId: string | null }) {
                     <div className="text-sm font-semibold text-red-500 dark:text-red-400">${Math.abs(ex.amount).toFixed(2)}</div>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Badge variant="destructive" className="text-xs">{exceptionTypeLabel[ex.type] ?? ex.type}</Badge>
-                    <Badge variant="outline" className="font-mono text-[10px]">{ex.unitId.slice(0, 8)}</Badge>
-                    <Badge variant="outline" className="font-mono text-[10px]">Person {ex.personId.slice(0, 8)}</Badge>
+                    <Pill tone="bad">{exceptionTypeLabel[ex.type] ?? ex.type}</Pill>
+                    <Pill tone="muted">{ex.unitId.slice(0, 8)}</Pill>
+                    <Pill tone="muted">Person {ex.personId.slice(0, 8)}</Pill>
                   </div>
                   <div className="mt-3 rounded-lg border bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
                     Entry {ex.entryId.slice(0, 8)} · Review whether this needs follow-up or reclassification.
@@ -2059,9 +2063,9 @@ const STATUS_BADGE: Record<string, { label: string; variant: "default" | "second
 };
 
 function AutopayRunBadge({ status }: { status: string }) {
-  if (status === "success") return <Badge variant="default" className="text-xs">Success</Badge>;
-  if (status === "failed") return <Badge variant="destructive" className="text-xs">Failed</Badge>;
-  return <Badge variant="secondary" className="text-xs">Skipped</Badge>;
+  if (status === "success") return <Pill tone="ok">Success</Pill>;
+  if (status === "failed") return <Pill tone="bad">Failed</Pill>;
+  return <Pill tone="muted">Skipped</Pill>;
 }
 
 function AutopayAdminTab({ associationId }: { associationId: string | null }) {
@@ -2118,18 +2122,18 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
 
   const filtered = enrollments.filter((e) => statusFilter === "all" || e.enrollment.status === statusFilter);
 
-  const statusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
-    if (status === "active") return "default";
-    if (status === "paused") return "secondary";
-    if (status === "cancelled") return "destructive";
-    return "outline";
+  const statusBadgeTone = (status: string): PillTone => {
+    if (status === "active") return "ok";
+    if (status === "paused") return "warn";
+    if (status === "cancelled") return "bad";
+    return "muted";
   };
 
-  const runStatusBadge = (status: string): "default" | "secondary" | "destructive" | "outline" => {
-    if (status === "success") return "default";
-    if (status === "skipped") return "secondary";
-    if (status === "failed") return "destructive";
-    return "outline";
+  const runStatusTone = (status: string): PillTone => {
+    if (status === "success") return "ok";
+    if (status === "skipped") return "muted";
+    if (status === "failed") return "bad";
+    return "muted";
   };
 
   if (!associationId) {
@@ -2210,9 +2214,9 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
                         : "—"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusBadgeVariant(row.enrollment.status)} className="capitalize">
+                      <Pill tone={statusBadgeTone(row.enrollment.status)}><span className="capitalize">
                         {row.enrollment.status}
-                      </Badge>
+                      </span></Pill>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -2283,9 +2287,9 @@ function AutopayAdminTab({ associationId }: { associationId: string | null }) {
                                     <TableCell className="text-xs">{new Date(run.ranAt).toLocaleString()}</TableCell>
                                     <TableCell className="text-xs">${Number(run.amount).toFixed(2)}</TableCell>
                                     <TableCell>
-                                      <Badge variant={runStatusBadge(run.status)} className="text-xs capitalize">
+                                      <Pill tone={runStatusTone(run.status)}><span className="capitalize">
                                         {run.status}
-                                      </Badge>
+                                      </span></Pill>
                                     </TableCell>
                                     <TableCell className="text-xs font-mono">
                                       {run.paymentTransactionId ? run.paymentTransactionId.slice(0, 8) + "..." : "—"}
@@ -2385,7 +2389,7 @@ export default function FinancialPaymentsPage() {
 
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
-    <section className="flex flex-col min-h-0" aria-labelledby="financial-payments-heading">
+    <section className="flex flex-col min-h-0 ds-scope fin-ds" aria-labelledby="financial-payments-heading">
       <div className="p-6 space-y-6">
       <WorkspacePageHeader
         title={t("financialPayments.title")}
@@ -2421,16 +2425,16 @@ export default function FinancialPaymentsPage() {
               <CreditCard className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Methods</span>
               {paymentMethods.length > 0 && (
-                <Badge variant="secondary" className="ml-1 h-4 px-1 text-xs">{paymentMethods.length}</Badge>
+                <Pill tone="muted">{paymentMethods.length}</Pill>
               )}
             </TabsTrigger>
             <TabsTrigger value="gateway" className="gap-1.5 shrink-0">
               <Zap className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Gateway</span>
               {gatewayConnections.filter((c) => c.isActive === 1).length > 0 && (
-                <Badge variant="default" className="ml-1 h-4 px-1 text-xs">
+                <Pill tone="ok">
                   <CheckCircle2 className="h-2.5 w-2.5" />
-                </Badge>
+                </Pill>
               )}
             </TabsTrigger>
             <TabsTrigger value="links" className="gap-1.5 shrink-0">

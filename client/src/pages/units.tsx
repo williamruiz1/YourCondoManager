@@ -21,7 +21,7 @@ import {
 import { Plus, Building2, DoorOpen, MessageSquare, Pencil, ChevronDown, ChevronRight, Link2, User, X, UserPlus, FileUp } from "lucide-react";
 import { CsvImportDialog, type ImportResult } from "@/components/csv-import-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
+import { Pill, type PillTone } from "@ycm/design-system";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -36,6 +36,8 @@ import { useResidentialDataset } from "@/hooks/use-residential-dataset";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
 import { getScrollBehavior } from "@/lib/prefers-reduced-motion";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 
 const unitFormSchema = z.object({
   associationId: z.string().min(1, "Association is required"),
@@ -665,7 +667,7 @@ export default function UnitsPage() {
     // assistive tech identifies the page region by its visible heading. The
     // inner gradient container stays as <section> for visual styling but is
     // labelled by the same heading.
-    <section className="space-y-8 p-4 sm:p-6" aria-labelledby="units-heading">
+    <section className="space-y-8 p-4 sm:p-6 ds-scope fin-ds" aria-labelledby="units-heading">
       <section aria-labelledby="units-heading" className="relative overflow-hidden rounded-[28px] bg-[linear-gradient(145deg,hsl(var(--primary))_0%,hsl(217_78%_34%)_48%,hsl(221_45%_18%)_100%)] p-6 text-primary-foreground md:rounded-[24px] md:border md:border-outline-variant/30 md:bg-surface-container-lowest md:text-on-surface">
         <div className="absolute inset-0 md:hidden">
           <div className="absolute -right-10 top-0 h-36 w-36 rounded-full bg-white/10 blur-3xl" />
@@ -679,7 +681,7 @@ export default function UnitsPage() {
             </div>
             <h1
               id="units-heading"
-              className="mt-4 font-headline text-4xl font-bold italic leading-tight text-white md:mt-0 md:text-3xl md:not-italic md:text-on-surface"
+              className="ds-heading-plain mt-4 font-headline text-4xl font-bold italic leading-tight text-white md:mt-0 md:text-3xl md:not-italic md:text-on-surface"
               data-testid="text-page-title"
             >
               {t("units.title")}
@@ -1254,7 +1256,7 @@ export default function UnitsPage() {
                               <ChevronDown className="h-4 w-4 text-muted-foreground" />
                             )}
                             <div className="font-headline text-xl font-semibold text-on-surface">{group.building}</div>
-                            {group.isLegacyGroup ? <Badge variant="outline">Legacy</Badge> : null}
+                            {group.isLegacyGroup ? <Pill tone="muted">Legacy</Pill> : null}
                           </div>
                           <div className="ml-6 mt-1 text-xs text-muted-foreground">Manage ownership, occupancy, and contact actions for this building.</div>
                         </button>
@@ -1271,9 +1273,9 @@ export default function UnitsPage() {
                         </Button>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <Badge variant="outline">{group.unitCount} units</Badge>
-                        <Badge variant="outline">{group.ownerLinkedCount} owned</Badge>
-                        <Badge variant="secondary">{group.occupiedCount} occupied</Badge>
+                        <Pill tone="muted">{group.unitCount} units</Pill>
+                        <Pill tone="muted">{group.ownerLinkedCount} owned</Pill>
+                        <Pill tone="info">{group.occupiedCount} occupied</Pill>
                       </div>
                     </div>
                     {collapsedBuildings[group.groupKey] ? null : (
@@ -1302,16 +1304,15 @@ export default function UnitsPage() {
                                   <div className="label-caps text-on-surface/45">Unit</div>
                                   <div className="mt-1 font-headline text-3xl font-bold text-primary">{row.unit.unitNumber}</div>
                                 </div>
-                                <Badge
-                                  variant={
-                                    row.occupancyType === "OWNER_OCCUPIED" ? "default"
-                                    : row.occupancyType === "TENANT" ? "secondary"
-                                    : "outline"
+                                <Pill
+                                  tone={
+                                    row.occupancyType === "OWNER_OCCUPIED" ? "ok"
+                                    : row.occupancyType === "TENANT" ? "info"
+                                    : "muted"
                                   }
-                                  className="mt-1"
                                 >
                                   {row.occupancyLabel}
-                                </Badge>
+                                </Pill>
                               </div>
 
                               <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1427,15 +1428,15 @@ export default function UnitsPage() {
                               <div className="font-medium">{row.unit.unitNumber}</div>
 
                               <div className="min-w-0">
-                                <Badge
-                                  variant={
-                                    row.occupancyType === "OWNER_OCCUPIED" ? "default"
-                                    : row.occupancyType === "TENANT" ? "secondary"
-                                    : "outline"
+                                <Pill
+                                  tone={
+                                    row.occupancyType === "OWNER_OCCUPIED" ? "ok"
+                                    : row.occupancyType === "TENANT" ? "info"
+                                    : "muted"
                                   }
                                 >
                                   {row.occupancyLabel}
-                                </Badge>
+                                </Pill>
                               </div>
 
                               <div className="min-w-0 w-full rounded-md border bg-background px-2 py-2 text-left lg:border-0 lg:bg-transparent lg:px-0 lg:py-0">
