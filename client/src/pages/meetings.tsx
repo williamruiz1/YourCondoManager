@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Pill } from "@ycm/design-system";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -23,6 +23,8 @@ import { EmptyState } from "@/components/empty-state";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { t } from "@/i18n/use-strings";
 import { boardGovernanceSubPages } from "@/lib/sub-page-nav";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 import type { GovernanceReminderRule } from "@shared/schema";
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
@@ -772,8 +774,8 @@ export function MeetingsContent() {
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium text-sm">{m.title}</span>
-                <Badge variant="secondary" className="capitalize">{m.meetingType}</Badge>
-                {m.summaryStatus === "published" && <Badge>Minutes Published</Badge>}
+                <span className="capitalize"><Pill tone="muted">{m.meetingType}</Pill></span>
+                {m.summaryStatus === "published" && <Pill tone="ok">Minutes Published</Pill>}
               </div>
               <div className="text-xs text-muted-foreground mt-0.5">
                 {dateStr} at {timeStr}{m.location ? ` · ${m.location}` : ""}
@@ -1032,16 +1034,17 @@ export function MeetingsContent() {
                                   <p className="text-xs text-muted-foreground mt-0.5">{r.description}</p>
                                 )}
                               </div>
-                              <Badge
-                                variant={
-                                  r.status === "approved" ? "default"
-                                  : r.status === "rejected" ? "destructive"
-                                  : "secondary"
-                                }
-                                className="shrink-0"
-                              >
-                                {r.status}
-                              </Badge>
+                              <span className="shrink-0">
+                                <Pill
+                                  tone={
+                                    r.status === "approved" ? "ok"
+                                    : r.status === "rejected" ? "bad"
+                                    : "muted"
+                                  }
+                                >
+                                  {r.status}
+                                </Pill>
+                              </span>
                             </button>
 
                             {isActive && (
@@ -1349,7 +1352,7 @@ export function MeetingsContent() {
               <div className="text-sm font-medium flex items-center gap-2">
                 Reminder Automation
                 {reminderRules.length > 0 && (
-                  <Badge variant="secondary">{reminderRules.length} rule{reminderRules.length !== 1 ? "s" : ""}</Badge>
+                  <Pill tone="muted">{reminderRules.length} rule{reminderRules.length !== 1 ? "s" : ""}</Pill>
                 )}
               </div>
               <div className="text-xs text-muted-foreground">
@@ -1489,9 +1492,9 @@ export function MeetingsContent() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <Badge variant={rule.isActive ? "default" : "secondary"}>
+                      <Pill tone={rule.isActive ? "ok" : "muted"}>
                         {rule.isActive ? "Active" : "Paused"}
-                      </Badge>
+                      </Pill>
                       <Button
                         size="sm"
                         variant="outline"
@@ -1522,7 +1525,7 @@ export function MeetingsContent() {
 export default function MeetingsPage() {
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
-    <section className="p-6 space-y-6" aria-labelledby="meetings-heading">
+    <section className="p-6 space-y-6 ds-scope fin-ds" aria-labelledby="meetings-heading">
       <WorkspacePageHeader
         title={t("meetings.title")}
         headingId="meetings-heading"
