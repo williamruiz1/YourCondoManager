@@ -9,9 +9,11 @@
  *   POST /api/admin/pressing-items/scan       — manual scan trigger (platform admin)
  *
  * Role lensing:
- *   - Portal callers: lensed via `req.portalEffectiveRole` (defaults to
- *     `board` when role is ambiguous so an owner who's also a treasurer
- *     sees the right buckets).
+ *   - Portal callers: lensed via `req.portalEffectiveRole` (board seat
+ *     required) + `req.portalBoardRoleTitle` (the specific office —
+ *     Treasurer/Secretary/President/plain board member). A plain owner
+ *     with NO board seat sees nothing — pressing items are board/officer
+ *     business, not a fellow owner's business (see `lensRoleFromPortal`).
  *   - Admin callers: lensed via `req.adminRole` (`board-officer`,
  *     `assisted-board` etc. all default to `board`; specific treasurer /
  *     secretary / president lensing arrives when finer admin roles ship).
@@ -33,6 +35,7 @@ type PortalRequest = Request & {
   portalAssociationId?: string;
   portalPersonId?: string;
   portalEffectiveRole?: string;
+  portalBoardRoleTitle?: string | null;
 };
 
 type AdminRequest = Request & {
@@ -51,12 +54,35 @@ export interface PressingItemsRouteHelpers {
   platformAdminOnly: (req: any, res: Response, next: NextFunction) => any;
 }
 
-function lensRoleFromPortal(req: PortalRequest): PressingItemActorRole {
-  const role = (req.portalEffectiveRole || "").toLowerCase();
-  if (role === "treasurer") return "treasurer";
-  if (role === "secretary") return "secretary";
-  if (role === "president") return "president";
-  return "board";
+/**
+ * Lenses a portal caller to the pressing-items bucket for their ACTUAL
+ * board seat — not a blanket "board" fallback. `portalEffectiveRole` is the
+ * Phase 8a collapsed role (`owner` | `board-member` | `owner-board-member`)
+ * and never equals "treasurer"/"secretary"/"president", so the officer
+ * title has to come from `portalBoardRoleTitle` (`board_roles.role`,
+ * free-text — "Treasurer", "treasurer", "Vice President", etc.).
+ *
+ * Returns `null` for a caller with NO board seat at all (a plain owner) —
+ * pressing items (unmatched bank transactions, other owners' delinquency
+ * status, vendor insurance, compliance deadlines) are board/officer
+ * business, not something a fellow owner should see on their own portal
+ * home. Before this fix every portal caller fell through to the "board"
+ * lens (sees every class) because none of the collapsed role strings ever
+ * matched "treasurer"/"secretary"/"president" — so a plain owner with no
+ * board role saw other owners' delinquency balances and unmatched bank
+ * transactions (founder-os/YCM pressing-items plain-English fix,
+ * 2026-07-14).
+ */
+export function lensRoleFromPortal(req: PortalRequest): PressingItemActorRole | null {
+  const hasBoardSeat =
+    req.portalEffectiveRole === "board-member" || req.portalEffectiveRole === "owner-board-member";
+  if (!hasBoardSeat) return null;
+
+  const title = (req.portalBoardRoleTitle || "").trim().toLowerCase();
+  if (title.includes("treasurer")) return "treasurer";
+  if (title.includes("secretary")) return "secretary";
+  if (title.includes("president")) return "president"; // covers "President" + "Vice President"
+  return "board"; // a board seat with no more specific office (plain "board member")
 }
 
 function lensRoleFromAdmin(req: AdminRequest): PressingItemActorRole {
@@ -90,10 +116,17 @@ export function registerPressingItemsRoutes(
       if (!req.portalAssociationId) {
         return res.status(403).json({ message: "Not authorized" });
       }
+      // No board seat at all (plain owner) — pressing items are board/officer
+      // business (unmatched bank transactions, other owners' delinquency
+      // status, etc.), never surfaced to a fellow owner's own portal home.
+      const actorRole = lensRoleFromPortal(req);
+      if (!actorRole) {
+        return res.json({ items: [] });
+      }
       try {
         const items = await getRoleLensedPressingItems({
           associationId: req.portalAssociationId,
-          actorRole: lensRoleFromPortal(req),
+          actorRole,
           limit: 25,
         });
         res.json({ items });

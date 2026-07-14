@@ -1,0 +1,12 @@
+-- Pressing items — raw bank-memo detail column (founder-os / YCM pressing-
+-- items plain-English fix, 2026-07-14).
+--
+-- WHY: the "Unidentified transaction" pressing-item TITLE was the raw bank
+-- feed memo verbatim (an ACH addenda dump like "ORIG CO NAME:… ORIG ID:…
+-- IND NAME:Luz Miranda …") — unreadable to a treasurer/owner. The fix
+-- humanizes the title (see server/services/pressing-items/bank-memo.ts) and
+-- preserves the ORIGINAL raw memo here so it's still available to an
+-- auditor/treasurer who wants to see exactly what the bank sent, without it
+-- ever being the headline text. Purely additive/presentation — no change to
+-- bank_transactions or any ledger table.
+ALTER TABLE "pressing_items" ADD COLUMN IF NOT EXISTS "raw_detail" text;--> statement-breakpoint

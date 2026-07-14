@@ -21,6 +21,14 @@ export interface PressingItem {
   severity: "low" | "medium" | "high" | "critical";
   title: string;
   description: string | null;
+  /**
+   * The original, unmodified bank-feed memo for `unidentified_txn` items
+   * (the title is a plain-English SUMMARY of this). Null for every other
+   * class. Rendered behind a collapsed "Show original bank memo" toggle —
+   * never as the headline — so an auditor/treasurer can still see exactly
+   * what the bank sent.
+   */
+  rawDetail: string | null;
   actorRole: string;
   relatedRecordType: string | null;
   relatedRecordId: string | null;
@@ -166,6 +174,22 @@ export function PressingItemsWidget({ surface, associationId, onItemClick }: Pro
                     {CLASS_LABEL[item.itemClass]}
                     {item.description ? ` · ${item.description}` : ""}
                   </p>
+                  {item.rawDetail ? (
+                    <details className="mt-1 text-xs text-on-surface-variant">
+                      <summary
+                        className="cursor-pointer select-none hover:underline"
+                        data-testid={`pressing-item-${item.id}-raw-detail-toggle`}
+                      >
+                        Show original bank memo
+                      </summary>
+                      <p
+                        className="mt-1 break-words rounded bg-muted/50 p-2 font-mono"
+                        data-testid={`pressing-item-${item.id}-raw-detail`}
+                      >
+                        {item.rawDetail}
+                      </p>
+                    </details>
+                  ) : null}
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <Button
