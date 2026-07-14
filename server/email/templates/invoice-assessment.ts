@@ -28,7 +28,11 @@ export const invoiceAssessmentTemplate: TemplateModule<InvoiceAssessmentData> = 
         <tr>
           <td style="padding: 0 0 12px; font-size: 14px; color: rgba(26,26,26,0.60);">Due date</td>
           <td style="padding: 0 0 12px 24px; font-size: 14px; color: #1a1a1a;">${esc(data.dueDate)}</td>
-        </tr>
+        </tr>${data.currentBalanceFormatted ? `
+        <tr>
+          <td style="padding: 0 0 12px; font-size: 14px; color: rgba(26,26,26,0.60);">Current balance</td>
+          <td style="padding: 0 0 12px 24px; font-size: 14px; color: #1a1a1a;">${esc(data.currentBalanceFormatted)}</td>
+        </tr>` : ``}
       </table>
       <p style="margin: 0 0 8px;">Pay online via ACH or card — settlement and your receipt arrive automatically.</p>
     `;
@@ -49,6 +53,7 @@ export const invoiceAssessmentTemplate: TemplateModule<InvoiceAssessmentData> = 
       ``,
       `Amount:    ${data.amountFormatted}`,
       `Due date:  ${data.dueDate}`,
+      ...(data.currentBalanceFormatted ? [`Balance:   ${data.currentBalanceFormatted}`] : []),
       ``,
       `Pay online via ACH or card — settlement and your receipt arrive automatically.`,
       ``,
