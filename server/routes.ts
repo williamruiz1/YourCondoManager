@@ -1744,12 +1744,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // checks treat the machine as unhealthy and the monitoring stack alerts.
   // The migration state is set at boot by runMigrationHealthCheck() in
   // server/index.ts.
+  //
+  // Neon usage RCA (2026-07-14): this endpoint used to run `SELECT 1`
+  // against the DB on every call. Fly polls it every 30s forever
+  // (fly.toml [[http_service.checks]]), so that one query kept a live
+  // connection hitting Neon around the clock — Neon's compute never saw
+  // 5 continuous idle minutes and therefore never autosuspended,
+  // billing full-time compute-hours regardless of real usage. The
+  // migration-health check below is pure in-memory state (set at boot),
+  // so this endpoint is now truly zero-DB-I/O, matching its own
+  // "lightweight" doc comment. DB-inclusive diagnostics live at
+  // /api/health/details (admin-gated, on-demand — not auto-polled).
   app.get("/api/health", async (_req, res) => {
-    try {
-      await db.execute(sql`SELECT 1`);
-    } catch (err: any) {
-      return res.status(503).json({ status: "error", message: "Database unreachable" });
-    }
     const migrations = getMigrationHealth();
     if (migrations.status === "stale") {
       return res.status(503).json({
