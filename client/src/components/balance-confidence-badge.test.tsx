@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * BalanceConfidenceBadge — worst-tier + render gating (founder-os#11196).
  *
