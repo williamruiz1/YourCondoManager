@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PROPOSAL — My Finances redesign (wireframe)</title>
+<style>
+  :root{
+    /* YCM brand tokens — matches client/src/index.css exactly */
+    --teal:#014D4A;
+    --teal-700:#0a6a63;
+    --accent:#15A39C;
+    --accent-soft:#EAF6F5;
+    --accent-line:#BFE8E4;
+
+    --ink:#0f2e2c;
+    --ink-2:#3c4e4c;
+    --muted:#5b7572;
+    --faint:#a8b4b2;
+
+    --page:#F5F7F9;
+    --card:#ffffff;
+    --line:#e3eae8;
+    --line-2:#eef3f2;
+
+    /* status — semantic, separate from the brand accent */
+    --ok:#137A5A;
+    --ok-soft:#E7F4EE;
+    --overdue:#B3261E;
+    --overdue-soft:#FCEBEA;
+    --pending:#9A6B0A;
+    --pending-soft:#FBF1DE;
+
+    --shadow:0 1px 2px rgba(1,77,74,.05), 0 10px 28px rgba(1,77,74,.07);
+    --radius:12px;
+    --radius-sm:8px;
+    --sans:'Inter Tight','Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--sans);
+    background:var(--page);
+    color:var(--ink);
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:72px;
+  }
+  h1,h2,h3{text-wrap:balance}
+  .tabular{font-variant-numeric:tabular-nums}
+
+  /* ---------- proposal ribbon ---------- */
+  .ribbon{
+    background:repeating-linear-gradient(135deg,#0a2e2c,#0a2e2c 14px,#0d3634 14px,#0d3634 28px);
+    color:#cfe7e4;font-size:12.5px;letter-spacing:.04em;text-align:center;
+    padding:9px 16px;font-weight:600;
+  }
+  .ribbon b{color:#fff;letter-spacing:.09em}
+  .ribbon .tag{
+    display:inline-block;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.22);
+    padding:1px 8px;border-radius:999px;font-size:11px;margin-left:8px;font-weight:600;letter-spacing:.06em
+  }
+
+  /* ---------- portal top bar (mirrors the live @ycm/design-system shell) ---------- */
+  .topbar{
+    background:var(--teal);color:#fff;
+    display:flex;align-items:center;justify-content:space-between;padding:14px 22px;
+  }
+  .brand{display:flex;align-items:center;gap:11px}
+  .brand .mark{width:32px;height:32px;position:relative}
+  .brand .mark svg{display:block;width:100%;height:100%}
+  .brand .wm{line-height:1.05}
+  .brand .wm .t1{font-weight:800;font-size:15px;letter-spacing:.01em}
+  .brand .wm .t2{font-size:10.5px;color:#a9d4d0;letter-spacing:.13em;text-transform:uppercase;font-weight:600}
+  .who{display:flex;align-items:center;gap:10px}
+  .who .name{text-align:right;line-height:1.15}
+  .who .name .n1{font-weight:600;font-size:13.5px}
+  .who .name .n2{font-size:11.5px;color:#9fd0cc}
+  .who .av{width:32px;height:32px;border-radius:50%;background:#0b6f6a;display:grid;place-items:center;font-weight:700;font-size:13px;border:1px solid rgba(255,255,255,.2)}
+
+  /* ---------- layout ---------- */
+  .wrap{max-width:980px;margin:0 auto;padding:24px 20px 0}
+  .pagehead{margin-bottom:18px}
+  .pagehead h1{font-size:23px;letter-spacing:-.01em;font-weight:800}
+  .pagehead p{color:var(--ink-2);font-size:13.5px;margin-top:3px}
+
+  /* pinned "this year / total remaining" reference row */
+  .pinned{
+    display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px;
+  }
+  .pin-card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:16px 18px;
+  }
+  .pin-card .eyebrow{margin-bottom:5px}
+  .pin-card .val{font-size:26px;font-weight:800;letter-spacing:-.01em}
+  .pin-card .sub{font-size:12px;color:var(--muted);margin-top:3px}
+
+  /* ---------- tabs ---------- */
+  .tabstrip{
+    display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:20px;
+  }
+  .tab{
+    padding:10px 18px;font-size:13.5px;font-weight:700;color:var(--muted);
+    border-bottom:2.5px solid transparent;cursor:pointer;letter-spacing:.01em;
+    display:flex;align-items:center;gap:7px;
+  }
+  .tab .badge{
+    font-size:10.5px;font-weight:700;background:var(--line-2);color:var(--ink-2);
+    padding:1px 6px;border-radius:999px;
+  }
+  .tab.active{color:var(--teal);border-bottom-color:var(--accent)}
+  .tab.active .badge{background:var(--accent-soft);color:var(--teal)}
+
+  .eyebrow{font-size:11px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:700}
+
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:22px;margin-bottom:16px;
+  }
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+  .card-head h2{font-size:15px;font-weight:700;letter-spacing:.01em}
+
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:4px 11px;border-radius:999px;letter-spacing:.01em}
+  .chip .dot{width:7px;height:7px;border-radius:50%}
+  .chip.ok{background:var(--ok-soft);color:var(--ok)}
+  .chip.ok .dot{background:var(--ok)}
+  .chip.overdue{background:var(--overdue-soft);color:var(--overdue)}
+  .chip.overdue .dot{background:var(--overdue)}
+  .chip.pending{background:var(--pending-soft);color:var(--pending)}
+  .chip.pending .dot{background:var(--pending);animation:pulse 1.6s ease-in-out infinite}
+  @media (prefers-reduced-motion:reduce){.chip.pending .dot{animation:none}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+
+  /* ---------- OVERVIEW: honest status banner ---------- */
+  .status-banner{
+    position:relative;overflow:hidden;border:1px solid var(--overdue-soft);
+    background:linear-gradient(180deg,#fff,#fffdfc);
+  }
+  .status-banner:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--overdue)}
+  .status-banner.is-ok{border-color:var(--accent-line);background:linear-gradient(180deg,#fff,#fbfefd)}
+  .status-banner.is-ok:before{background:var(--accent)}
+  .status-banner .top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .status-banner .headline{font-size:15.5px;font-weight:800;color:var(--overdue);margin-bottom:4px}
+  .status-banner.is-ok .headline{color:var(--ok)}
+  .status-banner .detail{font-size:13px;color:var(--ink-2);max-width:52ch}
+  .status-banner .breakout{
+    margin-top:14px;padding-top:14px;border-top:1px solid var(--line-2);
+    display:grid;grid-template-columns:repeat(3,1fr);gap:16px;
+  }
+  .status-breakout-item .k{font-size:11px;color:var(--muted);letter-spacing:.03em}
+  .status-breakout-item .v{font-size:19px;font-weight:800;margin-top:3px}
+  .status-breakout-item .v.overdue{color:var(--overdue)}
+  .cta-row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .btn{
+    border:none;border-radius:var(--radius-sm);font-weight:700;font-size:13.5px;
+    padding:10px 18px;cursor:pointer;letter-spacing:.01em;
+  }
+  .btn.primary{background:var(--teal);color:#fff}
+  .btn.ghost{background:transparent;color:var(--teal);border:1px solid var(--line)}
+
+  /* recent activity list (overview) */
+  .activity-row{
+    display:flex;align-items:center;justify-content:between;gap:12px;
+    padding:11px 0;border-top:1px solid var(--line-2);
+  }
+  .activity-row:first-child{border-top:none}
+  .activity-row .a-main{flex:1;display:flex;flex-direction:column;gap:2px}
+  .activity-row .a-title{font-size:13.5px;font-weight:600}
+  .activity-row .a-sub{font-size:11.5px;color:var(--muted)}
+  .activity-row .a-amt{font-size:13.5px;font-weight:700}
+
+  /* ---------- ASSESSMENTS: 3 per-unit plan cards ---------- */
+  .unit-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .unit-card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:18px;display:flex;flex-direction:column;gap:10px;
+  }
+  .unit-card .u-head{display:flex;align-items:center;justify-content:space-between}
+  .unit-card .u-name{font-size:13.5px;font-weight:800}
+  .unit-card .u-label{font-size:11px;color:var(--muted);margin-top:1px}
+  .unit-card .u-amt{font-size:22px;font-weight:800;margin-top:2px}
+  .unit-card .u-progress{height:6px;border-radius:99px;background:var(--line-2);overflow:hidden;margin-top:4px}
+  .unit-card .u-progress > i{display:block;height:100%;background:var(--accent);border-radius:99px}
+  .unit-card .u-meta{font-size:11.5px;color:var(--ink-2);display:flex;justify-content:space-between}
+  .unit-card .u-schedule{font-size:11px;color:var(--muted);border-top:1px dashed var(--line);padding-top:8px;margin-top:2px}
+
+  /* ---------- DUES tab ---------- */
+  .dues-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-top:1px solid var(--line-2)}
+  .dues-row:first-child{border-top:none}
+  .dues-name{font-size:13.5px;font-weight:600}
+  .dues-freq{font-size:11.5px;color:var(--muted)}
+  .dues-amt{font-size:14px;font-weight:700}
+
+  /* ---------- BREAKDOWN: by-unit table (moved from page bottom) ---------- */
+  table.bd{width:100%;border-collapse:collapse;font-size:13px}
+  table.bd th{
+    text-align:left;font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+    font-weight:700;padding:0 0 9px;border-bottom:1px solid var(--line)
+  }
+  table.bd td{padding:11px 0;border-bottom:1px solid var(--line-2)}
+  table.bd td.num{text-align:right;font-weight:600}
+  table.bd tr.total td{border-bottom:none;border-top:2px solid var(--ink);padding-top:13px;font-weight:800}
+  .scroller{overflow-x:auto}
+
+  .callout{
+    margin-top:16px;padding:13px 15px;border-radius:var(--radius-sm);
+    background:var(--accent-soft);border:1px solid var(--accent-line);
+    font-size:12.5px;color:var(--ink-2);
+  }
+  .callout b{color:var(--teal)}
+
+  /* annotation styling for the wireframe (not part of the live UI) */
+  .note{
+    margin:0 0 16px;padding:12px 14px;border:1px dashed #b98b3a;background:#fff8ec;
+    border-radius:var(--radius-sm);font-size:12.5px;color:#6b4a12;line-height:1.5;
+  }
+  .note b{color:#4a3108}
+
+  @media (max-width:760px){
+    .unit-grid{grid-template-columns:1fr}
+    .pinned{grid-template-columns:1fr}
+    .status-banner .breakout{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+
+<div class="ribbon"><b>PROPOSAL</b> — My Finances redesign · not yet built<span class="tag">wireframe for signoff</span></div>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="mark">
+      <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="4" y="18" width="6" height="10" rx="1.5" fill="#BFE8E4"/>
+        <rect x="13" y="11" width="6" height="17" rx="1.5" fill="#15A39C"/>
+        <rect x="22" y="4" width="6" height="24" rx="1.5" fill="#ffffff"/>
+      </svg>
+    </div>
+    <div class="wm"><div class="t1">Your Condo Manager</div><div class="t2">Owner Portal</div></div>
+  </div>
+  <div class="who">
+    <div class="name"><div class="n1">William R.</div><div class="n2">Cherry Hill Court · 3 units</div></div>
+    <div class="av">WR</div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="pagehead">
+    <h1>My Finances</h1>
+    <p>Overview, assessments, dues, and the per-unit breakdown for your account.</p>
+  </div>
+
+  <!-- pinned reference row, per William: "this year" + "total remaining" always visible -->
+  <div class="pinned">
+    <div class="pin-card">
+      <div class="eyebrow">Paid this year</div>
+      <div class="val tabular">$8,240.00</div>
+      <div class="sub">Jan 1 – Jul 14, 2026 · 11 payments across 3 units</div>
+    </div>
+    <div class="pin-card">
+      <div class="eyebrow">Total remaining</div>
+      <div class="val tabular" style="color:var(--overdue)">$4,444.44</div>
+      <div class="sub">Across all open assessments &amp; dues — see the breakdown below</div>
+    </div>
+  </div>
+
+  <div class="tabstrip">
+    <div class="tab active">Overview</div>
+    <div class="tab">Assessments <span class="badge">3</span></div>
+    <div class="tab">Dues</div>
+    <div class="tab">Breakdown</div>
+  </div>
+
+  <!-- ============ OVERVIEW TAB ============ -->
+
+  <div class="note"><b>Correctness fix in this redesign — </b>the current page can show "nothing overdue / on track" even when a prior period's installment was never actually paid, because the banner only asks "is a new installment due THIS calendar period" — it never checks whether earlier periods were settled. The redesign separates the two questions: <b>is anything NEW due this period</b> vs. <b>is anything OLD still unpaid</b>. The banner below is honest about both, and always shows the real "amount overdue" figure — not just a due-or-not-due flag for the current period.</div>
+
+  <div class="card status-banner">
+    <div class="top">
+      <div>
+        <div class="chip overdue" style="margin-bottom:9px"><span class="dot"></span>2 payments past due</div>
+        <div class="headline">$1,240.00 is overdue from prior periods</div>
+        <div class="detail">Your July installment ($370.37, due Jul 26) is on schedule — but May and June's installments on Unit 3 were never paid. Overdue amounts don't disappear when a new period starts.</div>
+      </div>
+    </div>
+    <div class="breakout">
+      <div class="status-breakout-item"><div class="k">DUE NOW (JUL 26)</div><div class="v">$370.37</div></div>
+      <div class="status-breakout-item"><div class="k">OVERDUE (PRIOR PERIODS)</div><div class="v overdue">$1,240.00</div></div>
+      <div class="status-breakout-item"><div class="k">TOTAL TO CATCH UP</div><div class="v">$1,610.37</div></div>
+    </div>
+    <div class="cta-row">
+      <button class="btn primary">Pay $1,610.37 — catch up now</button>
+      <button class="btn ghost">Pay just this period ($370.37)</button>
+    </div>
+  </div>
+
+  <!-- example of the healthy state, shown for signoff reference only -->
+  <div class="card status-banner is-ok">
+    <div class="top">
+      <div>
+        <div class="chip ok" style="margin-bottom:9px"><span class="dot"></span>On track</div>
+        <div class="headline">Nothing overdue — all prior periods are paid</div>
+        <div class="detail">Your next installment ($370.37) is due Jul 26. Reference state only — shown when both "due this period" and "overdue" are genuinely clear.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Recent activity</h2>
+      <span class="eyebrow">Last 30 days</span>
+    </div>
+    <div class="activity-row">
+      <div class="a-main">
+        <div class="a-title">Payment submitted — Unit 1 dues</div>
+        <div class="a-sub">
+          <span class="chip pending" style="padding:2px 8px;font-size:10.5px"><span class="dot"></span>Processing</span>
+          &nbsp;Jul 14, 2026, 3:12 PM · ACH ending 4821
+        </div>
+      </div>
+      <div class="a-amt tabular">$330.00</div>
+    </div>
+    <div class="activity-row">
+      <div class="a-main">
+        <div class="a-title">Payment confirmed — Unit 2 dues</div>
+        <div class="a-sub">Jun 3, 2026 · Card ending 0042</div>
+      </div>
+      <div class="a-amt tabular">$330.00</div>
+    </div>
+    <div class="activity-row">
+      <div class="a-main">
+        <div class="a-title">Assessment installment — Unit 3</div>
+        <div class="a-sub">May 26, 2026 · Autopay</div>
+      </div>
+      <div class="a-amt tabular">$370.37</div>
+    </div>
+    <div class="callout"><b>Payment visibility, redesigned —</b> a just-submitted payment shows here immediately in a "Processing" state (not silence) while the bank confirms it, then flips to "Confirmed" — coordinated with the payment-confirmation fix in progress; this wireframe reflects that state but does not implement it.</div>
+  </div>
+
+  <!-- ============ ASSESSMENTS TAB (shown expanded below the fold for signoff) ============ -->
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Assessments — by unit</h2>
+      <span class="eyebrow">3 units · 3 separate payment plans</span>
+    </div>
+    <p style="font-size:12.5px;color:var(--ink-2);margin-bottom:14px">
+      Each unit's special-assessment payment plan is tracked and paid separately — no more one combined plan standing in for three different schedules.
+    </p>
+    <div class="unit-grid">
+      <div class="unit-card">
+        <div class="u-head">
+          <div><div class="u-name">Unit 1</div><div class="u-label">Driveway Replacement</div></div>
+          <span class="chip ok" style="padding:2px 8px;font-size:10.5px"><span class="dot"></span>On track</span>
+        </div>
+        <div class="u-amt tabular">$370.37</div>
+        <div class="u-progress"><i style="width:64%"></i></div>
+        <div class="u-meta"><span>$4,740 of $7,400 paid</span><span>64%</span></div>
+        <div class="u-schedule">Monthly · next installment Jul 26, 2026</div>
+      </div>
+      <div class="unit-card">
+        <div class="u-head">
+          <div><div class="u-name">Unit 2</div><div class="u-label">Driveway Replacement</div></div>
+          <span class="chip ok" style="padding:2px 8px;font-size:10.5px"><span class="dot"></span>On track</span>
+        </div>
+        <div class="u-amt tabular">$370.37</div>
+        <div class="u-progress"><i style="width:64%"></i></div>
+        <div class="u-meta"><span>$4,740 of $7,400 paid</span><span>64%</span></div>
+        <div class="u-schedule">Monthly · next installment Jul 26, 2026</div>
+      </div>
+      <div class="unit-card">
+        <div class="u-head">
+          <div><div class="u-name">Unit 3</div><div class="u-label">Driveway Replacement</div></div>
+          <span class="chip overdue" style="padding:2px 8px;font-size:10.5px"><span class="dot"></span>2 overdue</span>
+        </div>
+        <div class="u-amt tabular" style="color:var(--overdue)">$1,240.00 overdue</div>
+        <div class="u-progress"><i style="width:41%;background:var(--overdue)"></i></div>
+        <div class="u-meta"><span>$3,050 of $7,400 paid</span><span>41%</span></div>
+        <div class="u-schedule">Monthly · May &amp; Jun installments unpaid</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ DUES TAB ============ -->
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Recurring dues</h2>
+      <span class="eyebrow">HOA dues only — separate from assessments</span>
+    </div>
+    <div class="dues-row">
+      <div><div class="dues-name">Unit 1 — Monthly HOA dues</div><div class="dues-freq">Autopay on the 1st</div></div>
+      <div class="dues-amt tabular">$220.00 / mo</div>
+    </div>
+    <div class="dues-row">
+      <div><div class="dues-name">Unit 2 — Monthly HOA dues</div><div class="dues-freq">Autopay on the 1st</div></div>
+      <div class="dues-amt tabular">$220.00 / mo</div>
+    </div>
+    <div class="dues-row">
+      <div><div class="dues-name">Unit 3 — Monthly HOA dues</div><div class="dues-freq">Manual payment</div></div>
+      <div class="dues-amt tabular">$220.00 / mo</div>
+    </div>
+  </div>
+
+  <!-- ============ BREAKDOWN TAB (the by-unit table, moved up from the page bottom) ============ -->
+
+  <div class="card">
+    <div class="card-head">
+      <h2>Breakdown by unit</h2>
+      <span class="eyebrow">All charges &amp; payments, year to date</span>
+    </div>
+    <div class="scroller">
+      <table class="bd">
+        <thead><tr><th>Unit</th><th>Dues charged</th><th>Assessments charged</th><th>Paid</th><th>Balance</th></tr></thead>
+        <tbody>
+          <tr><td>Unit 1</td><td class="num tabular">$1,540.00</td><td class="num tabular">$2,590.59</td><td class="num tabular">$3,760.59</td><td class="num tabular">$370.00</td></tr>
+          <tr><td>Unit 2</td><td class="num tabular">$1,540.00</td><td class="num tabular">$2,590.59</td><td class="num tabular">$3,760.59</td><td class="num tabular">$370.00</td></tr>
+          <tr><td>Unit 3</td><td class="num tabular">$1,540.00</td><td class="num tabular">$2,590.59</td><td class="num tabular">$2,520.59</td><td class="num tabular" style="color:var(--overdue)">$1,610.00</td></tr>
+          <tr class="total"><td>Total</td><td class="num tabular">$4,620.00</td><td class="num tabular">$7,771.77</td><td class="num tabular">$10,041.77</td><td class="num tabular">$2,350.00</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
