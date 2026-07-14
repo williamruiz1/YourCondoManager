@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="robots" content="noindex,nofollow" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Financials Section — IA Restructure (Wireframe / Proposal)</title>
+<style>
+  :root{
+    --ink:#1d2330; --muted:#5b6577; --line:#dfe3ea; --bg:#f4f6fa; --card:#fff;
+    --accent:#2f5fd0; --accent-soft:#e7eefb; --good:#1f8a52; --good-soft:#e4f4ec;
+    --warn:#b25d00; --warn-soft:#fbeede; --bad:#b3261e; --bad-soft:#fae8e7;
+    --setup:#5a3fb8; --setup-soft:#ece6fb; --ops:#0d6c8a; --ops-soft:#e1f0f5; --insight:#1f8a52; --insight-soft:#e4f4ec;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px 22px 80px}
+  header.page{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-bottom:22px}
+  .banner{display:inline-block;background:#fff4d6;border:1px solid #e9c96a;color:#7a5a00;font-weight:700;font-size:12.5px;letter-spacing:.02em;padding:6px 12px;border-radius:999px;margin-bottom:12px}
+  h1{font-size:25px;margin:6px 0 4px}
+  h2{font-size:19px;margin:34px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--line)}
+  h3{font-size:15px;margin:0 0 8px}
+  p.lede{color:var(--muted);margin:4px 0 0;max-width:760px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  @media (max-width:880px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 16px 18px}
+  .panel.before{border-top:4px solid var(--bad)}
+  .panel.after{border-top:4px solid var(--good)}
+  .tag{font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 8px;border-radius:6px}
+  .tag.before{background:var(--bad-soft);color:var(--bad)}
+  .tag.after{background:var(--good-soft);color:var(--good)}
+
+  /* sidebar mock */
+  .side{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fbfcfe;font-size:14px}
+  .side .sect-h{background:#eef1f6;color:#64708a;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:8px 14px}
+  .side .item{display:flex;align-items:center;gap:10px;padding:9px 14px;border-top:1px solid #eef1f6}
+  .side .item:first-child{border-top:none}
+  .side .item .ic{width:18px;text-align:center;opacity:.7}
+  .side .item.active{background:var(--accent-soft);color:var(--accent);font-weight:700}
+  .side .flag{margin-left:auto;font-size:11px;font-weight:700;padding:2px 7px;border-radius:5px}
+  .flag.bad{background:var(--bad-soft);color:var(--bad)}
+  .flag.fix{background:var(--good-soft);color:var(--good)}
+  .flag.move{background:var(--warn-soft);color:var(--warn)}
+  .route{display:block;font-size:11px;color:#97a0b2;font-weight:400;margin-top:1px}
+
+  .callout{margin-top:14px;background:var(--bad-soft);border:1px solid #f0c9c6;border-radius:9px;padding:12px 14px;font-size:13.5px;color:#7a201b}
+  .callout.ok{background:var(--good-soft);border-color:#bfe3cd;color:#1c5a39}
+  .callout b{color:inherit}
+
+  /* IA move table */
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:#eef1f6;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#5b6577}
+  tr:last-child td{border-bottom:none}
+  .grp{font-weight:800;font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:3px 9px;border-radius:6px;display:inline-block}
+  .grp.setup{background:var(--setup-soft);color:var(--setup)}
+  .grp.ops{background:var(--ops-soft);color:var(--ops)}
+  .grp.insight{background:var(--insight-soft);color:var(--insight)}
+  code{background:#eef1f6;border-radius:5px;padding:1px 6px;font-size:12.5px}
+
+  /* representative page mock */
+  .pagemock{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+  .pagemock .topbar{padding:16px 20px;border-bottom:1px solid var(--line)}
+  .pagemock .crumb{font-size:12px;color:var(--muted)}
+  .pagemock .ptitle{font-size:20px;font-weight:700;margin-top:4px}
+  .pagemock .psub{color:var(--muted);font-size:13.5px;margin-top:3px;max-width:640px}
+  .pagemock .body{padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media (max-width:880px){.pagemock .body{grid-template-columns:1fr}}
+  .mockcard{border:1px solid var(--line);border-radius:10px;padding:14px}
+  .mockcard h4{margin:0 0 8px;font-size:14px}
+  .acctrow{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #eef1f6;font-size:13.5px}
+  .acctrow:first-of-type{border-top:none}
+  .dot{width:9px;height:9px;border-radius:50%;background:var(--good)}
+  .ghostbtn{display:inline-block;border:1.5px dashed #c3ccdb;color:#5b6577;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;margin-top:4px}
+  .pillbtn{display:inline-block;background:var(--accent);color:#fff;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;margin-top:4px}
+  .meta{font-size:11.5px;color:#97a0b2;margin-top:6px}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);margin-top:10px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .footnote{font-size:12px;color:#97a0b2;margin-top:34px;border-top:1px solid var(--line);padding-top:14px}
+  .roles{font-size:11px;color:#97a0b2;margin-top:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <span class="banner">WIREFRAME &amp; PROPOSAL — NOT BUILT · for IA sign-off only</span>
+    <h1>Financials section — information-architecture restructure</h1>
+    <p class="lede">This is a <b>picture of a proposed navigation layout</b>, not a built feature. No app code, routes, or roles have been changed. The goal: give bank-linking a correctly-named home and group the eight Financials items so the section reads cleanly. Wireframe fidelity (boxes + labels) on purpose.</p>
+  </header>
+
+  <!-- ===================== THE PROBLEM ===================== -->
+  <h2>The naming collision we're fixing</h2>
+  <div class="callout">
+    <b>Two different things are both trying to be called "Payment Methods."</b><br>
+    • The Plaid bank-linking page (<code>/app/financial/bank-connections</code>) shows a sidebar label of <b>"Bank Connections"</b> but its own page header reads <b>"Payment Methods"</b> — a self-contradiction that confused even the team.<br>
+    • Meanwhile the real <b>Payments</b> page (<code>/app/financial/payments</code>) is the genuine "how owners pay their dues" surface (payment channels + Stripe Connect). That is where "Payment Methods" actually belongs.<br>
+    <b>Fix:</b> bank-linking becomes <b>"Bank Accounts"</b> (connecting the association's own bank accounts via Plaid for reconciliation). Owner-facing "Payment Methods" lives inside <b>Payments</b>, where it already is.
+  </div>
+
+  <!-- ===================== BEFORE / AFTER NAV ===================== -->
+  <h2>Before &nbsp;→&nbsp; After (side by side)</h2>
+  <div class="grid2">
+
+    <!-- BEFORE -->
+    <div class="panel before">
+      <span class="tag before">Before — today's flat list</span>
+      <div class="side" style="margin-top:12px">
+        <div class="sect-h">Financials</div>
+        <div class="item"><span class="ic">🗂️</span><span>Chart of Accounts<span class="route">/app/financial/foundation</span></span></div>
+        <div class="item"><span class="ic">🧾</span><span>Billing<span class="route">/app/financial/billing</span></span></div>
+        <div class="item"><span class="ic">⚖️</span><span>Assessment Rules<span class="route">/app/financial/rules</span></span></div>
+        <div class="item"><span class="ic">💳</span><span>Payments<span class="route">/app/financial/payments</span></span></div>
+        <div class="item active"><span class="ic">🏦</span><span>Bank Connections<span class="route">/app/financial/bank-connections</span></span><span class="flag bad">header says "Payment Methods"</span></div>
+        <div class="item"><span class="ic">💸</span><span>Expenses<span class="route">/app/financial/expenses</span></span></div>
+        <div class="item"><span class="ic">📊</span><span>Reports<span class="route">/app/financial/reports</span></span></div>
+        <div class="item"><span class="ic">📄</span><span>Statement<span class="route">/app/financial/statement</span></span></div>
+      </div>
+      <div class="callout">
+        Eight items in one undifferentiated list. Setup, day-to-day operations, and reporting are all jumbled together — and the bank-linking item is mislabeled.
+      </div>
+    </div>
+
+    <!-- AFTER -->
+    <div class="panel after">
+      <span class="tag after">After — grouped &amp; correctly named</span>
+      <div class="side" style="margin-top:12px">
+        <div class="sect-h">Financials — Setup</div>
+        <div class="item"><span class="ic">🗂️</span><span>Chart of Accounts<span class="route">/app/financial/foundation</span></span></div>
+        <div class="item active"><span class="ic">🏦</span><span>Bank Accounts<span class="route">/app/financial/bank-connections</span></span><span class="flag fix">renamed</span></div>
+        <div class="item"><span class="ic">⚖️</span><span>Assessment Rules<span class="route">/app/financial/rules</span></span></div>
+
+        <div class="sect-h">Financials — Operations</div>
+        <div class="item"><span class="ic">🧾</span><span>Billing<span class="route">/app/financial/billing</span></span></div>
+        <div class="item"><span class="ic">💳</span><span>Payments<span class="route">/app/financial/payments</span></span><span class="flag fix">owns "Payment Methods"</span></div>
+        <div class="item"><span class="ic">💸</span><span>Expenses<span class="route">/app/financial/expenses</span></span></div>
+
+        <div class="sect-h">Financials — Insight</div>
+        <div class="item"><span class="ic">📊</span><span>Reports<span class="route">/app/financial/reports</span></span></div>
+        <div class="item"><span class="ic">📄</span><span>Owner Statement<span class="route">/app/financial/statement</span></span><span class="flag move">clearer label</span></div>
+      </div>
+      <div class="callout ok">
+        Three plain-English groups: <b>Setup</b> (configure once), <b>Operations</b> (run every month), <b>Insight</b> (read the numbers). Bank-linking is now <b>"Bank Accounts"</b>; owner "Payment Methods" stays inside <b>Payments</b>.
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="sw" style="background:var(--bad-soft);border:1px solid var(--bad)"></span> mislabeled today</span>
+    <span><span class="sw" style="background:var(--good-soft);border:1px solid var(--good)"></span> renamed / corrected</span>
+    <span><span class="sw" style="background:var(--warn-soft);border:1px solid var(--warn)"></span> label clarified</span>
+    <span style="color:#97a0b2">Routes shown for reference only — proposal does NOT change any routes.</span>
+  </div>
+
+  <!-- ===================== IA MOVE TABLE ===================== -->
+  <h2>Proposed grouping — every move, one-line reason</h2>
+  <table>
+    <thead>
+      <tr><th>Group</th><th>Item (label)</th><th>What the page does</th><th>Why it lives here</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="grp setup">Setup</span></td>
+        <td><b>Chart of Accounts</b><div class="roles">board · manager · admin</div></td>
+        <td>Define the account tree + budget categories the whole section posts against.</td>
+        <td>Configured once at the start; everything else depends on it.</td>
+      </tr>
+      <tr>
+        <td><span class="grp setup">Setup</span></td>
+        <td><b>Bank Accounts</b> <span class="flag fix">was "Bank Connections" / header "Payment Methods"</span><div class="roles">board · manager · admin</div></td>
+        <td>Connect the association's own bank accounts via Plaid so transactions sync for reconciliation.</td>
+        <td>Connecting the HOA's banks is a one-time setup act — not a way owners pay. Renaming kills the "Payment Methods" collision.</td>
+      </tr>
+      <tr>
+        <td><span class="grp setup">Setup</span></td>
+        <td><b>Assessment Rules</b><div class="roles">board · manager · admin · viewer</div></td>
+        <td>Rules that auto-generate recurring assessments / charges.</td>
+        <td>You set the rules up front; billing then runs them. Belongs with the configuration items.</td>
+      </tr>
+      <tr>
+        <td><span class="grp ops">Operations</span></td>
+        <td><b>Billing</b><div class="roles">board · manager · admin · viewer</div></td>
+        <td>Generate and track the dues/assessments charged to owner ledgers.</td>
+        <td>The core recurring money-out-the-door activity.</td>
+      </tr>
+      <tr>
+        <td><span class="grp ops">Operations</span></td>
+        <td><b>Payments</b> <span class="flag fix">keeps "Payment Methods"</span><div class="roles">board · manager · admin</div></td>
+        <td>How owners pay dues — payment channels owners see, plus the Stripe Connect gateway.</td>
+        <td>This is the real owner-facing "Payment Methods." Keeping the name here resolves the conflict cleanly.</td>
+      </tr>
+      <tr>
+        <td><span class="grp ops">Operations</span></td>
+        <td><b>Expenses</b><div class="roles">board · manager · admin</div></td>
+        <td>Record and track money the association spends (invoices, utilities, budgets).</td>
+        <td>The money-out counterpart to Billing; a monthly operational task.</td>
+      </tr>
+      <tr>
+        <td><span class="grp insight">Insight</span></td>
+        <td><b>Reports</b><div class="roles">board · manager · admin · viewer</div></td>
+        <td>P&amp;L, Collections, AR Aging, Reserve, Board Report.</td>
+        <td>Read-only output that reads from everything above — naturally last.</td>
+      </tr>
+      <tr>
+        <td><span class="grp insight">Insight</span></td>
+        <td><b>Owner Statement</b> <span class="flag move">was "Statement"</span><div class="roles">board · manager · admin · viewer</div></td>
+        <td>A single owner's account statement (charges, payments, balance).</td>
+        <td>Also read-only reporting; "Owner Statement" says what it is at a glance.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- ===================== REPRESENTATIVE PAGE ===================== -->
+  <h2>Representative page — the renamed "Bank Accounts"</h2>
+  <p class="lede" style="margin-bottom:14px">A picture of what the corrected page header looks like — same page, honest name. (Wireframe; not built.)</p>
+  <div class="pagemock">
+    <div class="topbar">
+      <div class="crumb">Financials &nbsp;›&nbsp; Setup &nbsp;›&nbsp; <b>Bank Accounts</b></div>
+      <div class="ptitle">🏦 Bank Accounts</div>
+      <div class="psub">Connect this association's bank accounts so transactions sync automatically for reconciliation. This is about the HOA's <b>own</b> bank — not how owners pay their dues (that's under Payments).</div>
+    </div>
+    <div class="body">
+      <div class="mockcard">
+        <h4>Connected accounts</h4>
+        <div class="acctrow"><span class="dot"></span> Operating Account •••• 4821 <span style="margin-left:auto;color:#97a0b2;font-size:12px">synced 2h ago</span></div>
+        <div class="acctrow"><span class="dot"></span> Reserve Account •••• 9907 <span style="margin-left:auto;color:#97a0b2;font-size:12px">synced 2h ago</span></div>
+        <div class="acctrow" style="color:#97a0b2"><span class="dot" style="background:#c3ccdb"></span> + Add another bank account</div>
+        <div class="ghostbtn">＋ Connect a bank account</div>
+        <div class="meta">Opens Plaid Link · admin / board / manager only</div>
+      </div>
+      <div class="mockcard">
+        <h4>Recent synced transactions</h4>
+        <div class="acctrow">Deposit — owner dues batch <span style="margin-left:auto">+ $4,200.00</span></div>
+        <div class="acctrow">Landscaping vendor <span style="margin-left:auto">− $850.00</span></div>
+        <div class="acctrow">Utility — water <span style="margin-left:auto">− $312.40</span></div>
+        <div class="pillbtn">Sync now</div>
+        <div class="meta">Feeds reconciliation under Reports</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footnote">
+    <b>Wireframe / proposal — not built.</b> No <code>.tsx</code>/<code>.ts</code> edited, no routes changed, nothing deployed. Routes are shown only to confirm the same pages keep the same URLs; only sidebar <i>labels</i> and <i>grouping</i> change in the proposal. Implementation would be a separate dispatch after sign-off.
+    Source map: <code>client/src/App.tsx</code> (nav L178–185, routes L445–452); page header bug in <code>client/src/pages/financial-bank-connections.tsx</code> L348–349 (<code>title="Payment Methods"</code>) vs sidebar label "Bank Connections"; real Payment Methods surface in <code>client/src/pages/financial-payments.tsx</code> L139–141, L375.
+  </div>
+
+</div>
+</body>
+</html>

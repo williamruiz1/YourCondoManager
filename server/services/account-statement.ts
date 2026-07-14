@@ -25,6 +25,7 @@ import {
   persons,
   units,
 } from "@shared/schema";
+import { loadUnitPayerRoster, type UnitPayerRoster } from "./unit-payer-roster";
 import {
   computeStatement,
   type AccountStatement,
@@ -56,6 +57,26 @@ export interface StatementHeader {
 
 export interface AccountStatementWithHeader extends AccountStatement {
   header: StatementHeader;
+}
+
+/**
+ * Phase 1 (P0-1) — the UNIT-scoped statement. The balance-bearing entity is the
+ * UNIT; every co-owner's ledger rows for the unit are aggregated. The header
+ * carries the full payer roster (all authorized co-owners + the designated
+ * primary contact) rather than a single owner.
+ */
+export interface UnitStatementHeader {
+  associationName: string | null;
+  unitNumber: string | null;
+  building: string | null;
+  unitAccountRef: string | null;
+  /** All authorized payers on the unit (primary first). */
+  payerRoster: UnitPayerRoster["members"];
+  primaryContactPersonId: string | null;
+}
+
+export interface UnitAccountStatementWithHeader extends AccountStatement {
+  header: UnitStatementHeader;
 }
 
 /**
@@ -208,6 +229,104 @@ export async function buildAccountStatement(input: {
       ownerEmail: person.email ?? null,
       unitNumber,
       building,
+    },
+  };
+}
+
+
+/**
+ * Phase 1 (P0-1) — build the UNIT-scoped account statement.
+ *
+ * The UNIT is the balance-bearing entity: this aggregates EVERY co-owner's
+ * ledger rows for the unit (scoped by `unitId`, NOT `personId`) into one
+ * statement, and attaches the payer roster (all authorized co-owners + the
+ * designated primary contact) to the header.
+ *
+ * This is ADDITIVE — `buildAccountStatement(personId)` is unchanged and remains
+ * the per-owner view. This function is the unit source-of-truth statement the
+ * roadmap's P0-1 calls for. Callers should gate on the UNIT_CENTRIC_LEDGER flag
+ * before preferring this over the person-scoped statement (that gating is the
+ * caller's / route's responsibility; the function itself is always safe to
+ * call and reads only additive data).
+ *
+ * Tenant isolation: every query filters by `associationId`; the unit must
+ * belong to the association or the function returns null.
+ */
+export async function buildUnitAccountStatement(input: {
+  associationId: string;
+  unitId: string;
+  from: Date;
+  to: Date;
+}): Promise<UnitAccountStatementWithHeader | null> {
+  const { associationId, unitId, from, to } = input;
+
+  // Verify the unit belongs to this association (tenant fence).
+  const [unitRow] = await db
+    .select({
+      id: units.id,
+      unitNumber: units.unitNumber,
+      building: units.building,
+      unitAccountRef: units.unitAccountRef,
+    })
+    .from(units)
+    .where(and(eq(units.id, unitId), eq(units.associationId, associationId)))
+    .limit(1);
+  if (!unitRow) return null;
+
+  // Pull EVERY ledger entry for the unit scope (all co-owners, all time). The
+  // pure computeStatement partitions into opening vs in-period.
+  const rows = await db
+    .select({
+      id: ownerLedgerEntries.id,
+      entryType: ownerLedgerEntries.entryType,
+      amount: ownerLedgerEntries.amount,
+      postedAt: ownerLedgerEntries.postedAt,
+      description: ownerLedgerEntries.description,
+    })
+    .from(ownerLedgerEntries)
+    .where(
+      and(
+        eq(ownerLedgerEntries.associationId, associationId),
+        eq(ownerLedgerEntries.unitId, unitId),
+      ),
+    );
+
+  const entries: StatementLedgerEntry[] = rows.map((r) => ({
+    id: r.id,
+    entryType: r.entryType,
+    amount: r.amount,
+    postedAt: r.postedAt instanceof Date ? r.postedAt : new Date(r.postedAt),
+    description: r.description,
+  }));
+
+  const [assocRow] = await db
+    .select({ name: associations.name })
+    .from(associations)
+    .where(eq(associations.id, associationId))
+    .limit(1);
+
+  const roster = await loadUnitPayerRoster(associationId, unitId);
+
+  const statement = computeStatement({
+    associationId,
+    // The unit statement is not scoped to a single person; personId is left
+    // empty (the balance owner is the UNIT). unitId is the anchor.
+    personId: "",
+    unitId,
+    entries,
+    from,
+    to,
+  });
+
+  return {
+    ...statement,
+    header: {
+      associationName: assocRow?.name ?? null,
+      unitNumber: unitRow.unitNumber,
+      building: unitRow.building ?? null,
+      unitAccountRef: unitRow.unitAccountRef ?? null,
+      payerRoster: roster?.members ?? [],
+      primaryContactPersonId: roster?.primaryContactPersonId ?? null,
     },
   };
 }

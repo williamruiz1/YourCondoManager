@@ -304,6 +304,15 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         groupLabel: "Insight",
       },
       {
+        title: "AR Aging",
+        url: "/app/financial/ar-aging",
+        icon: Receipt,
+        materialIcon: "receipt_long",
+        activePrefix: "/app/financial/ar-aging",
+        roles: FINANCIALS_ACCESS,
+        groupLabel: "Insight",
+      },
+      {
         title: "Owner Statement",
         url: "/app/financial/statement",
         icon: FileText,

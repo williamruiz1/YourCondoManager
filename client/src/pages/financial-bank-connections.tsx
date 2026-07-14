@@ -29,12 +29,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { EmptyState } from "@/components/empty-state";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
-import { Landmark, Receipt, AlertTriangle } from "lucide-react";
-import type { BankAccount, BankTransaction } from "@shared/schema";
+import { Landmark, RefreshCw } from "lucide-react";
+import type { BankAccount } from "@shared/schema";
 import {
   Select,
   SelectContent,
@@ -44,24 +43,51 @@ import {
 } from "@/components/ui/select";
 
 type ConnectedAccount = BankAccount & { lastSyncedAt: string | null };
-type ConnectedTransaction = BankTransaction & { date: string };
 
-type ReconciliationCandidate = {
-  id: string;
-  amount: number;
-  description: string | null;
-  createdAt: string;
+// ── Consolidated reconciliation ledger (matches the server's
+//    /api/admin/reconciliation/transactions shape) ───────────────────────────
+type ReconTxStatus = "auto-matched" | "suggested" | "needs-review" | "unmatched";
+
+type ReconOwnerCandidate = {
+  personId: string;
+  personName: string;
+  unitId: string;
+  unitNumber: string | null;
+  confidence: number;
 };
 
-type UnmatchedCredit = BankTransaction & {
+type ReconTransactionRow = {
+  bankTransactionId: string;
   date: string;
-  candidates: ReconciliationCandidate[];
+  descriptor: string;
+  amountCents: number;
+  status: ReconTxStatus;
+  identifiedAs: {
+    personId: string | null;
+    personName: string | null;
+    unitId: string | null;
+    unitNumber: string | null;
+  };
+  forLabel: string | null;
+  confidence: number | null;
+  ledgerEntryId: string | null;
+  ownerCandidates: ReconOwnerCandidate[];
 };
 
-type PendingReconciliationPayload = {
-  unmatchedCredits: UnmatchedCredit[];
-  pendingEntryCount: number;
+type ReconTransactionLedger = {
+  associationId: string;
+  windowDays: number;
+  rows: ReconTransactionRow[];
+  counts: {
+    total: number;
+    autoMatched: number;
+    suggested: number;
+    needsReview: number;
+    unmatched: number;
+  };
 };
+
+type StatusFilter = "all" | "auto-matched" | "suggested" | "needs-review" | "unmatched";
 
 function formatDate(value: string | Date | null | undefined) {
   if (!value) return "—";
@@ -74,6 +100,33 @@ function formatMoney(cents: number | null | undefined) {
   if (typeof cents !== "number") return "—";
   return `$${(cents / 100).toFixed(2)}`;
 }
+
+// Plain-English label + badge styling per status.
+const STATUS_META: Record<
+  ReconTxStatus,
+  { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className: string }
+> = {
+  "auto-matched": {
+    label: "Auto-matched",
+    variant: "outline",
+    className: "border-green-500 text-green-700",
+  },
+  suggested: {
+    label: "Suggested — confirm",
+    variant: "outline",
+    className: "border-amber-500 text-amber-700",
+  },
+  "needs-review": {
+    label: "Needs you",
+    variant: "outline",
+    className: "border-red-500 text-red-700",
+  },
+  unmatched: {
+    label: "Unmatched",
+    variant: "outline",
+    className: "text-on-surface-variant",
+  },
+};
 
 export default function FinancialBankConnectionsPage() {
   useDocumentTitle("Bank Accounts — YCM");
@@ -136,15 +189,35 @@ export default function FinancialBankConnectionsPage() {
     enabled: Boolean(activeAssociationId),
   });
 
-  const { data: transactions = [] } = useQuery<ConnectedTransaction[]>({
-    queryKey: ["/api/plaid/transactions", activeAssociationId],
+  // Consolidated reconciliation ledger — ONE row per bank credit with full
+  // identification (owner + unit + status + confidence), built server-side by
+  // composing the existing auto-matcher engine output. Replaces the old
+  // duplicate "raw transactions" + "pending reconciliation" lists.
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const {
+    data: reconLedger,
+    isLoading: reconLoading,
+  } = useQuery<ReconTransactionLedger>({
+    queryKey: ["/api/admin/reconciliation/transactions", activeAssociationId],
     queryFn: async () => {
-      if (!activeAssociationId) return [];
-      const res = await apiRequest("GET", `/api/plaid/transactions?associationId=${encodeURIComponent(activeAssociationId)}`);
+      if (!activeAssociationId)
+        return {
+          associationId: "",
+          windowDays: 30,
+          rows: [],
+          counts: { total: 0, autoMatched: 0, suggested: 0, needsReview: 0, unmatched: 0 },
+        };
+      const res = await apiRequest(
+        "GET",
+        `/api/admin/reconciliation/transactions?associationId=${encodeURIComponent(activeAssociationId)}`,
+      );
       return res.json();
     },
     enabled: Boolean(activeAssociationId),
   });
+  const reconRows = reconLedger?.rows ?? [];
+  const filteredReconRows =
+    statusFilter === "all" ? reconRows : reconRows.filter((r) => r.status === statusFilter);
 
   const createLinkToken = useMutation({
     mutationFn: async () => {
@@ -244,41 +317,57 @@ export default function FinancialBankConnectionsPage() {
     onError: (err: Error) => toast({ title: "Disconnect failed", description: err.message, variant: "destructive" }),
   });
 
-  // Issue #448 — bank-tx ↔ owner-ledger reconciliation.
-  const { data: pendingRecon } = useQuery<PendingReconciliationPayload>({
-    queryKey: ["/api/plaid/reconcile/pending", activeAssociationId],
-    queryFn: async () => {
-      if (!activeAssociationId) return { unmatchedCredits: [], pendingEntryCount: 0 };
-      const res = await apiRequest(
-        "GET",
-        `/api/plaid/reconcile/pending?associationId=${encodeURIComponent(activeAssociationId)}`,
-      );
-      return res.json();
-    },
-    enabled: Boolean(activeAssociationId),
-  });
+  // Reconciliation engine mutations (the rich /api/admin/reconciliation/* path,
+  // shared with the admin reconciliation surface). Each invalidates the
+  // consolidated ledger so the table reflects the new state.
+  const invalidateRecon = () => {
+    qc.invalidateQueries({ queryKey: ["/api/admin/reconciliation/transactions", activeAssociationId] });
+  };
 
+  // Run the confidence-scored auto-matcher across every unmatched bank deposit.
   const reconcileAuto = useMutation({
     mutationFn: async () => {
       if (!activeAssociationId) throw new Error("Select an association first");
-      const res = await apiRequest("POST", "/api/plaid/reconcile", { associationId: activeAssociationId });
-      return res.json() as Promise<{ matched: Array<{ bankTransactionId: string; ledgerEntryId: string }> }>;
+      const res = await apiRequest("POST", "/api/admin/reconciliation/auto-match", {
+        associationId: activeAssociationId,
+      });
+      return res.json() as Promise<{ matched: unknown[]; needsManualReview: unknown[] }>;
     },
     onSuccess: (data) => {
       toast({
-        title: "Auto-reconcile complete",
-        description: `${data.matched.length} match(es) applied.`,
+        title: "Auto-match complete",
+        description: `${data.matched.length} matched · ${data.needsManualReview.length} need review.`,
       });
-      qc.invalidateQueries({ queryKey: ["/api/plaid/reconcile/pending", activeAssociationId] });
-      qc.invalidateQueries({ queryKey: ["/api/plaid/transactions", activeAssociationId] });
+      invalidateRecon();
     },
-    onError: (err: Error) => toast({ title: "Reconcile failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Auto-match failed", description: err.message, variant: "destructive" }),
   });
 
-  const manualMatch = useMutation({
-    mutationFn: async (input: { bankTransactionId: string; ledgerEntryId: string }) => {
+  // "Suggested — confirm" rows: materialize the payment entry + auto-match it
+  // (the engine also learns the descriptor alias for future deposits).
+  const confirmSuggestion = useMutation({
+    mutationFn: async (input: { bankTransactionId: string; personId: string; unitId: string }) => {
       if (!activeAssociationId) throw new Error("Select an association first");
-      const res = await apiRequest("POST", "/api/plaid/reconcile/manual", {
+      const res = await apiRequest("POST", "/api/admin/reconciliation/suggestions/create", {
+        associationId: activeAssociationId,
+        ...input,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Payment recorded and matched" });
+      invalidateRecon();
+    },
+    onError: (err: Error) =>
+      toast({ title: "Confirm failed", description: err.message, variant: "destructive" }),
+  });
+
+  // "Needs you" rows: pair a bank credit with one of the candidate owners
+  // (creates the payment entry + match in one step).
+  const manualMatch = useMutation({
+    mutationFn: async (input: { bankTransactionId: string; personId: string; unitId: string }) => {
+      if (!activeAssociationId) throw new Error("Select an association first");
+      const res = await apiRequest("POST", "/api/admin/reconciliation/suggestions/create", {
         associationId: activeAssociationId,
         ...input,
       });
@@ -286,8 +375,7 @@ export default function FinancialBankConnectionsPage() {
     },
     onSuccess: () => {
       toast({ title: "Match applied" });
-      qc.invalidateQueries({ queryKey: ["/api/plaid/reconcile/pending", activeAssociationId] });
-      qc.invalidateQueries({ queryKey: ["/api/plaid/transactions", activeAssociationId] });
+      invalidateRecon();
     },
     onError: (err: Error) =>
       toast({ title: "Match failed", description: err.message, variant: "destructive" }),
@@ -409,81 +497,189 @@ export default function FinancialBankConnectionsPage() {
         }
       />
 
-      {pendingRecon && pendingRecon.unmatchedCredits.length > 0 ? (
-        <Card data-testid="pending-reconciliation-callout" className="border-warning">
-          <CardHeader className="flex flex-row items-start gap-3">
-            <AlertTriangle className="mt-1 h-5 w-5 text-warning" aria-hidden />
-            <div className="flex-1">
-              <CardTitle className="text-base">Pending reconciliation</CardTitle>
-              <CardDescription>
-                {pendingRecon.unmatchedCredits.length} unmatched bank credit(s) — pair them with pending owner payment intents below, or run auto-reconcile.
-              </CardDescription>
+      {/* PRIMARY SURFACE — one consolidated, identified transaction table.
+          Every bank credit is a single row that says WHO it's from, WHAT it's
+          for, the engine's confidence, and its match status. Replaces the old
+          two-raw-list duplication. */}
+      <Card data-testid="reconciliation-ledger">
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>Reconciliation</CardTitle>
+            <CardDescription>
+              Every bank deposit from the last {reconLedger?.windowDays ?? 30} days, identified
+              against your owner ledger. Confirm the suggested matches and resolve anything that
+              needs you.
+            </CardDescription>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => reconcileAuto.mutate()}
+            disabled={reconcileAuto.isPending || !activeAssociationId}
+            data-testid="btn-auto-reconcile"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${reconcileAuto.isPending ? "animate-spin" : ""}`} />
+            {reconcileAuto.isPending ? "Matching…" : "Run auto-match"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {/* Filter toggle — same rows, filtered (NOT a separate redundant list). */}
+          {reconRows.length > 0 ? (
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <span className="text-sm text-on-surface-variant">Show:</span>
+              <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+                <SelectTrigger className="w-[220px]" data-testid="select-status-filter">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">
+                    All deposits ({reconLedger?.counts.total ?? 0})
+                  </SelectItem>
+                  <SelectItem value="needs-review">
+                    Needs you ({reconLedger?.counts.needsReview ?? 0})
+                  </SelectItem>
+                  <SelectItem value="suggested">
+                    Suggested — confirm ({reconLedger?.counts.suggested ?? 0})
+                  </SelectItem>
+                  <SelectItem value="auto-matched">
+                    Auto-matched ({reconLedger?.counts.autoMatched ?? 0})
+                  </SelectItem>
+                  <SelectItem value="unmatched">
+                    Unmatched ({reconLedger?.counts.unmatched ?? 0})
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => reconcileAuto.mutate()}
-              disabled={reconcileAuto.isPending}
-              data-testid="btn-auto-reconcile"
-            >
-              {reconcileAuto.isPending ? "Matching…" : "Auto-reconcile"}
-            </Button>
-          </CardHeader>
-          <CardContent>
+          ) : null}
+
+          {reconLoading ? (
+            <p className="text-sm text-on-surface-variant">Loading…</p>
+          ) : reconRows.length === 0 ? (
+            <EmptyState
+              icon={Landmark}
+              title="No bank deposits yet"
+              description="Connect a bank account and click Sync Now to pull deposits, then they'll appear here identified against your owner ledger."
+            />
+          ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Description</TableHead>
+                  <TableHead>From (bank descriptor)</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Match to invoice</TableHead>
+                  <TableHead>Identified as</TableHead>
+                  <TableHead>For</TableHead>
+                  <TableHead>Confidence</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingRecon.unmatchedCredits.map((credit) => (
-                  <TableRow key={credit.id} data-testid={`unmatched-credit-${credit.id}`}>
-                    <TableCell>{formatDate(credit.date)}</TableCell>
-                    <TableCell>{credit.merchantName ?? credit.name}</TableCell>
-                    <TableCell className="text-right">
-                      {formatMoney(Math.abs(credit.amountCents))}
-                    </TableCell>
-                    <TableCell>
-                      {credit.candidates.length === 0 ? (
-                        <span className="text-xs text-on-surface-variant">No candidates within ±$1</span>
-                      ) : (
-                        <Select
-                          onValueChange={(ledgerEntryId) =>
-                            manualMatch.mutate({
-                              bankTransactionId: credit.id,
-                              ledgerEntryId,
-                            })
-                          }
-                        >
-                          <SelectTrigger
-                            className="w-full"
-                            data-testid={`select-match-${credit.id}`}
-                            disabled={manualMatch.isPending}
+                {filteredReconRows.map((row) => {
+                  const meta = STATUS_META[row.status];
+                  const topCandidate = row.ownerCandidates[0];
+                  return (
+                    <TableRow key={row.bankTransactionId} data-testid={`recon-row-${row.bankTransactionId}`}>
+                      <TableCell className="text-xs">{formatDate(row.date)}</TableCell>
+                      <TableCell className="max-w-xs truncate" title={row.descriptor}>
+                        {row.descriptor}
+                      </TableCell>
+                      <TableCell className="text-right font-mono">
+                        {formatMoney(row.amountCents)}
+                      </TableCell>
+                      <TableCell>
+                        {row.identifiedAs.personName ? (
+                          <span>
+                            <span className="font-medium">{row.identifiedAs.personName}</span>
+                            {row.identifiedAs.unitNumber ? (
+                              <span className="text-on-surface-variant"> · #{row.identifiedAs.unitNumber}</span>
+                            ) : null}
+                          </span>
+                        ) : (
+                          <span className="text-on-surface-variant">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {row.forLabel ? (
+                          <span className="text-xs">{row.forLabel}</span>
+                        ) : (
+                          <span className="text-on-surface-variant">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {typeof row.confidence === "number" ? (
+                          <span className="text-xs">
+                            {(row.confidence * 100).toFixed(0)}%
+                            {row.confidence >= 0.99 ? " ✓" : ""}
+                          </span>
+                        ) : row.status === "auto-matched" ? (
+                          <span className="text-xs text-green-700">✓</span>
+                        ) : (
+                          <span className="text-on-surface-variant">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={meta.variant} className={meta.className}>
+                          {meta.label}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {row.status === "suggested" && topCandidate ? (
+                          <Button
+                            size="sm"
+                            disabled={confirmSuggestion.isPending}
+                            onClick={() =>
+                              confirmSuggestion.mutate({
+                                bankTransactionId: row.bankTransactionId,
+                                personId: topCandidate.personId,
+                                unitId: topCandidate.unitId,
+                              })
+                            }
+                            data-testid={`btn-confirm-${row.bankTransactionId}`}
                           >
-                            <SelectValue placeholder="Choose pending entry…" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {credit.candidates.map((cand) => (
-                              <SelectItem key={cand.id} value={cand.id}>
-                                {`$${Math.abs(cand.amount).toFixed(2)} — ${cand.description ?? "(no description)"} — ${formatDate(cand.createdAt)}`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                            Confirm
+                          </Button>
+                        ) : row.status === "needs-review" && row.ownerCandidates.length > 0 ? (
+                          <Select
+                            onValueChange={(personId) => {
+                              const cand = row.ownerCandidates.find((c) => c.personId === personId);
+                              if (!cand) return;
+                              manualMatch.mutate({
+                                bankTransactionId: row.bankTransactionId,
+                                personId: cand.personId,
+                                unitId: cand.unitId,
+                              });
+                            }}
+                          >
+                            <SelectTrigger
+                              className="w-[200px]"
+                              data-testid={`select-match-${row.bankTransactionId}`}
+                              disabled={manualMatch.isPending}
+                            >
+                              <SelectValue placeholder="Match to owner…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {row.ownerCandidates.map((cand) => (
+                                <SelectItem key={cand.personId} value={cand.personId}>
+                                  {`${cand.personName}${cand.unitNumber ? ` · #${cand.unitNumber}` : ""} · ${(cand.confidence * 100).toFixed(0)}%`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-on-surface-variant">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      ) : null}
+          )}
+        </CardContent>
+      </Card>
 
+      {/* Accounts (connected banks) — connect/sync flow preserved verbatim. */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
@@ -514,103 +710,59 @@ export default function FinancialBankConnectionsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs defaultValue="accounts">
-            <TabsList>
-              <TabsTrigger value="accounts" data-testid="tab-accounts">Accounts</TabsTrigger>
-              <TabsTrigger value="transactions" data-testid="tab-transactions">Transactions</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="accounts" className="mt-4">
-              {accountsLoading ? (
-                <p className="text-sm text-on-surface-variant">Loading…</p>
-              ) : accounts.length === 0 ? (
-                <EmptyState
-                  icon={Landmark}
-                  title="No bank accounts connected yet"
-                  description="Click Connect Bank Account to link your association's bank via Plaid."
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Account</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Last 4</TableHead>
-                      <TableHead className="text-right">Current balance</TableHead>
-                      <TableHead>Last synced</TableHead>
-                      <TableHead aria-label="Actions" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {accounts.map((acct) => (
-                      <TableRow key={acct.id} data-testid={`bank-account-row-${acct.id}`}>
-                        <TableCell className="font-medium">{acct.name}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {acct.subtype ? `${acct.type} · ${acct.subtype}` : acct.type}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{acct.mask ? `••${acct.mask}` : "—"}</TableCell>
-                        <TableCell className="text-right">{formatMoney(acct.currentBalanceCents)}</TableCell>
-                        <TableCell className="text-xs text-on-surface-variant">{formatDate(acct.lastSyncedAt)}</TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => disconnect.mutate(acct.bankConnectionId)}
-                            disabled={disconnect.isPending}
-                            data-testid={`btn-disconnect-${acct.id}`}
-                          >
-                            Disconnect
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              {uniqueConnectionIds.length > 0 ? (
-                <p className="mt-3 text-xs text-on-surface-variant">
-                  {uniqueConnectionIds.length} active connection(s).
-                </p>
-              ) : null}
-            </TabsContent>
-
-            <TabsContent value="transactions" className="mt-4">
-              {transactions.length === 0 ? (
-                <EmptyState
-                  icon={Receipt}
-                  title="No transactions yet"
-                  description="Click Sync Now to pull the latest transactions from your bank."
-                />
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
-                      <TableHead>Reconciled</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {transactions.map((txn) => (
-                      <TableRow key={txn.id}>
-                        <TableCell>{formatDate(txn.date)}</TableCell>
-                        <TableCell>{txn.merchantName ?? txn.name}</TableCell>
-                        <TableCell className="text-right">{formatMoney(txn.amountCents)}</TableCell>
-                        <TableCell>
-                          <Badge variant={txn.reconciledToPaymentTransactionId ? "default" : "outline"}>
-                            {txn.reconciledToPaymentTransactionId ? "Yes" : "No"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </TabsContent>
-          </Tabs>
+          {accountsLoading ? (
+            <p className="text-sm text-on-surface-variant">Loading…</p>
+          ) : accounts.length === 0 ? (
+            <EmptyState
+              icon={Landmark}
+              title="No bank accounts connected yet"
+              description="Click Connect Bank Account to link your association's bank via Plaid."
+            />
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Account</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Last 4</TableHead>
+                  <TableHead className="text-right">Current balance</TableHead>
+                  <TableHead>Last synced</TableHead>
+                  <TableHead aria-label="Actions" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {accounts.map((acct) => (
+                  <TableRow key={acct.id} data-testid={`bank-account-row-${acct.id}`}>
+                    <TableCell className="font-medium">{acct.name}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {acct.subtype ? `${acct.type} · ${acct.subtype}` : acct.type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{acct.mask ? `••${acct.mask}` : "—"}</TableCell>
+                    <TableCell className="text-right">{formatMoney(acct.currentBalanceCents)}</TableCell>
+                    <TableCell className="text-xs text-on-surface-variant">{formatDate(acct.lastSyncedAt)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => disconnect.mutate(acct.bankConnectionId)}
+                        disabled={disconnect.isPending}
+                        data-testid={`btn-disconnect-${acct.id}`}
+                      >
+                        Disconnect
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          {uniqueConnectionIds.length > 0 ? (
+            <p className="mt-3 text-xs text-on-surface-variant">
+              {uniqueConnectionIds.length} active connection(s).
+            </p>
+          ) : null}
         </CardContent>
       </Card>
     </div>

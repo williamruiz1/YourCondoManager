@@ -180,6 +180,10 @@ export const BREADCRUMB_PATHS: Readonly<Record<string, BreadcrumbTrail>> = Objec
     { label: "Financials", href: "/app/financials" },
     { label: "Reports" },
   ],
+  "/app/financial/ar-aging": [
+    { label: "Financials", href: "/app/financials" },
+    { label: "AR Aging" },
+  ],
 
   // 4.3 Wave 8 — Consolidated Assessment Rules surface. Portfolio-scoped
   // zone > leaf. Financials is the zone label (per 1.1 Q3 Financials

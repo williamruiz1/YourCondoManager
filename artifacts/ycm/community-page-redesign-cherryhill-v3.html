@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Cherry Hill Court Condominiums — Community</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{--teal:#014D4A;--teal2:#036a66;--accent:#2DBDB0;--ink:#11302d;--mut:#5e7370;--line:#e4eeec;--bg:#f4f8f7;--card:#fff;}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--bg);line-height:1.55}
+  h1,h2,h3,.brandfont{font-family:'Plus Jakarta Sans',sans-serif}
+  a{color:var(--teal);text-decoration:none}
+  .wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+  .btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#022b29;font-weight:700;padding:12px 22px;border-radius:11px;font-family:'Plus Jakarta Sans';font-size:15px}
+  .btn.ghost{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.4)}
+  .btn:hover{filter:brightness(1.05)}
+
+  /* Top bar */
+  .topbar{background:#fff;border-bottom:1px solid var(--line)}
+  .topbar .wrap{display:flex;align-items:center;justify-content:space-between;height:66px}
+  .logo{display:flex;align-items:center;gap:11px}
+  .logo .mark{width:34px;height:34px;border-radius:9px;background:var(--teal);position:relative;flex:0 0 auto}
+  .logo .mark::before,.logo .mark::after,.logo .mark span{content:"";position:absolute;bottom:8px;width:5px;background:#fff;border-radius:1px}
+  .logo .mark::before{left:9px;height:8px}.logo .mark span{left:16px;height:13px}.logo .mark::after{left:23px;height:18px}
+  .logo b{font-family:'Plus Jakarta Sans';font-size:15px;color:var(--teal)}
+  .nav{display:flex;gap:24px;font-weight:600;font-size:14.5px;color:var(--mut)}
+  .nav a:hover{color:var(--teal)}
+
+  /* Hero */
+  .hero{background:linear-gradient(135deg,var(--teal),var(--teal2));color:#fff;position:relative;overflow:hidden}
+  .hero::after{content:"";position:absolute;right:-120px;top:-120px;width:360px;height:360px;border-radius:50%;background:radial-gradient(circle,rgba(45,189,176,.45),transparent 70%)}
+  .hero .wrap{position:relative;display:grid;grid-template-columns:1.4fr 1fr;gap:34px;align-items:center;padding:54px 24px}
+  .hero .eyebrow{display:inline-block;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);padding:5px 13px;border-radius:999px;font-size:12.5px;font-weight:600;color:#eafffb;margin-bottom:14px}
+  .hero h1{font-size:38px;font-weight:800;line-height:1.1}
+  .hero p.lede{margin-top:13px;color:#d6f1ed;font-size:16.5px;max-width:520px}
+  .hero .cta{margin-top:22px;display:flex;gap:12px;flex-wrap:wrap}
+  .hero .factcard{background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.22);border-radius:16px;padding:20px;backdrop-filter:blur(4px)}
+  .hero .factcard h3{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#bfe9e3;margin-bottom:12px}
+  .hero .factrow{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.13);font-size:14.5px}
+  .hero .factrow:last-child{border:0}
+  .hero .factrow b{font-weight:700;color:#fff}
+  @media(max-width:820px){.hero .wrap{grid-template-columns:1fr;padding:40px 24px}.hero h1{font-size:30px}}
+
+  section{padding:46px 0}
+  .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:20px}
+  .sec-head h2{font-size:23px;font-weight:800;color:var(--teal)}
+  .sec-head .line{flex:1;height:1px;background:var(--line)}
+
+  /* About — two column with side panel */
+  .about{display:grid;grid-template-columns:1.5fr 1fr;gap:30px;align-items:start}
+  .about .body p{color:#33514d;font-size:15.5px;margin-bottom:13px}
+  .sidepanel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px}
+  .sidepanel h3{font-size:15px;margin-bottom:14px}
+  .sidepanel .item{display:flex;gap:11px;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .sidepanel .item:last-child{border:0}
+  .sidepanel .item .ic{width:30px;height:30px;border-radius:8px;background:#e9f6f4;color:var(--teal);display:flex;align-items:center;justify-content:center;font-weight:700;flex:0 0 auto}
+  .sidepanel .item b{display:block}
+  .sidepanel .item span{color:var(--mut)}
+  @media(max-width:820px){.about{grid-template-columns:1fr}}
+
+  /* Board grid */
+  .board{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+  .pcard{border:1px solid var(--line);border-radius:14px;padding:18px;background:#fbfdfd}
+  .pcard .av{width:46px;height:46px;border-radius:50%;background:linear-gradient(135deg,var(--teal),var(--accent));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-family:'Plus Jakarta Sans';margin-bottom:12px}
+  .pcard h3{font-size:15.5px}
+  .pcard .role{color:var(--accent);font-weight:600;font-size:13px;margin:2px 0 9px}
+  .pcard a{font-size:13px;font-weight:600}
+  .pcard .ph{color:var(--mut);font-size:12.5px;font-style:italic}
+  @media(max-width:820px){.cards{grid-template-columns:1fr 1fr}}
+  @media(max-width:520px){.cards{grid-template-columns:1fr}}
+
+  /* Notices + quick links, side by side */
+  .duo{display:grid;grid-template-columns:1.2fr 1fr;gap:30px;align-items:start}
+  .notice{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:12px;padding:16px 18px;margin-bottom:13px}
+  .notice .tag{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)}
+  .notice h3{font-size:15.5px;margin:5px 0 4px}
+  .notice p{color:var(--mut);font-size:14px}
+  .quicklinks{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+  .ql{display:block;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:16px;transition:.15s}
+  .ql:hover{border-color:var(--accent);transform:translateY(-2px)}
+  .ql .ic{width:34px;height:34px;border-radius:9px;background:#e9f6f4;color:var(--teal);display:flex;align-items:center;justify-content:center;font-weight:700;margin-bottom:9px}
+  .ql b{display:block;font-family:'Plus Jakarta Sans';font-size:14.5px;color:var(--ink)}
+  .ql span{color:var(--mut);font-size:12.5px}
+  @media(max-width:820px){.duo{grid-template-columns:1fr}}
+
+  /* Portal band */
+  .portal{background:linear-gradient(135deg,#062f2c,var(--teal));color:#fff;border-radius:18px;padding:30px 34px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
+  .portal h2{color:#fff;font-size:22px}
+  .portal p{color:#cdeee9;margin-top:6px;max-width:520px;font-size:15px}
+
+  footer{background:#06302d;color:#bfe2dd;padding:34px 0;margin-top:46px;font-size:14px}
+  footer .grid{display:grid;grid-template-columns:2fr 1fr 1fr;gap:24px}
+  footer h4{color:#fff;font-size:13px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:11px}
+  footer a{color:#bfe2dd}footer a:hover{color:#fff}
+  footer .fine{margin-top:24px;border-top:1px solid rgba(255,255,255,.12);padding-top:16px;color:#86b3ad;font-size:12.5px}
+  @media(max-width:820px){footer .grid{grid-template-columns:1fr}}
+  .pwnote{position:fixed;left:0;right:0;bottom:0;background:#11302d;color:#9fd;font-size:12px;text-align:center;padding:6px}
+</style>
+</head>
+<body>
+
+<div class="topbar"><div class="wrap">
+  <div class="logo"><div class="mark"><span></span></div><b>Cherry Hill Court</b></div>
+  <nav class="nav"><a href="#about">About</a><a href="#board">Board &amp; Management</a><a href="#community">Community</a><a href="#portal">Owner Portal</a></nav>
+</div></div>
+
+<div class="hero"><div class="wrap">
+  <div>
+    <span class="eyebrow">New Haven, Connecticut · 18 residences</span>
+    <h1>Welcome to Cherry Hill Court Condominiums</h1>
+    <p class="lede">A self-managed residential condominium community. Residents handle dues, documents, and requests through the secure Owner Portal — everything in one place.</p>
+    <div class="cta">
+      <a class="btn" href="#portal">Owner Portal &nbsp;→</a>
+      <a class="btn ghost" href="#board">Contact the Board</a>
+    </div>
+  </div>
+  <div class="factcard">
+    <h3>At a glance</h3>
+    <div class="factrow"><span>Community</span><b>Cherry Hill Court</b></div>
+    <div class="factrow"><span>Location</span><b>New Haven, CT</b></div>
+    <div class="factrow"><span>Residences</span><b>18 units</b></div>
+    <div class="factrow"><span>Management</span><b>Self-managed</b></div>
+    <div class="factrow"><span>Dues</span><b>Paid via portal</b></div>
+  </div>
+</div></div>
+
+<section id="about"><div class="wrap">
+  <div class="sec-head"><h2>About the community</h2><div class="line"></div></div>
+  <div class="about">
+    <div class="body">
+      <p>Cherry Hill Court is an 18-residence condominium community in New Haven, Connecticut, run by an elected board of resident owners. The community is self-managed, with day-to-day operations, finances, and governance handled directly by the board with the support of YourCondoManager.</p>
+      <p>Owners stay informed and take care of everything — dues, account statements, maintenance requests, and governing documents — through a single secure Owner Portal. Prospective buyers, lenders, and insurers can request documents and certificates through the community's official channels.</p>
+      <p>This page is the community's public front door. Owners should sign in to the Owner Portal for account-specific information; the board and management contacts below are here for general inquiries.</p>
+    </div>
+    <aside class="sidepanel">
+      <h3>Quick facts</h3>
+      <div class="item"><div class="ic">CT</div><div><b>Governed under CT CIOA</b><span>Connecticut Common Interest Ownership Act</span></div></div>
+      <div class="item"><div class="ic">18</div><div><b>18 residences</b><span>Owner-occupied &amp; rented units</span></div></div>
+      <div class="item"><div class="ic">$</div><div><b>Online dues</b><span>Secure card &amp; bank payment</span></div></div>
+      <div class="item"><div class="ic">⌂</div><div><b>Self-managed</b><span>Resident-elected board</span></div></div>
+    </aside>
+  </div>
+</div></section>
+
+<section id="board" class="board"><div class="wrap">
+  <div class="sec-head"><h2>Board &amp; management</h2><div class="line"></div></div>
+  <div class="cards">
+    <div class="pcard"><div class="av">P</div><h3 class="ph">President</h3><div class="role">Board Officer</div><a href="#portal">Contact via portal →</a></div>
+    <div class="pcard"><div class="av">T</div><h3 class="ph">Treasurer</h3><div class="role">Board Officer</div><a href="#portal">Contact via portal →</a></div>
+    <div class="pcard"><div class="av">S</div><h3 class="ph">Secretary</h3><div class="role">Board Officer</div><a href="#portal">Contact via portal →</a></div>
+    <div class="pcard"><div class="av">M</div><h3>Community Management</h3><div class="role">General Inquiries</div><a href="mailto:support@yourcondomanager.org">support@yourcondomanager.org</a></div>
+  </div>
+  <p style="margin-top:14px;color:var(--mut);font-size:12.5px;font-style:italic">Board member names are managed by the community and shown here once confirmed. For account-specific matters, owners should use the Owner Portal.</p>
+</div></div></section>
+
+<section id="community"><div class="wrap">
+  <div class="sec-head"><h2>Community &amp; resources</h2><div class="line"></div></div>
+  <div class="duo">
+    <div>
+      <div class="notice"><span class="tag">Notice</span><h3>Stay informed through the Owner Portal</h3><p>Official announcements, board updates, and meeting notices are posted to the Owner Portal so they reach residents securely. Sign in to see the latest.</p></div>
+      <div class="notice"><span class="tag">Notice</span><h3>Dues &amp; assessments online</h3><p>Monthly dues and any special assessments can be paid securely from the portal — by card or directly from your bank account.</p></div>
+    </div>
+    <div class="quicklinks">
+      <a class="ql" href="#portal"><div class="ic">⌂</div><b>Owner Portal</b><span>Sign in</span></a>
+      <a class="ql" href="#portal"><div class="ic">📄</div><b>Governing Documents</b><span>Bylaws &amp; rules</span></a>
+      <a class="ql" href="#board"><div class="ic">✉</div><b>Contact the Board</b><span>General inquiries</span></a>
+      <a class="ql" href="#portal"><div class="ic">🏷</div><b>Lender &amp; Resale Docs</b><span>Certificates &amp; requests</span></a>
+    </div>
+  </div>
+</div></section>
+
+<section id="portal"><div class="wrap">
+  <div class="portal">
+    <div><h2>Owner Portal</h2><p>Everything you need in one place — pay dues, view your account statement, submit maintenance requests, and access community documents.</p></div>
+    <a class="btn" href="#">Sign in to the portal &nbsp;→</a>
+  </div>
+</div></section>
+
+<footer><div class="wrap">
+  <div class="grid">
+    <div><div class="logo" style="margin-bottom:12px"><div class="mark"><span></span></div><b style="color:#fff">Cherry Hill Court Condominiums</b></div>
+      <p style="max-width:360px;color:#9fc8c2">A self-managed residential condominium community in New Haven, Connecticut, powered by YourCondoManager.</p></div>
+    <div><h4>Community</h4><a href="#about">About</a><br><a href="#board">Board &amp; Management</a><br><a href="#community">Resources</a></div>
+    <div><h4>Owners</h4><a href="#portal">Owner Portal</a><br><a href="#portal">Pay Dues</a><br><a href="mailto:support@yourcondomanager.org">Contact</a></div>
+  </div>
+  <div class="fine">© 2026 Cherry Hill Court Condominium Association · New Haven, CT · Managed with YourCondoManager · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></div>
+</div></footer>
+
+<div class="pwnote">PREVIEW · Community page redesign v3 — structured &amp; multi-column · not yet deployed</div>
+</body>
+</html>

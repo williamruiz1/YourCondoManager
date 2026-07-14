@@ -26,7 +26,10 @@ import {
   createPaymentFromSuggestion,
   upsertDescriptorAlias,
 } from "../services/reconciliation/auto-matcher";
-import { buildReconciliationReport } from "../services/reconciliation/report";
+import {
+  buildReconciliationReport,
+  buildReconciliationTransactionLedger,
+} from "../services/reconciliation/report";
 import {
   manualMatchBankTransaction,
   listPendingReconciliation,
@@ -118,6 +121,35 @@ export function registerAdminReconciliationRoutes(
         res
           .status(500)
           .json({ error: error.message, code: "RECONCILIATION_REPORT_ERROR" });
+      }
+    },
+  );
+
+  // ── Consolidated transaction ledger ────────────────────────────────────────
+  // ONE row per bank credit with full identification (owner + unit + status +
+  // confidence), composing the existing engine output. This is the data the
+  // Bank Accounts page renders as a single, identified transaction table
+  // (replacing the old two-raw-list duplication).
+  app.get(
+    "/api/admin/reconciliation/transactions",
+    requireAdmin,
+    requireAdminRole(RECON_ROLES),
+    async (req: AdminRequest, res: Response) => {
+      try {
+        const associationId = getAssociationIdQuery(req);
+        if (!associationId) {
+          return res
+            .status(400)
+            .json({ error: "associationId is required", code: "MISSING_ASSOCIATION_ID" });
+        }
+        assertAssociationScope(req, associationId);
+
+        const ledger = await buildReconciliationTransactionLedger({ associationId });
+        res.json(ledger);
+      } catch (error: any) {
+        res
+          .status(500)
+          .json({ error: error.message, code: "RECONCILIATION_TRANSACTIONS_ERROR" });
       }
     },
   );
