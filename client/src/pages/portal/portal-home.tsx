@@ -5,14 +5,28 @@
 // mega-file. First-person label "Home" per 1.1 Q5; route = /portal per
 // 1.2 Q4; title "Home — YCM" via useDocumentTitle per 1.4 Q7.
 
-import { Link } from "wouter";
+import { useEffect, useState } from "react";
+import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import type { MaintenanceRequest } from "@shared/schema";
+import type { MaintenanceRequest, PaymentTransaction } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { PortalShell, usePortalContext, type PortalAssociationChoice } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
+
+// 2026-07-14 (P0 payment-confirmation-ux, founder-os incident 2026-07-14) —
+// Stripe Checkout redirects here with ?payment=success&txn=<id> (or
+// ?payment=cancelled) per server/services/payment-service.ts's
+// successUrl/cancelUrl. Before this fix, NOTHING read these params — an
+// owner who just paid (William, CHC dues, $330 ACH) landed back on Home
+// with zero acknowledgment. This formats the confirmation banner honestly:
+// ACH/ any non-terminal transaction reads "processing", never "confirmed",
+// until the transaction row actually reaches a terminal status.
+function formatCents(cents: number): string {
+  return (cents / 100).toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
 
 type PortalNoticeHistory = {
   id: string;
@@ -99,6 +113,36 @@ function PortalHomeContent() {
     },
   });
 
+  // Capture the redirect params ONCE via a lazy initializer so the banner
+  // survives us stripping them from the URL (below) — otherwise the effect
+  // that cleans the URL would also wipe the state we're reading from.
+  const rawSearch = useSearch();
+  const [, navigate] = useLocation();
+  const [redirectParams] = useState(() => new URLSearchParams(rawSearch));
+  const paymentParam = redirectParams.get("payment");
+  const txnParam = redirectParams.get("txn");
+
+  useEffect(() => {
+    if (paymentParam) {
+      // Clean the URL immediately so a refresh or back-navigation doesn't
+      // re-trigger the banner / re-fetch a transaction already shown.
+      navigate("/portal", { replace: true });
+    }
+    // Runs once on mount only — re-navigating within /portal must not
+    // re-fire this (paymentParam is captured once via the lazy initializer
+    // above; navigate is a stable wouter reference).
+  }, []);
+
+  const { data: redirectTxn, isLoading: redirectTxnLoading } = useQuery<PaymentTransaction>({
+    queryKey: ["portal/payment-transactions", txnParam],
+    enabled: paymentParam === "success" && !!txnParam,
+    queryFn: async () => {
+      const res = await portalFetch(`/api/portal/payment-transactions/${txnParam}`);
+      if (!res.ok) throw new Error("Failed to load payment status");
+      return res.json();
+    },
+  });
+
   const openRequests = requests.filter((r) => !["resolved", "closed", "rejected"].includes(r.status));
   const balance = financialDashboard?.balance ?? 0;
   // 2026-07-01 (display-only) — "Paid in full" state for the home balance card.
@@ -118,6 +162,44 @@ function PortalHomeContent() {
           {greeting}
         </h1>
       </section>
+
+      {paymentParam === "cancelled" ? (
+        <Alert data-testid="portal-home-payment-cancelled">
+          <AlertTitle>Payment not completed</AlertTitle>
+          <AlertDescription>
+            You left checkout before it finished — no charge was made. You can try again anytime from Finances.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {paymentParam === "success" && txnParam ? (
+        <Alert
+          data-testid="portal-home-payment-confirmation"
+          variant={redirectTxn?.status === "failed" ? "destructive" : "default"}
+          className={redirectTxn?.status === "succeeded" ? "border-green-600/40 bg-green-50" : undefined}
+        >
+          <AlertTitle>
+            {redirectTxnLoading
+              ? "Checking your payment…"
+              : redirectTxn?.status === "succeeded"
+                ? "Payment confirmed"
+                : redirectTxn?.status === "failed"
+                  ? "Payment did not go through"
+                  : "Payment submitted"}
+          </AlertTitle>
+          <AlertDescription>
+            {redirectTxnLoading || !redirectTxn ? (
+              "One moment…"
+            ) : redirectTxn.status === "succeeded" ? (
+              `Your ${formatCents(redirectTxn.amountCents)} payment has cleared. You'll get a receipt by email.`
+            ) : redirectTxn.status === "failed" ? (
+              `Your ${formatCents(redirectTxn.amountCents)} payment didn't go through${redirectTxn.failureReason ? ` (${redirectTxn.failureReason})` : ""}. No charge was made — you can try again from Finances.`
+            ) : (
+              `Your ${formatCents(redirectTxn.amountCents)} payment was submitted and is processing. Bank transfers (ACH) typically take 3-5 business days to clear; card payments usually clear within a minute. You'll get a receipt by email and your balance will update once it's confirmed.`
+            )}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {/* Pressing items (unmatched bank transactions, other owners'
        * delinquency status, vendor insurance, compliance deadlines) are

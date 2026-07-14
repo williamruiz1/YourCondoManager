@@ -45,6 +45,7 @@ import { getPlatformKeyMode } from "../services/stripe-connect";
 import { getSecret } from "../platform-secrets-store";
 import { log } from "../logger";
 import { handleAchFailureEvent } from "../services/ach-failure-service";
+import { updatePaymentTransactionStatus } from "../services/payment-service";
 
 export type AdminRequest = Request & {
   adminUserId?: string;
@@ -335,11 +336,28 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
   // webhooks at /api/webhooks/payments (those use each HOA's whsec).
   //
   // Handled event types:
-  //   account.updated  — onboarding KYC/payout/charges state (dispatch #1)
-  //   charge.succeeded — Gap C: write the owner ledger entry immediately so
-  //                      balances don't go stale waiting for the daily payout
-  //   payout.paid      — explode the payout into per-owner ledger entries +
-  //                      persist the reconciliation breakdown (spec §4.1)
+  //   account.updated            — onboarding KYC/payout/charges state (dispatch #1)
+  //   charge.succeeded           — Gap C: write the owner ledger entry immediately
+  //                                so balances don't go stale waiting for the daily
+  //                                payout, and (2026-07-14) flip the owner-facing
+  //                                payment_transactions row to "succeeded"
+  //   checkout.session.completed — (2026-07-14, P0 payment-confirmation-ux) mark
+  //                                the payment_transactions row "pending" + backfill
+  //                                the payment_intent id the moment checkout finishes
+  //                                (this is what makes the ACH "processing, 3-5
+  //                                business days" state visible to the owner instead
+  //                                of the row sitting mute until settlement)
+  //   payment_intent.processing  — (2026-07-14) same rationale — fires the instant
+  //                                an ACH debit is submitted, well before it clears
+  //   payout.paid                — explode the payout into per-owner ledger entries +
+  //                                persist the reconciliation breakdown (spec §4.1)
+  //
+  // IMPORTANT — checkout.session.completed and payment_intent.processing must
+  // ALSO be added to this endpoint's subscribed event list in the Stripe
+  // dashboard/API (they are not yet, as of this comment — this endpoint
+  // currently only receives account.updated / charge.succeeded / payout.paid /
+  // failure+dispute events). Code alone does nothing until Stripe is
+  // configured to actually send these two event types here.
   //
   // Registered at two paths: the original `/account-updated` (backward compat
   // with the dispatch-#1 webhook config) and the general `/events` path. Both
@@ -407,11 +425,84 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
             metadata: charge.metadata,
             source: "charge.succeeded",
           });
+          // 2026-07-14 (P0 payment-confirmation-ux) — flip the owner-facing
+          // payment_transactions row to "succeeded" alongside (never instead
+          // of, never before) the ledger write above. This is purely additive:
+          // it does not change writeLedgerEntryForCharge's timing, its
+          // idempotency, or the ledger data at all — it only makes the
+          // *status field the portal reads for its confirmation banner*
+          // catch up to reality. updatePaymentTransactionStatus is itself
+          // idempotent (looks the row up by transactionId / providerPaymentId
+          // / providerIntentId, then no-ops if it's already in a terminal
+          // state), so a re-delivered charge.succeeded can never double-apply
+          // or regress a status that already settled elsewhere.
+          const chargeMeta = (charge.metadata ?? {}) as Record<string, string>;
+          if (chargeMeta.transactionId || charge.payment_intent) {
+            await updatePaymentTransactionStatus({
+              transactionId: chargeMeta.transactionId,
+              providerIntentId: charge.payment_intent ?? undefined,
+              status: "succeeded",
+            });
+          }
           return res.status(200).json({
             received: true,
             type: event.type,
             action: result.created ? "ledger-written" : `skipped:${result.skipped ?? "unknown"}`,
             ledgerEntryId: result.ledgerEntryId,
+          });
+        }
+
+        case "checkout.session.completed": {
+          // 2026-07-14 (P0 payment-confirmation-ux) — the owner just finished
+          // Checkout. For ACH this fires with payment_status="unpaid" (the
+          // bank debit hasn't cleared yet — normal, 3-5 business days); for a
+          // card payment it may land alongside/after charge.succeeded. Either
+          // way, surface a portal-visible "pending" status + backfill the
+          // payment_intent id immediately, instead of the payment_transactions
+          // row sitting mute at "initiated" for days with nothing for the
+          // owner to see. NEVER touches the ledger — that stays exclusively on
+          // writeLedgerEntryForCharge's timing above. Idempotent: this can
+          // never regress a row past "pending" because
+          // updatePaymentTransactionStatus no-ops once a terminal status
+          // (succeeded/failed/canceled/reversed) is already set.
+          const session = event.data?.object as
+            | { id?: string; payment_intent?: string | null; metadata?: Record<string, string> | null }
+            | undefined;
+          const sessionMeta = (session?.metadata ?? {}) as Record<string, string>;
+          if (!sessionMeta.transactionId && !session?.payment_intent) {
+            return res.status(200).json({ received: true, type: event.type, action: "not-tracked" });
+          }
+          const updated = await updatePaymentTransactionStatus({
+            transactionId: sessionMeta.transactionId,
+            providerIntentId: session?.payment_intent ?? undefined,
+            status: "pending",
+          });
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: updated ? "marked-pending" : "not-tracked",
+          });
+        }
+
+        case "payment_intent.processing": {
+          // Same rationale as checkout.session.completed above — Stripe fires
+          // this the moment an ACH debit is submitted, well before it clears.
+          const intent = event.data?.object as
+            | { id?: string; metadata?: Record<string, string> | null }
+            | undefined;
+          const intentMeta = (intent?.metadata ?? {}) as Record<string, string>;
+          if (!intent?.id && !intentMeta.transactionId) {
+            return res.status(200).json({ received: true, type: event.type, action: "not-tracked" });
+          }
+          const updated = await updatePaymentTransactionStatus({
+            transactionId: intentMeta.transactionId,
+            providerIntentId: intent?.id ?? undefined,
+            status: "pending",
+          });
+          return res.status(200).json({
+            received: true,
+            type: event.type,
+            action: updated ? "marked-pending" : "not-tracked",
           });
         }
 
