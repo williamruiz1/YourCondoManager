@@ -66,6 +66,7 @@ const CONFIDENCE_READ_ROLES: AdminRole[] = [
 // Owner-safe / board shapes + the board-only dispute-visibility rule live in
 // server/services/balance-confidence-visibility.ts (pure + unit-tested).
 
+// Registered in server/routes.ts alongside the account-statement routes.
 export function registerBalanceConfidenceRoutes(
   app: Express,
   guards: ConfidenceGuards,
