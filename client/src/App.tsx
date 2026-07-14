@@ -1292,7 +1292,7 @@ function WorkspaceShell({
             {/* 5.3-F2 (Wave 18) — header compression on <640px:
                 shorter row (h-12), tighter padding, no gap so the
                 association switcher / account menu / palette fit. */}
-            <header className="sticky top-0 z-40 flex h-12 min-h-12 flex-wrap items-center gap-1.5 border-b border-slate-200/50 dark:border-slate-800/50 glass-nav px-2 py-1.5 shadow-sm sm:h-16 sm:min-h-14 sm:gap-2 sm:px-3 sm:py-2">
+            <header className="sticky top-0 z-40 flex h-12 min-h-12 flex-wrap items-center gap-1.5 border-b border-border glass-nav px-2 py-1.5 shadow-sm sm:h-16 sm:min-h-14 sm:gap-2 sm:px-3 sm:py-2">
               <SidebarTrigger data-testid="button-sidebar-toggle" />
               <HeaderActions
                 authSession={authSession}
