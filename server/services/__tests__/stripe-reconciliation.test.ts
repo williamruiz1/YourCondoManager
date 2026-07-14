@@ -118,14 +118,46 @@ vi.mock("../../db", () => {
     insert(table: unknown) {
       const arr = rowsFor(table);
       let stored: Row | null = null;
+      // A-WEBHOOK-001/002 test support: onConflictDoNothing() sets `conflicted`
+      // by mirroring the REAL partial unique index — a conflict iff another row
+      // shares every `target` column's value AND (when a partial `where` was
+      // supplied) every target column is non-null. Committed lazily at
+      // returning()/bare-await time so the conflict check runs before the push
+      // (previously `.values()` pushed immediately; no real code path awaits
+      // without eventually reaching returning()/then(), so this is a no-op
+      // reorder for every OTHER existing call site in this file).
+      let conflicted = false;
+      let committed = false;
+      const commit = () => {
+        if (!committed && !conflicted && stored) {
+          arr.push(stored);
+          committed = true;
+        }
+      };
       const obj: Record<string, unknown> = {
         values(v: Row) {
           stored = { ...v, id: (v.id as string) ?? nextId("row") };
-          arr.push(stored);
           return obj;
         },
-        returning: () => Promise.resolve([{ id: stored?.id }]),
-        then: (res: (v: unknown) => unknown) => Promise.resolve(undefined).then(res),
+        onConflictDoNothing(config?: { target?: { _key: string }[]; where?: unknown }) {
+          if (config?.target && stored) {
+            const keys = config.target.map((c) => c._key);
+            const keyVals = keys.map((k) => (stored as Row)[k]);
+            const allNonNull = keyVals.every((v) => v != null);
+            conflicted = config.where && !allNonNull
+              ? false
+              : arr.some((r) => keys.every((k) => r[k] === (stored as Row)[k]));
+          }
+          return obj;
+        },
+        returning: () => {
+          commit();
+          return Promise.resolve(conflicted ? [] : [stored]);
+        },
+        then: (res: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => {
+          commit();
+          return Promise.resolve(undefined).then(res, rej);
+        },
       };
       return obj;
     },
@@ -175,6 +207,7 @@ import {
   getReconciliationReport,
   type PayoutTransactionSummary,
 } from "../stripe-reconciliation";
+import { postPaymentLedgerEntry } from "../ledger-payment-identity";
 
 beforeEach(() => {
   store.clear();
@@ -320,6 +353,133 @@ describe("writeLedgerEntryForCharge (Gap C — idempotent)", () => {
     });
     expect(res.created).toBe(false);
     expect(res.skipped).toBe("non_positive_amount");
+  });
+});
+
+// ── A-WEBHOOK-001/002 — cross-path payment-identity idempotency ──────────────
+
+describe("writeLedgerEntryForCharge — A-WEBHOOK-001/002 (founder-os#10737)", () => {
+  const meta = { hoa_id: "asn_1", owner_id: "per_1", unit_id: "unt_1", charge_type: "dues" };
+
+  it("per-HOA payment-webhook credit (postPaymentLedgerEntry) + platform stripe_charge for ONE charge → exactly one credit", async () => {
+    // Simulates storage.processPaymentWebhookEvent already having posted this
+    // payment via the per-HOA webhook path, keyed on the SAME payment_intent.
+    const webhookWrite = await postPaymentLedgerEntry({
+      associationId: "asn_1",
+      unitId: "unt_1",
+      personId: "per_1",
+      amount: -350,
+      referenceType: "payment-webhook",
+      referenceId: "webhook-event-row-1",
+      paymentIdentityKey: "pi_SHARED_1",
+      source: "payment-webhook",
+    });
+    expect(webhookWrite.created).toBe(true);
+
+    // The platform Connect webhook then fires charge.succeeded for the SAME
+    // charge/payment_intent — must be a no-op, not a second credit.
+    const chargeWrite = await writeLedgerEntryForCharge({
+      chargeId: "ch_shared_1",
+      paymentIntentId: "pi_SHARED_1",
+      amountCents: 35000,
+      metadata: meta,
+      source: "charge.succeeded",
+    });
+
+    expect(chargeWrite.created).toBe(false);
+    expect(chargeWrite.skipped).toBe("already_exists");
+    expect(chargeWrite.ledgerEntryId).toBe(webhookWrite.entry?.id);
+    expect(rowsFor(ownerLedgerEntries)).toHaveLength(1);
+  });
+
+  it("concurrent duplicate charge.succeeded deliveries for the SAME charge → single ledger row", async () => {
+    const [a, b] = await Promise.all([
+      writeLedgerEntryForCharge({
+        chargeId: "ch_concurrent",
+        paymentIntentId: "pi_CONCURRENT",
+        amountCents: 12000,
+        metadata: meta,
+        source: "charge.succeeded",
+      }),
+      writeLedgerEntryForCharge({
+        chargeId: "ch_concurrent",
+        paymentIntentId: "pi_CONCURRENT",
+        amountCents: 12000,
+        metadata: meta,
+        source: "charge.succeeded",
+      }),
+    ]);
+    const results = [a, b];
+    expect(results.filter((r) => r.created)).toHaveLength(1);
+    expect(results.filter((r) => !r.created)).toHaveLength(1);
+    expect(rowsFor(ownerLedgerEntries)).toHaveLength(1);
+  });
+
+  it("payout.paid belt-and-suspenders after charge.succeeded (different chargeId, SAME payment_intent) → no second row", async () => {
+    // charge.succeeded posts first, keyed on the charge id AND the PI.
+    const first = await writeLedgerEntryForCharge({
+      chargeId: "ch_belt_1",
+      paymentIntentId: "pi_BELT",
+      amountCents: 8000,
+      metadata: meta,
+      source: "charge.succeeded",
+    });
+    expect(first.created).toBe(true);
+
+    // payout.paid's balance-transaction listing can resolve a DIFFERENT
+    // Stripe object id for the same underlying charge in edge cases (e.g. a
+    // balance-transaction id rather than the charge id) but the SAME PI —
+    // the payment-identity key is what must catch this, not the charge id.
+    const second = await writeLedgerEntryForCharge({
+      chargeId: "ch_belt_1_alt_ref",
+      paymentIntentId: "pi_BELT",
+      amountCents: 8000,
+      metadata: meta,
+      source: "payout.paid",
+    });
+    expect(second.created).toBe(false);
+    expect(second.skipped).toBe("already_exists");
+    expect(second.ledgerEntryId).toBe(first.ledgerEntryId);
+    expect(rowsFor(ownerLedgerEntries)).toHaveLength(1);
+  });
+
+  it("the conflict path resolves idempotently — never throws, never surfaces as a route-level 400", async () => {
+    await writeLedgerEntryForCharge({
+      chargeId: "ch_idem_1",
+      paymentIntentId: "pi_IDEM",
+      amountCents: 1000,
+      metadata: meta,
+      source: "charge.succeeded",
+    });
+    await expect(
+      writeLedgerEntryForCharge({
+        chargeId: "ch_idem_2",
+        paymentIntentId: "pi_IDEM",
+        amountCents: 1000,
+        metadata: meta,
+        source: "charge.succeeded",
+      }),
+    ).resolves.toEqual(expect.objectContaining({ created: false, skipped: "already_exists" }));
+  });
+
+  it("does not cross-collide two genuinely distinct payments for the same association", async () => {
+    const a = await writeLedgerEntryForCharge({
+      chargeId: "ch_distinct_a",
+      paymentIntentId: "pi_DISTINCT_A",
+      amountCents: 5000,
+      metadata: meta,
+      source: "charge.succeeded",
+    });
+    const b = await writeLedgerEntryForCharge({
+      chargeId: "ch_distinct_b",
+      paymentIntentId: "pi_DISTINCT_B",
+      amountCents: 5000,
+      metadata: meta,
+      source: "charge.succeeded",
+    });
+    expect(a.created).toBe(true);
+    expect(b.created).toBe(true);
+    expect(rowsFor(ownerLedgerEntries)).toHaveLength(2);
   });
 });
 

@@ -317,6 +317,7 @@ import {
   requireBoardAccessReadOnly,
 } from "./portal-role-collapse";
 import { updatePaymentTransactionStatus } from "./services/payment-service";
+import { postPaymentLedgerEntry } from "./services/ledger-payment-identity";
 import { sendPaymentReceiptEmail, getPortalReceiptList, getPaymentReceiptData } from "./services/payment-receipt-email";
 import {
   buildSpecMetadata,
@@ -6510,33 +6511,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               status: txnStatus,
             });
 
-            // Phase 2: Create ledger entry for autopay transactions that just succeeded
+            // Phase 2: Create ledger entry for autopay transactions that just succeeded.
+            // A-WEBHOOK-001/002 (founder-os#10737): routed through the ONE
+            // canonical payment-ledger writer, keyed on the Stripe
+            // payment_intent id (normalizedStripeEvent.gatewayReference — the
+            // SAME value the per-HOA payment-webhook path resolves for this
+            // event, and the SAME value the synchronous autopay charge write
+            // in server/routes/autopay.ts resolves via chargeResult.intentId).
+            // This closes both: (a) a payment observed via more than one
+            // event/endpoint posts exactly once, and (b) a concurrent race
+            // between this webhook write and the synchronous autopay write
+            // can never double-insert — the DB unique index is the arbiter,
+            // not this check-then-insert.
             if (updatedTxn && updatedTxn.source === "autopay" && txnStatus === "succeeded") {
-              // Check if a ledger entry already exists for this transaction
-              const [existingLedger] = await db
-                .select()
-                .from(ownerLedgerEntries)
-                .where(
-                  and(
-                    eq(ownerLedgerEntries.referenceType, "autopay_payment_transaction"),
-                    eq(ownerLedgerEntries.referenceId, updatedTxn.id),
-                  ),
-                )
-                .limit(1);
-
-              if (!existingLedger) {
-                await db.insert(ownerLedgerEntries).values({
-                  associationId: updatedTxn.associationId,
-                  unitId: updatedTxn.unitId,
-                  personId: updatedTxn.personId,
-                  entryType: "payment",
-                  amount: -(updatedTxn.amountCents / 100),
-                  postedAt: new Date(),
-                  description: updatedTxn.description || "Autopay payment",
-                  referenceType: "autopay_payment_transaction",
-                  referenceId: updatedTxn.id,
-                });
-              }
+              await postPaymentLedgerEntry({
+                associationId: updatedTxn.associationId,
+                unitId: updatedTxn.unitId,
+                personId: updatedTxn.personId,
+                amount: -(updatedTxn.amountCents / 100),
+                postedAt: new Date(),
+                description: updatedTxn.description || "Autopay payment",
+                referenceType: "autopay_payment_transaction",
+                referenceId: updatedTxn.id,
+                paymentIdentityKey: normalizedStripeEvent.gatewayReference?.trim() || null,
+                source: "autopay-webhook",
+              });
             }
 
             // P0-2: Send receipt email on succeeded transactions.
