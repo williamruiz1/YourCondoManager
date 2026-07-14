@@ -307,6 +307,7 @@ import { registerAgentActionRoutes } from "./routes/agent-actions";
 import { registerBoardMemoryRoutes } from "./routes/board-memory";
 import { registerArcRoutes } from "./routes/arc";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
+import { registerViolationsManagementRoutes } from "./routes/violations-management";
 import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
@@ -1635,6 +1636,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     requireAdmin,
     requireAdminRole,
     assertAssociationScope,
+  });
+
+  // Violations MANAGEMENT surface (founder-os#10569, YCM Redesign M8) — the
+  // list/filter/detail/status-timeline/notice-history page over the
+  // pre-existing `violations` table + CRUD above. Feature-gated behind
+  // VIOLATIONS_MANAGEMENT_ENABLED (default OFF) until William signs off.
+  registerViolationsManagementRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    getAssociationIdQuery,
   });
 
   // Meeting-prep agent ability (founder-os#9478). Aggregates recent activity

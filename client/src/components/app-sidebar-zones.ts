@@ -53,6 +53,7 @@ import {
   Bot,
   UserCog,
   TrendingUp,
+  ShieldAlert,
 } from "lucide-react";
 import type { AdminRole } from "@shared/schema";
 
@@ -345,6 +346,19 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         activePrefix: "/app/work-orders",
         roles: FIVE_PERSONA_OPERATOR,
       },
+      // founder-os#10569 (YCM Redesign M8) — net-new Violations management
+      // surface. Filtered out entirely (SUBSET-RENDER, per 3.1 Q5) when
+      // VIOLATIONS_MANAGEMENT_ENABLED is off — see filterZonesForPersona's
+      // `violationsManagementEnabled` gate below. Default OFF until William
+      // signs off on the wireframe.
+      {
+        title: "Violations",
+        url: "/app/violations",
+        icon: ShieldAlert,
+        materialIcon: "gpp_maybe",
+        activePrefix: "/app/violations",
+        roles: FIVE_PERSONA_OPERATOR,
+      },
       {
         title: "Maintenance",
         url: "/app/maintenance-schedules",
@@ -541,6 +555,11 @@ export interface FilterContext {
   /** Hide the Communications "Amenity Booking" entry when the active
    *  association has disabled amenities. */
   amenitiesDisabled: boolean;
+  /** founder-os#10569 (YCM Redesign M8) — show the Operations "Violations"
+   *  entry only when the VIOLATIONS_MANAGEMENT_ENABLED feature flag is on.
+   *  Default false (flag defaults OFF) so existing callers of
+   *  filterZonesForPersona that don't pass this field keep hiding the item. */
+  violationsManagementEnabled?: boolean;
 }
 
 function roleAllowsItem(role: AdminRole | null | undefined, allowed: ReadonlyArray<AdminRole>): boolean {
@@ -577,6 +596,14 @@ export function filterZonesForPersona(
     // association has disabled amenities. Server still enforces the gate.
     if (zone.label === ZONE_LABELS.COMMUNICATIONS && ctx.amenitiesDisabled) {
       items = items.filter((item) => item.url !== "/app/amenities");
+    }
+
+    // founder-os#10569 (YCM Redesign M8) — hide Violations entirely unless
+    // the feature flag is explicitly on. The route + API are ALSO
+    // server-flag-gated (404 when off), so this is defense-in-depth, not
+    // the only gate.
+    if (zone.label === ZONE_LABELS.OPERATIONS && !ctx.violationsManagementEnabled) {
+      items = items.filter((item) => item.url !== "/app/violations");
     }
 
     filtered.push({ ...zone, items });

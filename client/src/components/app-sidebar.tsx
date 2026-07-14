@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useAdminRole } from "@/hooks/useAdminRole";
+import { getFeatureFlag } from "@shared/feature-flags";
 import type { AdminRole } from "@shared/schema";
 import {
   SIDEBAR_ZONES,
@@ -203,12 +204,17 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
     associations.length,
   );
   const amenitiesDisabled = activeAssociation?.amenitiesEnabled === 0;
+  // founder-os#10569 (YCM Redesign M8) — client-bundle read of the
+  // VIOLATIONS_MANAGEMENT_ENABLED flag (VITE_FEATURE_FLAG_-prefixed at build
+  // time). Default OFF; the API is independently flag-gated server-side.
+  const violationsManagementEnabled = getFeatureFlag("VIOLATIONS_MANAGEMENT_ENABLED");
 
   // 3.1 Q5 SUBSET-RENDER — drop zones and items the persona cannot see.
   const visibleZones = filterZonesForPersona(SIDEBAR_ZONES, {
     role: adminRole ?? null,
     singleAssociationBoardExperience,
     amenitiesDisabled,
+    violationsManagementEnabled,
   });
   const visibleFooterItems = filterFooterItemsForPersona(SIDEBAR_FOOTER_ITEMS, adminRole ?? null);
 
