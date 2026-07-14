@@ -91,21 +91,29 @@ const CATEGORY_ICONS: Record<string, typeof Info> = {
   custom: Info,
 };
 
-// --- v4 premium aesthetic tokens ---------------------------------------------
-// Editorial serif for the hero h1 + section h2s (Source Serif 4 is loaded in
-// client/index.html). Falls back to Georgia/serif if it hasn't loaded.
-const SERIF = '"Source Serif 4", Georgia, serif';
-// Refined palette (teal brand). themeColor still drives the live accent so a
-// community can override it; these are the supporting tones.
+// --- Brand-aligned aesthetic tokens ------------------------------------------
+// Headings use Inter Tight — the canonical @ycm/design-system (F1,
+// founder-os#10187) heading typeface, already loaded in client/index.html.
+// Previously this page used a one-off Source Serif 4 treatment that predated
+// F1 and didn't match the rest of the brand system; aligned here so the
+// public community page reads as the same product as the Manager/Owner apps.
+const BRAND_FONT = '"Inter Tight", Inter, system-ui, sans-serif';
+// Palette lifted from the canonical design-system tokens
+// (client/src/styles/redesign-kit.css --ds-*): teal / teal-700 / accent are
+// exact matches; ink/muted/line/pageBg are the same near-neutrals used there.
+// themeColor still drives the live accent so a community can override it.
 const V4 = {
-  ink: "#0f2725",
-  muted: "#5b716e",
-  line: "#e3ecea",
-  pageBg: "#f5f9f8",
+  teal: "#014d4a",
+  teal700: "#0a6a63",
+  accent: "#15a39c",
+  ink: "#0f2e2c",
+  muted: "#5b7572",
+  line: "#e3edeb",
+  pageBg: "#f5f7f9",
 } as const;
 
-// Shared section-heading pattern — a teal icon chip + a serif title. Defined
-// once so every section renders identically.
+// Shared section-heading pattern — a teal icon chip + a brand-font title.
+// Defined once so every section renders identically.
 function SectionHeading({ icon: Icon, title, themeColor }: { icon: typeof Info; title: string; themeColor: string }) {
   return (
     <div className="flex items-center gap-3 mb-4">
@@ -116,7 +124,7 @@ function SectionHeading({ icon: Icon, title, themeColor }: { icon: typeof Info; 
       >
         <Icon className="h-[18px] w-[18px]" />
       </span>
-      <h2 className="text-xl font-semibold tracking-tight" style={{ fontFamily: SERIF, color: V4.ink }}>
+      <h2 className="text-xl font-semibold tracking-tight" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>
         {title}
       </h2>
     </div>
@@ -168,7 +176,7 @@ export default function CommunityHubPublicPage() {
         <Card className={`max-w-md w-full ${CARD_V4}`} style={cardBorder}>
           <CardContent className="pt-6 text-center">
             <Building2 className="h-12 w-12 mx-auto mb-4 text-muted-foreground" aria-hidden="true" />
-            <h1 className="text-xl font-semibold mb-2" style={{ fontFamily: SERIF, color: V4.ink }}>{t("communityHubPublic.error.title")}</h1>
+            <h1 className="text-xl font-semibold mb-2" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>{t("communityHubPublic.error.title")}</h1>
             <p className="text-muted-foreground">{t("communityHubPublic.error.body")}</p>
           </CardContent>
         </Card>
@@ -251,6 +259,33 @@ export default function CommunityHubPublicPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: V4.pageBg }}>
+      {/* Brand nav — the YCM mark + community name are always visible up top,
+          not just buried in the footer, and give owners a persistent way
+          back to the sign-in / portal section. */}
+      <nav
+        className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur-sm"
+        style={{ borderColor: V4.line }}
+      >
+        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <BrandMark className="h-5 w-5 shrink-0" />
+            <span
+              className="font-semibold text-sm truncate"
+              style={{ fontFamily: BRAND_FONT, color: V4.ink }}
+            >
+              {association?.name || "Community Hub"}
+            </span>
+          </div>
+          <a
+            href="#owner-signin"
+            className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs sm:text-sm font-semibold text-white shrink-0 transition-colors hover:bg-[var(--nav-cta-hover)]"
+            style={{ backgroundColor: themeColor, ["--nav-cta-hover" as any]: V4.teal700 }}
+          >
+            Owner Portal
+          </a>
+        </div>
+      </nav>
+
       {/* Hero Banner */}
       <header
         className="relative overflow-hidden"
@@ -278,7 +313,7 @@ export default function CommunityHubPublicPage() {
             <div className="min-w-0">
               <h1
                 className="text-2xl sm:text-4xl font-bold text-white tracking-tight leading-tight"
-                style={{ fontFamily: SERIF }}
+                style={{ fontFamily: BRAND_FONT }}
               >
                 {association?.name || "Community Hub"}
               </h1>
@@ -305,7 +340,7 @@ export default function CommunityHubPublicPage() {
         {config.welcomeModeEnabled === 1 && config.welcomeHeadline && (
           <Card className={`${CARD_V4} border`} style={{ borderColor: `${themeColor}33`, background: `linear-gradient(180deg, ${themeColor}0a, transparent)` }}>
             <CardContent className="pt-6 pb-5 px-6">
-              <h2 className="text-xl font-semibold mb-3 tracking-tight" style={{ fontFamily: SERIF, color: V4.ink }}>{config.welcomeHeadline}</h2>
+              <h2 className="text-xl font-semibold mb-3 tracking-tight" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>{config.welcomeHeadline}</h2>
               {Array.isArray(config.welcomeHighlights) && config.welcomeHighlights.length > 0 && (
                 <ul className="space-y-2.5">
                   {config.welcomeHighlights.map((highlight: string, i: number) => (
@@ -351,9 +386,11 @@ export default function CommunityHubPublicPage() {
           </Card>
         )}
 
-        {/* Authenticate CTA */}
-        <Separator />
-        <HubAuthSection themeColor={themeColor} />
+        {/* Authenticate CTA — anchor target for the nav's "Owner Portal" CTA */}
+        <div id="owner-signin" className="scroll-mt-20 space-y-6 sm:space-y-8">
+          <Separator />
+          <HubAuthSection themeColor={themeColor} />
+        </div>
       </main>
 
       {/* Footer */}
@@ -459,7 +496,7 @@ function QuickActionsSection({ actionLinks, themeColor }: { actionLinks: PublicH
 
   return (
     <section>
-      <h2 className="text-xl font-semibold mb-4 tracking-tight" style={{ fontFamily: SERIF, color: V4.ink }}>Quick Actions</h2>
+      <h2 className="text-xl font-semibold mb-4 tracking-tight" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>Quick Actions</h2>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {actionLinks.map((link) => (
           <a
