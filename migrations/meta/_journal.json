@@ -470,6 +470,13 @@
 			"when": 1784025036001,
 			"tag": "0066_convenience_fee_structure",
 			"breakpoints": true
+		},
+		{
+			"idx": 67,
+			"version": "7",
+			"when": 1784025036002,
+			"tag": "0067_fee_matrix_topology_fix",
+			"breakpoints": true
 		}
 	]
 }

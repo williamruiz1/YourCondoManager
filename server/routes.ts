@@ -600,6 +600,16 @@ function normalizeStripeWebhookPayload(payload: unknown): {
    * and every non-checkout event.
    */
   platformFeeCents: number | null;
+  /**
+   * Stripe-topology fix (2026-07-14). How the fee (if any) actually settled
+   * — read back from `metadata.feeSettlementMethod` (set at
+   * checkout-creation time). 'connect_application_fee' when Cherry Hill's
+   * (or any Connect-active association's) fee was folded into
+   * `application_fee_amount` — Stripe itself transferred it to the
+   * platform balance; 'accounting_only' when there's no Connect mechanism
+   * to route through. Null when there's no fee.
+   */
+  feeSettlementMethod: "connect_application_fee" | "accounting_only" | null;
 } | null {
   if (!isStripeEventPayload(payload)) return null;
   const object = payload.data.object;
@@ -657,6 +667,10 @@ function normalizeStripeWebhookPayload(payload: unknown): {
     platformFeeCents:
       typeof platformFeeCentsParsed === "number" && Number.isFinite(platformFeeCentsParsed) && platformFeeCentsParsed > 0
         ? Math.round(platformFeeCentsParsed)
+        : null,
+    feeSettlementMethod:
+      metadata.feeSettlementMethod === "connect_application_fee" || metadata.feeSettlementMethod === "accounting_only"
+        ? metadata.feeSettlementMethod
         : null,
   };
 }
@@ -6532,6 +6546,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           // platform_processing_fees. Null/undefined for every payment
           // without a fee (the vast majority) — no behavior change there.
           platformFeeCents: normalizedStripeEvent.platformFeeCents,
+          feeSettlementMethod: normalizedStripeEvent.feeSettlementMethod,
         });
 
         // Update payment_transactions if this webhook corresponds to a payment

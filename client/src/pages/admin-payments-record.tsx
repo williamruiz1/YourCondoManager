@@ -94,6 +94,12 @@ interface RecordResponse {
     amount: number;
     method: string;
     description: string;
+    /** CT fee structure — cash/check manual-processing fee (William, voice,
+     *  2026-07-14). Set only when this association has the fee flag on AND
+     *  the method is cash/check. Owed to the PLATFORM, never the
+     *  association — collected with the owner's next payment or directly
+     *  (see /api/admin/platform-fees/:id/collect). */
+    manualProcessingFee: { feeId: string; amountCents: number; status: "owed" } | null;
   };
   autoMatch: AutoMatchSummary | null;
 }
@@ -196,14 +202,18 @@ export default function AdminPaymentsRecordPage() {
     onSuccess: (data) => {
       setLastResult(data);
       const matchedCount = data.autoMatch?.matched.length ?? 0;
+      const fee = data.payment.manualProcessingFee;
+      const feeNote = fee
+        ? ` A $${(fee.amountCents / 100).toFixed(2)} platform processing fee was added — owed to YCM, not this association.`
+        : "";
       toast({
         title: "Payment recorded",
         description:
-          matchedCount > 0
+          (matchedCount > 0
             ? `${data.payment.description} — auto-matched to a bank deposit.`
             : data.autoMatch
               ? `${data.payment.description} — recorded; no bank match yet.`
-              : `${data.payment.description} — recorded.`,
+              : `${data.payment.description} — recorded.`) + feeNote,
       });
       qc.invalidateQueries({ queryKey: ["/api/admin/payments/recent"] });
       // Clear method-specific fields but keep person + unit for rapid re-entry.

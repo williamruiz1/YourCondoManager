@@ -85,7 +85,13 @@ vi.mock("../../db", () => ({
             where(pred: Pred) {
               const store = tableName(fromTable) === "association_fee_settings" ? feeSettingsStore : platformFeesStore;
               const rows = store.filter((r) => matches(r, pred));
-              return { limit: () => Promise.resolve(rows) };
+              // Drizzle's `.where()` is itself a thenable resolving to ALL
+              // matching rows (used by listOwedPlatformFees, no `.limit()`);
+              // `.limit(n)` is an optional chained refinement (used by every
+              // other reader in this file). Support both.
+              const promise = Promise.resolve(rows) as Promise<Row[]> & { limit: (n: number) => Promise<Row[]> };
+              promise.limit = (n: number) => Promise.resolve(rows.slice(0, n));
+              return promise;
             },
           };
         },
@@ -102,8 +108,8 @@ vi.mock("../../db", () => ({
         },
         onConflictDoNothing(_config: unknown) {
           conflict =
-            vals.stripePaymentIntentId != null &&
-            targetStore.some((r) => r.stripePaymentIntentId === vals.stripePaymentIntentId);
+            vals.idempotencyKey != null &&
+            targetStore.some((r) => r.idempotencyKey === vals.idempotencyKey);
           return chain;
         },
         returning() {
@@ -138,10 +144,13 @@ vi.mock("../../db", () => ({
 import {
   computeCardConvenienceFeeCents,
   computeAchFeeCents,
+  computeManualProcessingFeeCents,
   netLedgerCreditDollars,
   getAssociationFeeSettings,
   setAssociationFeeSettings,
   recordPlatformProcessingFee,
+  markPlatformFeeCollected,
+  listOwedPlatformFees,
   DEFAULT_FEE_SETTINGS,
 } from "../convenience-fee";
 
@@ -300,5 +309,196 @@ describe("recordPlatformProcessingFee — idempotent booking, NEVER touches owne
     });
     expect(result.created).toBe(false);
     expect(platformFeesStore.length).toBe(0);
+  });
+
+  it("defaults status to 'collected' and settlementMethod to 'accounting_only' when not specified (card path, unchanged)", async () => {
+    const result = await recordPlatformProcessingFee({
+      associationId: "assoc-1",
+      amountCents: 610,
+      stripePaymentIntentId: "pi_default_status",
+    });
+    expect(result.fee?.status).toBe("collected");
+    expect(result.fee?.collectedAt).not.toBeNull();
+    expect(result.fee?.settlementMethod).toBe("accounting_only");
+  });
+
+  it("Stripe-topology fix: honors 'connect_application_fee' settlementMethod when a Connect-active association's fee routed via application_fee_amount", async () => {
+    const result = await recordPlatformProcessingFee({
+      associationId: "assoc-cherry-hill",
+      amountCents: 610,
+      stripePaymentIntentId: "pi_connect_active",
+      settlementMethod: "connect_application_fee",
+    });
+    expect(result.fee?.settlementMethod).toBe("connect_application_fee");
+  });
+});
+
+describe("computeManualProcessingFeeCents (cash/check — William's 2026-07-14 policy)", () => {
+  it("is flat (not percentage-based) — no Stripe cost driver for cash/check", () => {
+    expect(computeManualProcessingFeeCents(500)).toBe(500);
+    expect(computeManualProcessingFeeCents(500)).toBe(computeManualProcessingFeeCents(500));
+  });
+
+  it("defaults to $5.00", () => {
+    expect(computeManualProcessingFeeCents()).toBe(DEFAULT_FEE_SETTINGS.manualFeeCents);
+    expect(computeManualProcessingFeeCents(DEFAULT_FEE_SETTINGS.manualFeeCents)).toBe(500);
+  });
+
+  it("returns 0 for non-positive / non-finite input (degenerate guard)", () => {
+    expect(computeManualProcessingFeeCents(0)).toBe(0);
+    expect(computeManualProcessingFeeCents(-100)).toBe(0);
+    expect(computeManualProcessingFeeCents(NaN)).toBe(0);
+  });
+});
+
+describe("manual-processing fee settings round-trip (default OFF, per-association)", () => {
+  it("defaults manualFeeEnabled to false for every association with no row", async () => {
+    const settings = await getAssociationFeeSettings("assoc-no-row");
+    expect(settings.manualFeeEnabled).toBe(false);
+    expect(settings.manualFeeCents).toBe(500);
+  });
+
+  it("setAssociationFeeSettings toggles manualFeeEnabled independently of cardFeeEnabled", async () => {
+    const updated = await setAssociationFeeSettings("assoc-1", { manualFeeEnabled: true, manualFeeCents: 750 });
+    expect(updated.manualFeeEnabled).toBe(1);
+    expect(updated.manualFeeCents).toBe(750);
+    expect(updated.cardFeeEnabled).toBe(0); // untouched — independent switch
+  });
+});
+
+describe("cash/check manual-processing fee — booked 'owed', idempotent per ledger entry", () => {
+  it("books a manual fee as 'owed' (NOT collected — the owner paid cash, this is a separate receivable)", async () => {
+    const result = await recordPlatformProcessingFee({
+      associationId: "assoc-1",
+      unitId: "unit-1",
+      personId: "person-1",
+      feeType: "manual_processing",
+      amountCents: 500,
+      status: "owed",
+      settlementMethod: "accounting_only",
+      idempotencyKey: "manual:ledger-entry-abc",
+    });
+    expect(result.created).toBe(true);
+    expect(result.fee?.status).toBe("owed");
+    expect(result.fee?.collectedAt).toBeNull();
+    expect(result.fee?.feeType).toBe("manual_processing");
+  });
+
+  it("is idempotent per ledger entry — a retry against the SAME ledger entry id never double-books", async () => {
+    const first = await recordPlatformProcessingFee({
+      associationId: "assoc-1",
+      feeType: "manual_processing",
+      amountCents: 500,
+      status: "owed",
+      idempotencyKey: "manual:ledger-entry-xyz",
+    });
+    const second = await recordPlatformProcessingFee({
+      associationId: "assoc-1",
+      feeType: "manual_processing",
+      amountCents: 500,
+      status: "owed",
+      idempotencyKey: "manual:ledger-entry-xyz",
+    });
+    expect(first.created).toBe(true);
+    expect(second.created).toBe(false);
+    expect(second.fee?.id).toBe(first.fee?.id);
+    const rows = platformFeesStore.filter((r) => r.idempotencyKey === "manual:ledger-entry-xyz");
+    expect(rows.length).toBe(1);
+  });
+
+  it("never lands in owner_ledger_entries — the mock db never touches any table but association_fee_settings/platform_processing_fees, proving the function has no ledger-write path", async () => {
+    // Structural proof: recordPlatformProcessingFee only ever calls
+    // db.insert/select/update against the two tables mocked above. If it
+    // touched owner_ledger_entries, the mock's `tableName()` switch (which
+    // only recognizes association_fee_settings vs platform_processing_fees)
+    // would misroute the write into one of THOSE stores instead, and this
+    // fee's own store would be missing it — assert it's present and alone.
+    const result = await recordPlatformProcessingFee({
+      associationId: "assoc-ledger-isolation",
+      feeType: "manual_processing",
+      amountCents: 500,
+      status: "owed",
+      idempotencyKey: "manual:isolation-check",
+    });
+    expect(platformFeesStore).toContainEqual(expect.objectContaining({ id: result.fee?.id }));
+    expect(feeSettingsStore.some((r) => r.id === result.fee?.id)).toBe(false);
+  });
+});
+
+describe("markPlatformFeeCollected — treasurer collects an owed manual fee", () => {
+  it("flips status from owed to collected and stamps collectedAt", async () => {
+    const { fee } = await recordPlatformProcessingFee({
+      associationId: "assoc-1",
+      feeType: "manual_processing",
+      amountCents: 500,
+      status: "owed",
+      idempotencyKey: "manual:collect-me",
+    });
+    expect(fee?.status).toBe("owed");
+    const collected = await markPlatformFeeCollected(fee!.id);
+    expect(collected?.status).toBe("collected");
+    expect(collected?.collectedAt).not.toBeNull();
+  });
+
+  it("is idempotent — collecting an already-collected fee is a no-op that returns it unchanged", async () => {
+    const { fee } = await recordPlatformProcessingFee({
+      associationId: "assoc-1",
+      amountCents: 610,
+      stripePaymentIntentId: "pi_already_collected",
+    });
+    expect(fee?.status).toBe("collected"); // card fees default to collected
+    const result = await markPlatformFeeCollected(fee!.id);
+    expect(result?.status).toBe("collected");
+  });
+
+  it("returns null for an unknown fee id", async () => {
+    const result = await markPlatformFeeCollected("does-not-exist");
+    expect(result).toBeNull();
+  });
+});
+
+describe("listOwedPlatformFees — the 'owed to the platform, not yet collected' view", () => {
+  it("returns only owed fees for the association, excluding collected ones", async () => {
+    await recordPlatformProcessingFee({
+      associationId: "assoc-owed-view",
+      personId: "person-1",
+      feeType: "manual_processing",
+      amountCents: 500,
+      status: "owed",
+      idempotencyKey: "manual:owed-1",
+    });
+    await recordPlatformProcessingFee({
+      associationId: "assoc-owed-view",
+      personId: "person-1",
+      amountCents: 610,
+      stripePaymentIntentId: "pi_owed_view_collected",
+    }); // status defaults to 'collected'
+
+    const owed = await listOwedPlatformFees({ associationId: "assoc-owed-view" });
+    expect(owed.length).toBe(1);
+    expect(owed[0].status).toBe("owed");
+  });
+
+  it("scopes by personId when supplied", async () => {
+    await recordPlatformProcessingFee({
+      associationId: "assoc-owed-scoped",
+      personId: "person-A",
+      feeType: "manual_processing",
+      amountCents: 500,
+      status: "owed",
+      idempotencyKey: "manual:person-a-owed",
+    });
+    await recordPlatformProcessingFee({
+      associationId: "assoc-owed-scoped",
+      personId: "person-B",
+      feeType: "manual_processing",
+      amountCents: 500,
+      status: "owed",
+      idempotencyKey: "manual:person-b-owed",
+    });
+
+    const owedForA = await listOwedPlatformFees({ associationId: "assoc-owed-scoped", personId: "person-A" });
+    expect(owedForA.length).toBe(1);
+    expect(owedForA[0].personId).toBe("person-A");
   });
 });

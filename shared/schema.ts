@@ -3937,17 +3937,34 @@ export const insertPaymentTransactionSchema = createInsertSchema(paymentTransact
 // third-party processor) per the memo's §6 recommended structure — the
 // association never sets, collects, or receives it.
 //
-// IMPORTANT (single-Stripe-account constraint): today YCM runs ONE Stripe
-// account for Cherry Hill Court (no Stripe Connect) — see
-// server/services/multi-party-connect/flag.ts + stripe-connect-resolver.ts.
-// So this split is an ACCOUNTING split only: both the assessment and the fee
-// land in the SAME Stripe balance from ONE combined charge; this table is
-// what keeps them apart in YCM's own books. Onboarding a SECOND
-// fee-collecting association onto a DIFFERENT bank account would require
-// Stripe Connect + a real `application_fee_amount` split (the mechanism
-// already scaffolded for Flows 2/3 — see stripe-connect.ts +
-// computeApplicationFeeCents in stripe-charge-metadata.ts) so the fee
-// actually routes to a separate balance instead of just a separate ledger row.
+// CORRECTED 2026-07-14 (William, voice — the original PR's assumption here
+// was WRONG, verified live against production): Cherry Hill Court
+// Condominiums has an ACTIVE Stripe Connect sub-merchant
+// (payment_gateway_connections.provider_account_id = acct_1TnzDnArorHrelxs,
+// status active, charges_enabled/payouts_enabled/details_submitted all
+// true) — NOT a single shared platform Stripe account. YCM has its OWN
+// separate platform Stripe account; Cherry Hill's dues charges route as a
+// DIRECT CHARGE to Cherry Hill's own connected account via
+// stripe-connect-resolver.ts's `resolveConnectChargeRouting`.
+//
+// So for a Connect-routed association, the fee does NOT land in the same
+// balance as the assessment — Stripe's own `application_fee_amount`
+// mechanism (already scaffolded for the platform's base application fee,
+// see stripe-charge-metadata.ts computeApplicationFeeCents) is extended to
+// carry the convenience/manual fee too, so Stripe itself transfers the fee
+// to YCM's platform balance while the assessment settles to the
+// association's own bank via their connected account. This is a REAL money
+// split, not just bookkeeping — see server/routes/payment-portal.ts and
+// `settlementMethod` below. `platform_processing_fees` remains the
+// canonical RECORD of every fee (both settlement methods), and the
+// association's ledger still never contains a fee row.
+//
+// The 'accounting_only' settlement method (this table's original design)
+// remains correct for any association that is NOT Connect-onboarded (the
+// legacy manual-key path, one Stripe account, no Connect) — there the fee
+// and the assessment genuinely land in the same balance and this table is
+// the ONLY separation. Check `settlementMethod` per row to know which
+// applied.
 
 export const associationFeeSettings = pgTable("association_fee_settings", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -3968,6 +3985,18 @@ export const associationFeeSettings = pgTable("association_fee_settings", {
    *  in case the association's attorney/board later approves the memo's
    *  small-flat-fee alternative ($1-2). */
   achFeeCents: integer("ach_fee_cents").notNull().default(0),
+  /**
+   * Manual cash/check processing fee (William, voice, 2026-07-14): when an
+   * owner pays by cash or check, the TREASURER's manual handling work is a
+   * real platform cost — William's policy is that fee IS charged, same
+   * separation principle as the card fee (owed to the platform, never the
+   * association). Master switch — 0 (default) = fully inert, the manual
+   * payment-recording endpoint behaves byte-identically to before.
+   */
+  manualFeeEnabled: integer("manual_fee_enabled").notNull().default(0),
+  /** Flat manual-processing fee in cents (no Stripe cost driver here, so a
+   *  flat fee rather than percentage — default $5.00, configurable). */
+  manualFeeCents: integer("manual_fee_cents").notNull().default(500),
   updatedBy: text("updated_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -3978,7 +4007,16 @@ export type AssociationFeeSettings = typeof associationFeeSettings.$inferSelect;
 export type InsertAssociationFeeSettings = typeof associationFeeSettings.$inferInsert;
 export const insertAssociationFeeSettingsSchema = createInsertSchema(associationFeeSettings).omit({ id: true, createdAt: true, updatedAt: true });
 
-export const platformProcessingFeeTypeEnum = pgEnum("platform_processing_fee_type", ["card_processing", "ach"]);
+export const platformProcessingFeeTypeEnum = pgEnum("platform_processing_fee_type", ["card_processing", "ach", "manual_processing"]);
+
+/**
+ * "owed" — a fee recorded but not yet collected from the owner (the cash/check
+ * case: the owner paid dues in cash, the manual-processing fee is a separate
+ * receivable to be collected with their next payment or paid directly).
+ * "collected" — the fee money has actually moved to the platform (the card
+ * case: collected in the SAME Stripe charge as the dues, so booked already-collected).
+ */
+export const platformProcessingFeeStatusEnum = pgEnum("platform_processing_fee_status", ["owed", "collected"]);
 
 export const platformProcessingFees = pgTable("platform_processing_fees", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -3989,18 +4027,43 @@ export const platformProcessingFees = pgTable("platform_processing_fees", {
   feeType: platformProcessingFeeTypeEnum("fee_type").notNull().default("card_processing"),
   amountCents: integer("amount_cents").notNull(),
   currency: text("currency").notNull().default("USD"),
-  /** Stripe payment_intent id — the same cross-path identity key
-   *  `owner_ledger_entries.paymentIdentityKey` uses (see
-   *  ledger-payment-identity.ts). The partial unique index below makes a
-   *  duplicate webhook delivery for the SAME payment_intent a safe no-op,
-   *  mirroring the owner-ledger idempotency pattern exactly. */
+  status: platformProcessingFeeStatusEnum("status").notNull().default("collected"),
+  collectedAt: timestamp("collected_at"),
+  /**
+   * How the money actually moved (added 2026-07-14 — the Stripe-topology
+   * correction). Cherry Hill Court runs an ACTIVE Stripe Connect sub-merchant
+   * (verified live in prod: payment_gateway_connections.provider_account_id =
+   * acct_1TnzDnArorHrelxs, status active) — NOT the single-platform-account
+   * model this table's original design doc assumed. So for a Connect-routed
+   * charge, the REAL money split happens via Stripe's own
+   * `application_fee_amount` (server/services/payment-service.ts
+   * initiateStripeCheckout + server/routes/payment-portal.ts) — Stripe itself
+   * transfers the fee to YCM's platform Stripe balance, and this row is the
+   * canonical RECORD of that transfer, not the mechanism. 'accounting_only'
+   * is the fallback for a non-Connect (manual-key) association, where there is
+   * only one Stripe account and this row is the ONLY separation there is —
+   * and for manual_processing fees, which never touch Stripe at all.
+   */
+  settlementMethod: text("settlement_method").notNull().default("accounting_only"),
+  /**
+   * THE canonical dedup key (replaces stripePaymentIntentId as the unique
+   * target — see the partial unique index below). For a card-processing fee:
+   * the Stripe payment_intent id (same value ledger-payment-identity.ts uses).
+   * For a manual-processing fee: `manual:<ownerLedgerEntries.id>` — one manual
+   * fee per manually-recorded cash/check ledger entry.
+   */
+  idempotencyKey: text("idempotency_key"),
+  /** Retained for the card-processing path's direct Stripe cross-reference
+   *  (reporting/audit convenience) — the identity check now runs on
+   *  idempotencyKey above, which carries the SAME value for card fees. */
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
-  uniquePaymentIntent: uniqueIndex("platform_processing_fees_payment_intent_uq")
-    .on(table.stripePaymentIntentId)
-    .where(sql`${table.stripePaymentIntentId} is not null`),
+  uniqueIdempotencyKey: uniqueIndex("platform_processing_fees_idempotency_key_uq")
+    .on(table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} is not null`),
   associationIdx: index("platform_processing_fees_association_idx").on(table.associationId, table.createdAt),
+  statusIdx: index("platform_processing_fees_status_idx").on(table.associationId, table.personId, table.status),
 }));
 export type PlatformProcessingFee = typeof platformProcessingFees.$inferSelect;
 export type InsertPlatformProcessingFee = typeof platformProcessingFees.$inferInsert;
