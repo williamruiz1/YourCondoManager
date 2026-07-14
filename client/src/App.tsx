@@ -24,8 +24,7 @@ import {
 import { AssociationProvider, useAssociationContext } from "@/context/association-context";
 // founder-os#9487 — Board mode (volunteer-board UX skin).
 import { BoardSidebar } from "@/components/board-mode/BoardSidebar";
-import { ModeSelectorGate } from "@/components/board-mode/ModeSelector";
-import { useViewMode, seedDefaultModeFromRole, setViewModeAdminId, setMode, setAdvancedView } from "@/context/view-mode";
+import { useViewMode, seedDefaultModeFromRole, setViewModeAdminId, setMode, setAdvancedView, applyServerViewMode } from "@/context/view-mode";
 import { GlobalCommandPalette } from "@/components/global-command-palette";
 import { canAccessWipRoute } from "@/lib/wip-features";
 import { trackPageView } from "@/lib/tracking";
@@ -149,6 +148,10 @@ type AuthSession = {
     id: string;
     email: string;
     role: AdminRole;
+    /** founder-os#11345 — server-authoritative view mode (board vs manager). */
+    viewMode?: "board" | "manager";
+    /** founder-os#11345 — true when the account cannot switch away from viewMode. */
+    viewModeLocked?: boolean;
   } | null;
 };
 
@@ -1240,16 +1243,13 @@ function WorkspaceShell({
     staleTime: 5 * 60 * 1000,
   });
 
-  // founder-os#9487 — Board vs Manager view. First-run selector gates the shell
-  // until a mode is chosen; the chosen mode picks the sidebar surface.
-  const { mode, advancedView, modeChosen } = useViewMode();
+  // founder-os#9487 + #11345 — Board vs Manager view. The mode is now
+  // SERVER-authoritative (derived from role/entitlement in /api/auth/me and
+  // applied via applyServerViewMode); there is NO first-run picker gate.
+  const { mode, advancedView } = useViewMode();
   const boardSurface = mode === "board" && !advancedView;
 
   const subscription = billingData && "plan" in billingData ? billingData : null;
-
-  if (!modeChosen) {
-    return <ModeSelectorGate />;
-  }
 
   async function openBillingPortal() {
     try {
@@ -1452,9 +1452,17 @@ function AuthAwareApp() {
       // founder-os#9487 — scope the view-mode store to this admin, then default
       // board-role users into Board mode (until they explicitly choose).
       setViewModeAdminId(authSession.admin.id);
-      seedDefaultModeFromRole(authSession.admin.role ?? null);
+      // founder-os#11345 — view mode is now SERVER-authoritative (derived from
+      // role/entitlement). Apply it directly; no first-run picker, and locked
+      // accounts (e.g. chcmgmt18 → board-only) cannot reach the manager view.
+      if (authSession.admin.viewMode) {
+        applyServerViewMode(authSession.admin.viewMode, authSession.admin.viewModeLocked ?? false);
+      } else {
+        // Defensive fallback for a stale server without the entitlement field.
+        seedDefaultModeFromRole(authSession.admin.role ?? null);
+      }
     }
-  }, [authSession?.admin?.id, authSession?.admin?.role]);
+  }, [authSession?.admin?.id, authSession?.admin?.role, authSession?.admin?.viewMode, authSession?.admin?.viewModeLocked]);
   // Re-apply theme whenever preference or route changes (dark mode is workspace-only)
   useEffect(() => {
     applyTheme(userSettings.theme);
