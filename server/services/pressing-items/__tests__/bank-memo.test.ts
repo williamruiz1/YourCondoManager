@@ -67,6 +67,55 @@ describe("extractCounterparty", () => {
   it("cleans a plain non-ACH memo when no merchant name is available", () => {
     expect(extractCounterparty("ZELLE FROM JOHN SMITH", null)).toBe("John Smith");
   });
+
+  // Real prod memos pulled from Cherry Hill Court Condominiums during the
+  // 2026-07-14 live-verify pass, after the initial fix shipped. These pinned
+  // two real bugs in the fallback cleaner that the earlier synthetic tests
+  // didn't cover:
+  describe("real-world regressions (2026-07-14 live-verify)", () => {
+    it("does not double up 'from' on a 'Zelle payment from X' memo", () => {
+      // Was producing "from from MUNACHIM NSOFOR PNCAA0aJf66n" — the leading
+      // strip only consumed ONE filler word ("payment"), leaving "from"
+      // unstripped, which extractCounterparty's caller then re-prepended.
+      expect(extractCounterparty("Zelle payment from MUNACHIM NSOFOR PNCAA0aJf66n", null)).toBe(
+        "Munachim Nsofor",
+      );
+    });
+
+    it("strips a trailing Zelle confirmation code that mixes letters and digits", () => {
+      expect(extractCounterparty("Zelle payment from Luz Miranda 2H10K6GDBQVU", null)).toBe("Luz Miranda");
+    });
+
+    it("strips a trailing bare reference number but keeps a legit multi-word name", () => {
+      expect(extractCounterparty("Zelle payment from MAGEN LLC 29373796271", null)).toBe("Magen Llc");
+    });
+
+    it("preserves a middle initial while dropping the trailing confirmation code", () => {
+      expect(extractCounterparty("Zelle payment from ALLISON K TOROK MNTxqn0ecMUl", null)).toBe(
+        "Allison K Torok",
+      );
+    });
+
+    it("strips the leading ref-number + trailing date on an 'Online Payment <ref> To X <date>' memo", () => {
+      // Was producing "Online Payment 28944500558 To ALL SEASON AZTEC
+      // LANDSCAPING 05/22" verbatim — none of the leading-prefix words
+      // matched, so nothing was stripped at all.
+      expect(
+        extractCounterparty("Online Payment 28944500558 To ALL SEASON AZTEC LANDSCAPING 05/22", null),
+      ).toBe("All Season Aztec Landscaping");
+    });
+
+    it("strips an embedded transaction# tag but keeps the masked-account tail", () => {
+      // "...6018" is preserved (it's meaningful context — WHICH internal
+      // account — not confirmation-code noise); "transaction#: XXXXXXX5523"
+      // is stripped. titleCaseName only preserves an acronym's casing when
+      // the whole string is already mixed-case, so "MMA" -> "Mma" here
+      // (same pre-existing cosmetic limitation as "LLC" -> "Llc" above).
+      expect(extractCounterparty("Online Transfer to MMA ...6018 transaction#: XXXXXXX5523", null)).toBe(
+        "Mma ...6018",
+      );
+    });
+  });
 });
 
 describe("humanizeUnidentifiedTxnTitle", () => {

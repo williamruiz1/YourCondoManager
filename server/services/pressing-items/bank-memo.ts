@@ -96,13 +96,55 @@ export function extractCounterparty(raw: string, merchantName: string | null): s
 
   if (merchantName && merchantName.trim()) return merchantName.trim();
 
-  // Non-ACH fallback: strip common processor/network prefixes and trailing
-  // reference-number noise, then title-case if it reads as all-caps.
-  const cleaned = raw
-    .replace(/^(ACH|POS|DEBIT|CREDIT|CHECK|ZELLE|VENMO|PAYPAL)\s+(FROM|TO|PMT|PAYMENT|TRANSFER|PURCHASE)?\s*/i, "")
-    .replace(/\s*(DES|ID|TRACE|CONF|REF)[:#]\s*\S+/gi, "")
+  // Non-ACH fallback: strip processor/network prefixes ("Zelle payment
+  // from…", "Online Payment 28944500558 To…"), trailing reference-number
+  // noise ("transaction#: XXXXXXX5523"), and a trailing confirmation
+  // code/date, then title-case if it reads as all-caps.
+  //
+  // The leading-prefix strip runs word-by-word rather than one fixed
+  // pattern because real bank descriptors chain 2-3 filler words before the
+  // counterparty ("Zelle" + "payment" + "from"; "Online" + "Payment" +
+  // "<ref#>" + "To"). Stopping after only the first filler word left
+  // "from " unstripped and produced a doubled "Incoming transfer from from
+  // X" title in prod (2026-07-14 live-verify).
+  let cleaned = raw.trim();
+  const LEADING_TYPE_WORD = /^(ACH|POS|DEBIT|CREDIT|CHECK|ZELLE|VENMO|PAYPAL|ONLINE)\b\s*/i;
+  const LEADING_ACTION_WORD = /^(PAYMENT|TRANSFER|PMT|PURCHASE)\b\s*/i;
+  const LEADING_REF_NUMBER = /^\d{3,}\s+/;
+  const LEADING_DIRECTION_WORD = /^(FROM|TO)\b\s*/i;
+
+  if (LEADING_TYPE_WORD.test(cleaned)) {
+    cleaned = cleaned.replace(LEADING_TYPE_WORD, "");
+    cleaned = cleaned.replace(LEADING_ACTION_WORD, "");
+    cleaned = cleaned.replace(LEADING_REF_NUMBER, "");
+    cleaned = cleaned.replace(LEADING_DIRECTION_WORD, "");
+  }
+
+  cleaned = cleaned
+    // Trailing/embedded reference-style tags ("DES:", "ID:", "TRACE#:",
+    // "CONF#:", "REF:", "transaction#:") plus their value token.
+    .replace(/\s*(DES|ID|TRACE|CONF|REF|TRANSACTION)[:#]+\s*\S+/gi, "")
+    // A trailing date ("05/22", "06/24/2026").
+    .replace(/\s+\d{1,2}\/\d{1,2}(\/\d{2,4})?\s*$/, "")
     .replace(/\s{2,}/g, " ")
     .trim();
+
+  // A trailing confirmation/reference code (a Zelle memo confirmation ID
+  // like "PNCAA0aJf66n", or a bare reference number like "29373796271").
+  // Real human/company names don't carry digits, so strip a trailing
+  // whitespace-separated token that contains at least one digit — but
+  // never strip the LAST remaining token (a name is still better than
+  // nothing), and never strip a masked-account tail ("...6018") — that's
+  // meaningful context for an internal-transfer memo, not noise.
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  while (
+    tokens.length > 1 &&
+    /\d/.test(tokens[tokens.length - 1]) &&
+    !tokens[tokens.length - 1].startsWith("...")
+  ) {
+    tokens.pop();
+  }
+  cleaned = tokens.join(" ");
 
   return titleCaseName(cleaned || raw.trim());
 }
