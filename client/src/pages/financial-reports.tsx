@@ -1,13 +1,21 @@
 // zone: Financials
 // persona: Manager, Board Officer, Assisted Board, PM Assistant
+//
+// YCM Redesign — Reports restyled onto the shared @ycm/design-system (F1,
+// founder-os#10187), mirroring the M1 Dashboard restyle pattern. All live
+// data wiring (react-query hooks across P&L / Collections / AR Aging /
+// Reserve / Board / Cash Flow) is preserved verbatim -- KPI summary grids
+// are now DS StatRow/Stat tiles and status chips use the DS Pill component.
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Budget, BudgetLine, BudgetVersion, OwnerLedgerEntry } from "@shared/schema";
 import { apiRequest } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card as DsCard, StatRow, Stat, Pill, Bar } from "@ycm/design-system";
+import "@/styles/redesign-kit.css";
+import "@/styles/financial-redesign.css";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -431,38 +439,17 @@ export function FinancialReportsContent() {
       {/* P&L Report */}
       {report === "pl" && (
         <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Income</p>
-                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(plData.totalIncome)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Payments &amp; credits received</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Billed</p>
-                <p className="text-2xl font-bold">{formatCurrency(plData.totalCharges)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Charges, assessments &amp; late fees</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Adjustments</p>
-                <p className="text-2xl font-bold">{formatCurrency(plData.totalAdjustments)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Credit adjustments posted</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Net Position</p>
-                <p className={cn("text-2xl font-bold", plData.netPosition >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                  {formatCurrency(plData.netPosition)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">Income minus charges</p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatRow>
+            <Stat label="Total Income" value={formatCurrency(plData.totalIncome)} delta="Payments & credits received" deltaTone="good" />
+            <Stat label="Total Billed" value={formatCurrency(plData.totalCharges)} delta="Charges, assessments & late fees" />
+            <Stat label="Adjustments" value={formatCurrency(plData.totalAdjustments)} delta="Credit adjustments posted" />
+            <Stat
+              label="Net Position"
+              value={formatCurrency(plData.netPosition)}
+              delta="Income minus charges"
+              deltaTone={plData.netPosition >= 0 ? "good" : "bad"}
+            />
+          </StatRow>
 
           <Card>
             <CardHeader><CardTitle className="text-base">Breakdown by Entry Type</CardTitle></CardHeader>
@@ -474,9 +461,9 @@ export function FinancialReportsContent() {
                       <div>
                         <div className="capitalize font-medium">{type.replace(/-/g, " ")}</div>
                         <div className="mt-2">
-                          <Badge variant={type === "payment" || type === "credit" ? "default" : "secondary"}>
+                          <Pill tone={type === "payment" || type === "credit" ? "ok" : "muted"}>
                             {type === "payment" || type === "credit" ? "Income" : type === "adjustment" ? "Adjustment" : "Billed"}
-                          </Badge>
+                          </Pill>
                         </div>
                       </div>
                       <div className="text-sm font-semibold">{formatCurrency(amount)}</div>
@@ -501,9 +488,9 @@ export function FinancialReportsContent() {
                         <TableCell className="capitalize font-medium">{type.replace(/-/g, " ")}</TableCell>
                         <TableCell className="text-right">{formatCurrency(amount)}</TableCell>
                         <TableCell>
-                          <Badge variant={type === "payment" || type === "credit" ? "default" : "secondary"}>
+                          <Pill tone={type === "payment" || type === "credit" ? "ok" : "muted"}>
                             {type === "payment" || type === "credit" ? "Income" : type === "adjustment" ? "Adjustment" : "Billed"}
-                          </Badge>
+                          </Pill>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -521,36 +508,20 @@ export function FinancialReportsContent() {
       {/* Collections Report */}
       {report === "collection" && (
         <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Billed</p>
-                <p className="text-2xl font-bold">{formatCurrency(collectionData.billed)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Collected</p>
-                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(collectionData.collected)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Outstanding</p>
-                <p className={cn("text-2xl font-bold", collectionData.outstanding > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
-                  {formatCurrency(collectionData.outstanding)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Collection Rate</p>
-                <p className={cn("text-2xl font-bold", collectionData.rate >= 90 ? "text-green-700 dark:text-green-400" : collectionData.rate >= 70 ? "text-yellow-600 dark:text-yellow-400" : "text-red-600 dark:text-red-400")}>
-                  {collectionData.rate.toFixed(1)}%
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatRow>
+            <Stat label="Total Billed" value={formatCurrency(collectionData.billed)} />
+            <Stat label="Total Collected" value={formatCurrency(collectionData.collected)} deltaTone="good" />
+            <Stat
+              label="Outstanding"
+              value={formatCurrency(collectionData.outstanding)}
+              deltaTone={collectionData.outstanding > 0 ? "bad" : "good"}
+            />
+            <Stat
+              label="Collection Rate"
+              value={`${collectionData.rate.toFixed(1)}%`}
+              deltaTone={collectionData.rate >= 90 ? "good" : collectionData.rate >= 70 ? "warn" : "bad"}
+            />
+          </StatRow>
 
           {/* Visual bar */}
           <Card>
@@ -575,30 +546,19 @@ export function FinancialReportsContent() {
       {/* AR Aging */}
       {report === "ar-aging" && (
         <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Accounts</p>
-                <p className="text-2xl font-bold">{agingData.rows.length}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Delinquent Accounts</p>
-                <p className={cn("text-2xl font-bold", agingData.delinquent.length > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
-                  {agingData.delinquent.length}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Delinquent Amount</p>
-                <p className={cn("text-2xl font-bold", agingData.totalDelinquent > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
-                  {formatCurrency(agingData.totalDelinquent)}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatRow>
+            <Stat label="Total Accounts" value={agingData.rows.length} />
+            <Stat
+              label="Delinquent Accounts"
+              value={agingData.delinquent.length}
+              deltaTone={agingData.delinquent.length > 0 ? "bad" : "good"}
+            />
+            <Stat
+              label="Total Delinquent Amount"
+              value={formatCurrency(agingData.totalDelinquent)}
+              deltaTone={agingData.totalDelinquent > 0 ? "bad" : "good"}
+            />
+          </StatRow>
 
           <Card>
             <CardHeader><CardTitle className="text-base">Account Balances</CardTitle></CardHeader>
@@ -615,9 +575,9 @@ export function FinancialReportsContent() {
                             <div className="font-medium">{row.unitId.slice(0, 8)}</div>
                             <div className="text-xs text-muted-foreground">Person {row.personId.slice(0, 8)}</div>
                           </div>
-                          <Badge variant={row.balance < 0 ? "destructive" : "default"}>
+                          <Pill tone={row.balance < 0 ? "bad" : "ok"}>
                             {row.balance < 0 ? "Past Due" : "Current"}
-                          </Badge>
+                          </Pill>
                         </div>
                         <div className={cn("text-sm font-semibold", row.balance < 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
                           {formatCurrency(row.balance)}
@@ -650,9 +610,9 @@ export function FinancialReportsContent() {
                             {formatCurrency(row.balance)}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={row.balance < 0 ? "destructive" : "default"}>
+                            <Pill tone={row.balance < 0 ? "bad" : "ok"}>
                               {row.balance < 0 ? "Past Due" : "Current"}
-                            </Badge>
+                            </Pill>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -679,30 +639,15 @@ export function FinancialReportsContent() {
               <Download className="h-4 w-4" /> Export CSV
             </Button>
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Reserve Planned</p>
-                <p className="text-2xl font-bold">{formatCurrency(reserveData.totalReservePlanned)}</p>
-                <p className="text-xs text-muted-foreground mt-1">From budget lines</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Reserve % of Budget</p>
-                <p className={cn("text-2xl font-bold", reserveData.reservePercent >= 15 ? "text-green-700 dark:text-green-400" : "text-amber-600 dark:text-amber-400")}>
-                  {reserveData.reservePercent}%
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Est. Reserve Balance</p>
-                <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{formatCurrency(reserveData.estimatedReserveBalance)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Based on collections × reserve %</p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatRow>
+            <Stat label="Reserve Planned" value={formatCurrency(reserveData.totalReservePlanned)} delta="From budget lines" />
+            <Stat
+              label="Reserve % of Budget"
+              value={`${reserveData.reservePercent}%`}
+              deltaTone={reserveData.reservePercent >= 15 ? "good" : "warn"}
+            />
+            <Stat label="Est. Reserve Balance" value={formatCurrency(reserveData.estimatedReserveBalance)} delta="Based on collections × reserve %" />
+          </StatRow>
           {reserveData.reserveLines.length > 0 ? (
             <Card>
               <CardHeader><CardTitle className="text-base">Reserve Line Items</CardTitle></CardHeader>
@@ -755,12 +700,12 @@ export function FinancialReportsContent() {
               <Download className="h-4 w-4" /> Export Board Report CSV
             </Button>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Net Position</p><p className={cn("text-2xl font-bold", plData.netPosition >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>{formatCurrency(plData.netPosition)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Collection Rate</p><p className={cn("text-2xl font-bold", collectionData.rate >= 90 ? "text-green-700 dark:text-green-400" : "text-amber-600 dark:text-amber-400")}>{collectionData.rate.toFixed(1)}%</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Delinquent</p><p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(agingData.totalDelinquent)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Est. Reserve Balance</p><p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{formatCurrency(reserveData.estimatedReserveBalance)}</p></CardContent></Card>
-          </div>
+          <StatRow>
+            <Stat label="Net Position" value={formatCurrency(plData.netPosition)} deltaTone={plData.netPosition >= 0 ? "good" : "bad"} />
+            <Stat label="Collection Rate" value={`${collectionData.rate.toFixed(1)}%`} deltaTone={collectionData.rate >= 90 ? "good" : "warn"} />
+            <Stat label="Total Delinquent" value={formatCurrency(agingData.totalDelinquent)} deltaTone="bad" />
+            <Stat label="Est. Reserve Balance" value={formatCurrency(reserveData.estimatedReserveBalance)} />
+          </StatRow>
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader><CardTitle className="text-base">Income &amp; Expense Summary</CardTitle></CardHeader>
@@ -900,39 +845,17 @@ function ProfitLossTab({ associationId }: { associationId: string }) {
         </div>
       ) : data ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Income</p>
-                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(data.income.total)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Payments &amp; credits received</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Expenses</p>
-                <p className="text-2xl font-bold">{formatCurrency(data.expenses.total)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Adjustments posted</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Net</p>
-                <p className={cn("text-2xl font-bold", data.net >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                  {formatCurrency(data.net)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Budget Variance</p>
-                <p className={cn("text-2xl font-bold", data.budgetComparison.variance >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                  {formatCurrency(data.budgetComparison.variance)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">vs {formatCurrency(data.budgetComparison.planned)} planned</p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatRow>
+            <Stat label="Total Income" value={formatCurrency(data.income.total)} delta="Payments & credits received" deltaTone="good" />
+            <Stat label="Total Expenses" value={formatCurrency(data.expenses.total)} delta="Adjustments posted" />
+            <Stat label="Net" value={formatCurrency(data.net)} deltaTone={data.net >= 0 ? "good" : "bad"} />
+            <Stat
+              label="Budget Variance"
+              value={formatCurrency(data.budgetComparison.variance)}
+              delta={`vs ${formatCurrency(data.budgetComparison.planned)} planned`}
+              deltaTone={data.budgetComparison.variance >= 0 ? "good" : "bad"}
+            />
+          </StatRow>
 
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
@@ -1019,44 +942,14 @@ function ArAgingTab({ associationId }: { associationId: string }) {
         </div>
       ) : data ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Current (0–30 days)</p>
-                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(data.summary.current)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">31–60 days</p>
-                <p className={cn("text-2xl font-bold", data.summary.days30 > 0 ? "text-amber-600 dark:text-amber-400" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.days30)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">61–90 days</p>
-                <p className={cn("text-2xl font-bold", data.summary.days60 > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.days60)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">91–120 days</p>
-                <p className={cn("text-2xl font-bold", data.summary.days90 > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.days90)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">120+ days</p>
-                <p className={cn("text-2xl font-bold", data.summary.days120plus > 0 ? "text-red-700" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.days120plus)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Total Outstanding</p>
-                <p className={cn("text-2xl font-bold", data.summary.total > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>{formatCurrency(data.summary.total)}</p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatRow>
+            <Stat label="Current (0–30 days)" value={formatCurrency(data.summary.current)} deltaTone="good" />
+            <Stat label="31–60 days" value={formatCurrency(data.summary.days30)} deltaTone={data.summary.days30 > 0 ? "warn" : "good"} />
+            <Stat label="61–90 days" value={formatCurrency(data.summary.days60)} deltaTone={data.summary.days60 > 0 ? "warn" : "good"} />
+            <Stat label="91–120 days" value={formatCurrency(data.summary.days90)} deltaTone={data.summary.days90 > 0 ? "bad" : "good"} />
+            <Stat label="120+ days" value={formatCurrency(data.summary.days120plus)} deltaTone={data.summary.days120plus > 0 ? "bad" : "good"} />
+            <Stat label="Total Outstanding" value={formatCurrency(data.summary.total)} deltaTone={data.summary.total > 0 ? "bad" : "good"} />
+          </StatRow>
 
           <Card>
             <CardHeader><CardTitle className="text-base">AR Aging by Unit</CardTitle></CardHeader>
@@ -1156,66 +1049,41 @@ function BoardSummaryTab({ associationId }: { associationId: string }) {
         </div>
       ) : data ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Assessments Billed</p>
-                <p className="text-2xl font-bold">{formatCurrency(data.assessmentsBilled)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Charges &amp; assessments posted</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Payments Received</p>
-                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(data.paymentsReceived)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Collection Rate</p>
-                <p className={cn("text-2xl font-bold", data.collectionRate >= 90 ? "text-green-700 dark:text-green-400" : data.collectionRate >= 70 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400")}>
-                  {data.collectionRate.toFixed(1)}%
+          <StatRow>
+            <Stat label="Assessments Billed" value={formatCurrency(data.assessmentsBilled)} delta="Charges & assessments posted" />
+            <Stat label="Payments Received" value={formatCurrency(data.paymentsReceived)} deltaTone="good" />
+            <Stat
+              label="Collection Rate"
+              value={`${data.collectionRate.toFixed(1)}%`}
+              deltaTone={data.collectionRate >= 90 ? "good" : data.collectionRate >= 70 ? "warn" : "bad"}
+            />
+            <Stat
+              label="Outstanding Balance"
+              value={formatCurrency(data.totalOutstanding)}
+              deltaTone={data.totalOutstanding > 0 ? "bad" : "good"}
+            />
+            <Stat
+              label="Delinquent Units"
+              value={data.delinquentUnits}
+              delta="Units with balance due"
+              deltaTone={data.delinquentUnits > 0 ? "bad" : "good"}
+            />
+          </StatRow>
+          <DsCard title="Budget Utilization">
+            {data.budgetUtilization !== null ? (
+              <>
+                <p className={cn("text-2xl font-bold mb-2", data.budgetUtilization >= 80 ? "text-green-700 dark:text-green-400" : data.budgetUtilization >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400")}>
+                  {data.budgetUtilization}%
                 </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Outstanding Balance</p>
-                <p className={cn("text-2xl font-bold", data.totalOutstanding > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
-                  {formatCurrency(data.totalOutstanding)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Delinquent Units</p>
-                <p className={cn("text-2xl font-bold", data.delinquentUnits > 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400")}>
-                  {data.delinquentUnits}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">Units with balance due</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Budget Utilization</p>
-                {data.budgetUtilization !== null ? (
-                  <>
-                    <p className={cn("text-2xl font-bold", data.budgetUtilization >= 80 ? "text-green-700 dark:text-green-400" : data.budgetUtilization >= 50 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400")}>
-                      {data.budgetUtilization}%
-                    </p>
-                    <div className="mt-2 h-2 w-full rounded-full bg-muted overflow-hidden">
-                      <div
-                        className={cn("h-full rounded-full", data.budgetUtilization >= 80 ? "bg-green-500 dark:bg-green-600" : data.budgetUtilization >= 50 ? "bg-amber-500 dark:bg-amber-600" : "bg-red-500 dark:bg-red-600")}
-                        style={{ width: `${Math.min(100, data.budgetUtilization)}%` }}
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground mt-1">No ratified budget</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                <Bar
+                  value={data.budgetUtilization}
+                  tone={data.budgetUtilization >= 80 ? "good" : data.budgetUtilization >= 50 ? "warn" : "bad"}
+                />
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">No ratified budget</p>
+            )}
+          </DsCard>
         </>
       ) : (
         <p className="text-sm text-muted-foreground">Failed to load board summary data.</p>
@@ -1267,31 +1135,16 @@ function CashFlowTab({ associationId }: { associationId: string }) {
         </div>
       ) : data ? (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Cash In</p>
-                <p className="text-2xl font-bold text-green-700 dark:text-green-400">{formatCurrency(data.cashIn.total)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Owner payments received</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Cash Out</p>
-                <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(data.cashOut.total)}</p>
-                <p className="text-xs text-muted-foreground mt-1">Vendor invoices &amp; utilities</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Net Cash Flow</p>
-                <p className={cn("text-2xl font-bold", data.netCashFlow >= 0 ? "text-green-700 dark:text-green-400" : "text-red-600 dark:text-red-400")}>
-                  {formatCurrency(data.netCashFlow)}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">Cash in minus cash out</p>
-              </CardContent>
-            </Card>
-          </div>
+          <StatRow>
+            <Stat label="Cash In" value={formatCurrency(data.cashIn.total)} delta="Owner payments received" deltaTone="good" />
+            <Stat label="Cash Out" value={formatCurrency(data.cashOut.total)} delta="Vendor invoices & utilities" deltaTone="bad" />
+            <Stat
+              label="Net Cash Flow"
+              value={formatCurrency(data.netCashFlow)}
+              delta="Cash in minus cash out"
+              deltaTone={data.netCashFlow >= 0 ? "good" : "bad"}
+            />
+          </StatRow>
 
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
@@ -1412,7 +1265,7 @@ function FinancialSummaryReports() {
 export default function FinancialReportsPage() {
   useDocumentTitle("Financial Reports");
   return (
-    <div className="flex flex-col min-h-0">
+    <div className="flex flex-col min-h-0 ds-scope fin-ds">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title="Reports"

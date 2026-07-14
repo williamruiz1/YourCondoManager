@@ -1874,18 +1874,18 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
 
   const transactions = data?.transactions ?? [];
 
-  const statusBadge = (status: string) => {
-    const colors: Record<string, string> = {
-      succeeded: "bg-green-100 text-green-800 dark:bg-green-950/40 dark:text-green-300",
-      initiated: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-      pending: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
-      failed: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-      canceled: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-      reversed: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
-      draft: "bg-muted text-muted-foreground",
-    };
-    return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${colors[status] ?? "bg-muted text-muted-foreground"}`}>{status}</span>;
+  const statusTones: Record<string, PillTone> = {
+    succeeded: "ok",
+    initiated: "warn",
+    pending: "warn",
+    failed: "bad",
+    canceled: "bad",
+    reversed: "bad",
+    draft: "muted",
   };
+  const statusBadge = (status: string) => (
+    <Pill tone={statusTones[status] ?? "muted"}>{status}</Pill>
+  );
 
   return (
     <Card>
