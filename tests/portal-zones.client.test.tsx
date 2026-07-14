@@ -128,6 +128,46 @@ describe("Portal zone files — render under session + heading per 1.1 Q5", () =
     expect(screen.getByTestId("portal-nav-my-community")).toBeInTheDocument();
   });
 
+  // YCM pressing-items owner-portal hard gate (2026-07-14, William voice
+  // ruling): pressing items (unmatched bank transactions, other owners'
+  // delinquency status, vendor insurance, compliance deadlines) are
+  // board/treasurer business and must NEVER render on the owner portal —
+  // regardless of the viewer's board seat. Covers both a plain owner AND an
+  // owner-board-member/Treasurer session, since the ruling is "regardless
+  // of role."
+  it.each([
+    ["a plain owner", { hasBoardAccess: false, effectiveRole: "owner", role: "owner" }],
+    [
+      "an owner who is also the Treasurer",
+      { hasBoardAccess: true, effectiveRole: "owner-board-member", role: "owner" },
+    ],
+  ])("PortalHome never renders the pressing-items surface, even for %s", async (_label, meOverrides) => {
+    installFetchStub({
+      "/api/portal/me": {
+        id: "portal-1",
+        email: "owner@example.com",
+        associationId: "assoc-1",
+        unitNumber: "101",
+        building: "A",
+        firstName: "Sam",
+        lastName: "Owner",
+        phone: null,
+        mailingAddress: null,
+        emergencyContactName: null,
+        emergencyContactPhone: null,
+        contactPreference: null,
+        smsOptIn: null,
+        boardRoleId: meOverrides.hasBoardAccess ? "br-1" : null,
+        ...meOverrides,
+      },
+    });
+    renderAt("/portal", <PortalHomePage />);
+    await waitFor(() => expect(screen.getByTestId("portal-home-heading")).toBeInTheDocument());
+    expect(screen.queryByTestId("portal-home-pressing-items")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("pressing-items-widget")).not.toBeInTheDocument();
+    expect(screen.queryByText(/needs matching/i)).not.toBeInTheDocument();
+  });
+
   it("PortalFinances mounts at /portal/finances with the My Finances heading", async () => {
     installFetchStub();
     renderAt("/portal/finances", <PortalFinancesPage />);

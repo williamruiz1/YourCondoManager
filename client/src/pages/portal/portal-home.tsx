@@ -11,7 +11,6 @@ import type { MaintenanceRequest } from "@shared/schema";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { PressingItemsWidget } from "@/components/pressing-items/PressingItemsWidget";
 import { PortalShell, usePortalContext, type PortalAssociationChoice } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
 
@@ -120,9 +119,13 @@ function PortalHomeContent() {
         </h1>
       </section>
 
-      <section data-testid="portal-home-pressing-items">
-        <PressingItemsWidget surface="portal" />
-      </section>
+      {/* Pressing items (unmatched bank transactions, other owners'
+       * delinquency status, vendor insurance, compliance deadlines) are
+       * board/treasurer business and are NEVER shown here — the owner
+       * portal is the wrong surface for this content regardless of the
+       * viewer's board seat (William, 2026-07-14). That content stays on
+       * the admin dashboard's PressingItemsWidget (surface="admin"),
+       * including its Board-mode skin for volunteer board officers. */}
 
       {activeElections.length > 0 ? (
         <section className="space-y-3" data-testid="portal-home-active-elections" aria-label={t("home.activeElections.title")}>
