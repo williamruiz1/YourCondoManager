@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
+import { Pill, StatRow, Stat } from "@ycm/design-system";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -386,9 +386,9 @@ export function FinancialLedgerContent() {
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Balance Summary</h2>
               {delinquentRows.length > 0 && (
-                <Badge variant="destructive">
+                <Pill tone="bad">
                   {delinquentRows.length} delinquent
-                </Badge>
+                </Pill>
               )}
             </div>
             {isMobile ? (
@@ -400,7 +400,7 @@ export function FinancialLedgerContent() {
                         <div className="font-medium">{personName.get(s.personId) || s.personId}</div>
                         <div className="text-xs text-muted-foreground">{unitName.get(s.unitId) || s.unitId}</div>
                       </div>
-                      <Badge variant={s.balance > 0 ? "destructive" : "default"}>${s.balance.toFixed(2)}</Badge>
+                      <Pill tone={s.balance > 0 ? "bad" : "ok"}>${s.balance.toFixed(2)}</Pill>
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-xs text-muted-foreground">
@@ -437,9 +437,9 @@ export function FinancialLedgerContent() {
                       <TableCell>{personName.get(s.personId) || s.personId}</TableCell>
                       <TableCell>{unitName.get(s.unitId) || s.unitId}</TableCell>
                       <TableCell>
-                        <Badge variant={s.balance > 0 ? "destructive" : "default"}>
+                        <Pill tone={s.balance > 0 ? "bad" : "ok"}>
                           ${s.balance.toFixed(2)}
-                        </Badge>
+                        </Pill>
                       </TableCell>
                       <TableCell className="text-right">
                         {s.balance > 0 && assocFilter && (
@@ -503,24 +503,17 @@ export function FinancialLedgerContent() {
                   Scope: <span className="font-medium text-foreground">{activeAssociationName || "All associations"}</span> over the last 30 days of posted owner-ledger activity.
                 </p>
               </div>
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Charges Posted</div>
-                  <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalCharges ?? 0).toFixed(2)}</div>
-                </div>
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Payments Posted</div>
-                  <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalPayments ?? 0).toFixed(2)}</div>
-                </div>
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Credits / Adjustments</div>
-                  <div className="text-xl font-semibold">${(analyticsQuery.data?.collectionMetrics.totalCredits ?? 0).toFixed(2)}</div>
-                </div>
-                <div className="rounded-md border p-3">
-                  <div className="text-xs text-muted-foreground">Collection Rate</div>
-                  <div className="text-xl font-semibold">{analyticsQuery.data?.collectionMetrics.collectionRate ?? 0}%</div>
-                </div>
-              </div>
+              <StatRow>
+                <Stat label="Charges Posted" value={`$${(analyticsQuery.data?.collectionMetrics.totalCharges ?? 0).toFixed(2)}`} />
+                <Stat label="Payments Posted" value={`$${(analyticsQuery.data?.collectionMetrics.totalPayments ?? 0).toFixed(2)}`} />
+                <Stat label="Credits / Adjustments" value={`$${(analyticsQuery.data?.collectionMetrics.totalCredits ?? 0).toFixed(2)}`} />
+                <Stat
+                  label="Collection Rate"
+                  value={`${analyticsQuery.data?.collectionMetrics.collectionRate ?? 0}%`}
+                  delta={(analyticsQuery.data?.collectionMetrics.collectionRate ?? 0) >= 90 ? "On track" : "Below target"}
+                  deltaTone={(analyticsQuery.data?.collectionMetrics.collectionRate ?? 0) >= 90 ? "good" : "warn"}
+                />
+              </StatRow>
               <div className="rounded-md border p-3">
                 <div className="text-xs text-muted-foreground">Open Balance</div>
                 <div className="text-2xl font-semibold">${(analyticsQuery.data?.collectionMetrics.openBalance ?? 0).toFixed(2)}</div>
@@ -570,17 +563,12 @@ export function FinancialLedgerContent() {
         <Card>
           <CardContent className="p-6 space-y-3">
             <h2 className="text-lg font-semibold">Delinquency Aging</h2>
-            {[
-              ["Current", analyticsQuery.data?.collectionMetrics.agingBuckets.current ?? 0],
-              ["30 Days", analyticsQuery.data?.collectionMetrics.agingBuckets.thirtyDays ?? 0],
-              ["60 Days", analyticsQuery.data?.collectionMetrics.agingBuckets.sixtyDays ?? 0],
-              ["90+ Days", analyticsQuery.data?.collectionMetrics.agingBuckets.ninetyPlus ?? 0],
-            ].map(([label, amount]) => (
-              <div key={label} className="flex items-center justify-between rounded-md border p-3 text-sm">
-                <div className="font-medium">{label}</div>
-                <div>${Number(amount).toFixed(2)}</div>
-              </div>
-            ))}
+            <StatRow>
+              <Stat label="Current" value={`$${Number(analyticsQuery.data?.collectionMetrics.agingBuckets.current ?? 0).toFixed(2)}`} deltaTone="good" delta="On time" />
+              <Stat label="30 Days" value={`$${Number(analyticsQuery.data?.collectionMetrics.agingBuckets.thirtyDays ?? 0).toFixed(2)}`} deltaTone="warn" delta="Past due" />
+              <Stat label="60 Days" value={`$${Number(analyticsQuery.data?.collectionMetrics.agingBuckets.sixtyDays ?? 0).toFixed(2)}`} deltaTone="warn" delta="Past due" />
+              <Stat label="90+ Days" value={`$${Number(analyticsQuery.data?.collectionMetrics.agingBuckets.ninetyPlus ?? 0).toFixed(2)}`} deltaTone="bad" delta="Escalate" />
+            </StatRow>
           </CardContent>
         </Card>
 
@@ -665,7 +653,7 @@ export function FinancialLedgerContent() {
                         {new Date(e.postedAt).toLocaleDateString()} · {unitName.get(e.unitId) || e.unitId}
                       </div>
                     </div>
-                    <Badge variant="secondary">{e.entryType}</Badge>
+                    <Pill tone="info">{e.entryType}</Pill>
                   </div>
                   <div className="flex items-center justify-between gap-3">
                     <div className="text-sm font-semibold">${e.amount.toFixed(2)}</div>
@@ -706,7 +694,7 @@ export function FinancialLedgerContent() {
                     <TableCell>{new Date(e.postedAt).toLocaleDateString()}</TableCell>
                     <TableCell>{personName.get(e.personId) || e.personId}</TableCell>
                     <TableCell>{unitName.get(e.unitId) || e.unitId}</TableCell>
-                    <TableCell><Badge variant="secondary">{e.entryType}</Badge></TableCell>
+                    <TableCell><Pill tone="info">{e.entryType}</Pill></TableCell>
                     <TableCell>${e.amount.toFixed(2)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-xs truncate" title={e.description || ""}>{e.description || "—"}</TableCell>
                   </TableRow>
@@ -760,14 +748,14 @@ export function FinancialLedgerContent() {
                         <div className="text-sm font-medium">{log.actorEmail}</div>
                         <div className="text-xs text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</div>
                       </div>
-                      <Badge variant="outline" className="font-mono text-[11px]">
+                      <Pill tone="muted">
                         {log.action}
-                      </Badge>
+                      </Pill>
                     </div>
                     <div className="flex flex-wrap gap-2 text-xs">
-                      <Badge variant="secondary" className="capitalize">
+                      <Pill tone="info">
                         {log.entityType.replace(/_/g, " ")}
-                      </Badge>
+                      </Pill>
                       <span className="text-muted-foreground">{formatAuditDetails(log.afterJson) || log.entityId || "—"}</span>
                     </div>
                   </div>
@@ -797,7 +785,7 @@ export function FinancialLedgerContent() {
                         {new Date(log.createdAt).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-sm">{log.actorEmail}</TableCell>
-                      <TableCell><Badge variant="outline" className="font-mono text-xs">{log.action}</Badge></TableCell>
+                      <TableCell><Pill tone="muted">{log.action}</Pill></TableCell>
                       <TableCell className="text-sm capitalize">{log.entityType.replace(/_/g, " ")}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-xs truncate">
                         {formatAuditDetails(log.afterJson) || log.entityId || "—"}
@@ -827,7 +815,7 @@ export function FinancialLedgerContent() {
                 <AlertTriangle className="h-4 w-4 text-orange-500 dark:text-orange-400" />
                 <div className="font-semibold text-sm">Finance-Grade Alerts</div>
                 {criticalAlertCount > 0 && (
-                  <Badge variant="destructive">{criticalAlertCount} critical</Badge>
+                  <Pill tone="bad">{criticalAlertCount} critical</Pill>
                 )}
               </div>
               <Button size="sm" variant="outline" onClick={() => generateAlerts.mutate()} disabled={generateAlerts.isPending || !assocFilter || financialAlertsLoading} className="gap-1.5 min-h-11">
@@ -940,7 +928,7 @@ function VirtualizedOperatorLedger({
             <div className="px-4 py-3">{personName.get(e.personId) || e.personId}</div>
             <div className="px-4 py-3">{unitName.get(e.unitId) || e.unitId}</div>
             <div className="px-4 py-3">
-              <Badge variant="secondary">{e.entryType}</Badge>
+              <Pill tone="info">{e.entryType}</Pill>
             </div>
             <div className="px-4 py-3">${e.amount.toFixed(2)}</div>
             <div
@@ -959,7 +947,7 @@ function VirtualizedOperatorLedger({
 export default function FinancialLedgerPage() {
   return (
     // Wave 23 a11y: section + aria-labelledby (heading id below).
-    <section className="flex flex-col min-h-0" aria-labelledby="financial-ledger-heading">
+    <section className="flex flex-col min-h-0 ds-scope fin-ds" aria-labelledby="financial-ledger-heading">
       <div className="p-6 space-y-6">
         <WorkspacePageHeader
           title={t("financialLedger.title")}

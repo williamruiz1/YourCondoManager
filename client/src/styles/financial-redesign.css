@@ -1,0 +1,49 @@
+/* ──────────────────────────────────────────────────────────────────────────
+ * Manager-app Financial screens — restyle onto @ycm/design-system (F1) tokens.
+ *
+ * Additive, scoped under `.fin-ds` (used alongside the shared `.ds-scope`
+ * class from redesign-kit.css). Never touches the global shadcn theme or any
+ * shared component file — every existing financial page NOT in this restyle
+ * batch (Late Fees / Delinquency / Liens tab internals, other finance
+ * sub-pages) keeps its current look untouched because this class is only
+ * applied where the restyled pages opt in.
+ *
+ * Brings the shared shadcn Card / Table / heading primitives already used by
+ * Billing, Ledger, Payments, and Reports into visual parity with the DS
+ * (rounded-12px cards, brand hairline borders, DS shadow, Inter Tight type,
+ * deep-teal headings) WITHOUT rewriting each screen's interactive markup
+ * (dialogs, forms, sortable tables, per-row actions all keep working as-is).
+ * ────────────────────────────────────────────────────────────────────────── */
+
+.fin-ds {
+  font-family: var(--ds-font, "Inter Tight", system-ui, -apple-system, sans-serif);
+}
+
+/* Card primitive (client/src/components/ui/card.tsx applies `shadcn-card`) */
+.fin-ds .shadcn-card {
+  border-radius: var(--ds-radius, 12px);
+  border-color: var(--ds-gray, #e5e7eb);
+  box-shadow: var(--ds-shadow, 0 1px 3px rgba(1, 77, 74, 0.04));
+}
+
+/* Headings pick up the DS deep-teal brand color */
+.fin-ds h1,
+.fin-ds h2,
+.fin-ds h3 {
+  color: var(--ds-teal, #014d4a);
+}
+
+/* Tables (shadcn Table renders a bare <table>) — DS row/hairline rhythm */
+.fin-ds table {
+  font-size: 12.3px;
+}
+.fin-ds table th {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ds-sub, #4a6b68);
+}
+.fin-ds table td {
+  color: #2c4442;
+}

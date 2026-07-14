@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { SpecialAssessment } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Pill } from "@ycm/design-system";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -407,7 +407,7 @@ export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: b
                           {activeAssociationName || row.associationId.slice(0, 8)}
                         </div>
                       </div>
-                      {row.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}
+                      {row.isActive ? <Pill tone="ok">Active</Pill> : <Pill tone="muted">Inactive</Pill>}
                     </div>
                     <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
                       <div>
@@ -502,9 +502,9 @@ export function FinancialAssessmentsContent({ readOnly = false }: { readOnly?: b
                     <TableCell>${row.totalAmount.toFixed(2)}</TableCell>
                     <TableCell>{row.installmentCount}</TableCell>
                     <TableCell>${(row.totalAmount / row.installmentCount).toFixed(2)}</TableCell>
-                    <TableCell>{row.autoPostEnabled ? <Badge variant="secondary">Automatic</Badge> : <Badge variant="outline">Manual</Badge>}</TableCell>
+                    <TableCell>{row.autoPostEnabled ? <Pill tone="info">Automatic</Pill> : <Pill tone="muted">Manual</Pill>}</TableCell>
                     <TableCell>{Array.isArray(row.excludedUnitIdsJson) ? row.excludedUnitIdsJson.length : 0}</TableCell>
-                    <TableCell>{row.isActive ? <Badge>Active</Badge> : <Badge variant="outline">Inactive</Badge>}</TableCell>
+                    <TableCell>{row.isActive ? <Pill tone="ok">Active</Pill> : <Pill tone="muted">Inactive</Pill>}</TableCell>
                     <TableCell className="text-right">
                       {readOnly ? (
                         <span className="text-xs text-muted-foreground">Read only</span>
