@@ -1,29 +1,41 @@
 /**
  * Pressing-Items routes (founder-os#1256, Phase 1).
  *
- * Two surfaces consume the widget:
- *   GET  /api/portal/pressing-items           — owner-portal home widget
- *   POST /api/portal/pressing-items/:id/snooze — owner-portal snooze action
- *   GET  /api/admin/pressing-items            — admin dashboard widget
+ * ONE surface consumes the widget:
+ *   GET  /api/admin/pressing-items            — admin dashboard widget (incl. Board mode)
  *   POST /api/admin/pressing-items/:id/snooze — admin snooze action
  *   POST /api/admin/pressing-items/scan       — manual scan trigger (platform admin)
  *
- * Role lensing:
- *   - Portal callers: lensed via `req.portalEffectiveRole` (board seat
- *     required) + `req.portalBoardRoleTitle` (the specific office —
- *     Treasurer/Secretary/President/plain board member). A plain owner
- *     with NO board seat sees nothing — pressing items are board/officer
- *     business, not a fellow owner's business (see `lensRoleFromPortal`).
- *   - Admin callers: lensed via `req.adminRole` (`board-officer`,
- *     `assisted-board` etc. all default to `board`; specific treasurer /
- *     secretary / president lensing arrives when finer admin roles ship).
+ * The owner-portal endpoints below (`GET`/`POST /api/portal/pressing-items*`)
+ * are intentionally kept as NO-OPs (always `{ items: [] }` / 404) rather than
+ * deleted outright — some other portal surface may still reference the URL,
+ * and a 404/empty response is a safe, inert answer either way.
+ *
+ * HARD RULE (William, 2026-07-14, voice): pressing items — unmatched bank
+ * transactions, other owners' delinquency status, vendor insurance,
+ * compliance deadlines — are board/treasurer business. They MUST NEVER
+ * render on the owner-portal surface, for ANY caller, REGARDLESS of that
+ * caller's board seat or officer title. "I should not be seeing this on an
+ * owner's portal. This is something for a board member / board portal...
+ * this is the wrong surface." The board/treasurer surface is `/app` (the
+ * admin dashboard, including its Board-mode skin for volunteer board
+ * officers) — that is where `PressingItemsWidget` continues to render.
+ *
+ * (Earlier same-day iteration of this fix tried to LENS the portal response
+ * by the caller's actual board seat/officer title instead of the previous
+ * blanket "board" fallback — see PR #498's `lensRoleFromPortal`. That was a
+ * real improvement over the PRIOR bug (every portal caller, including a
+ * plain owner, saw everything), but William's ruling supersedes it: no
+ * amount of role-lensing is correct here, because the surface itself is
+ * wrong for this content, not just the audience. The lensing function was
+ * removed rather than left as unreachable dead code.)
  *
  * Isolation: every read filters by `associationId` derived from the
  * authenticated session, never from the request body or query.
  */
 
 import type { Express, NextFunction, Request, Response } from "express";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { pressingItems, type PressingItemActorRole } from "@shared/schema";
 import {
@@ -33,9 +45,6 @@ import {
 
 type PortalRequest = Request & {
   portalAssociationId?: string;
-  portalPersonId?: string;
-  portalEffectiveRole?: string;
-  portalBoardRoleTitle?: string | null;
 };
 
 type AdminRequest = Request & {
@@ -52,37 +61,6 @@ export interface PressingItemsRouteHelpers {
    * `platform-admin` role only.
    */
   platformAdminOnly: (req: any, res: Response, next: NextFunction) => any;
-}
-
-/**
- * Lenses a portal caller to the pressing-items bucket for their ACTUAL
- * board seat — not a blanket "board" fallback. `portalEffectiveRole` is the
- * Phase 8a collapsed role (`owner` | `board-member` | `owner-board-member`)
- * and never equals "treasurer"/"secretary"/"president", so the officer
- * title has to come from `portalBoardRoleTitle` (`board_roles.role`,
- * free-text — "Treasurer", "treasurer", "Vice President", etc.).
- *
- * Returns `null` for a caller with NO board seat at all (a plain owner) —
- * pressing items (unmatched bank transactions, other owners' delinquency
- * status, vendor insurance, compliance deadlines) are board/officer
- * business, not something a fellow owner should see on their own portal
- * home. Before this fix every portal caller fell through to the "board"
- * lens (sees every class) because none of the collapsed role strings ever
- * matched "treasurer"/"secretary"/"president" — so a plain owner with no
- * board role saw other owners' delinquency balances and unmatched bank
- * transactions (founder-os/YCM pressing-items plain-English fix,
- * 2026-07-14).
- */
-export function lensRoleFromPortal(req: PortalRequest): PressingItemActorRole | null {
-  const hasBoardSeat =
-    req.portalEffectiveRole === "board-member" || req.portalEffectiveRole === "owner-board-member";
-  if (!hasBoardSeat) return null;
-
-  const title = (req.portalBoardRoleTitle || "").trim().toLowerCase();
-  if (title.includes("treasurer")) return "treasurer";
-  if (title.includes("secretary")) return "secretary";
-  if (title.includes("president")) return "president"; // covers "President" + "Vice President"
-  return "board"; // a board seat with no more specific office (plain "board member")
 }
 
 function lensRoleFromAdmin(req: AdminRequest): PressingItemActorRole {
@@ -108,7 +86,12 @@ export function registerPressingItemsRoutes(
 ): void {
   const { requirePortal, requireAdmin, platformAdminOnly } = helpers;
 
-  // ── Portal: GET ────────────────────────────────────────────────────────
+  // ── Portal: GET (HARD-GATED OFF — see file header) ────────────────────
+  // Pressing items are board/treasurer business and must NEVER render on
+  // the owner portal, for ANY caller, regardless of board seat/officer
+  // title (William, 2026-07-14). Auth is still required (so this doesn't
+  // become an unauthenticated probe), but the answer is unconditionally
+  // empty — no role computation, no query against `pressing_items` at all.
   app.get(
     "/api/portal/pressing-items",
     requirePortal,
@@ -116,59 +99,18 @@ export function registerPressingItemsRoutes(
       if (!req.portalAssociationId) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      // No board seat at all (plain owner) — pressing items are board/officer
-      // business (unmatched bank transactions, other owners' delinquency
-      // status, etc.), never surfaced to a fellow owner's own portal home.
-      const actorRole = lensRoleFromPortal(req);
-      if (!actorRole) {
-        return res.json({ items: [] });
-      }
-      try {
-        const items = await getRoleLensedPressingItems({
-          associationId: req.portalAssociationId,
-          actorRole,
-          limit: 25,
-        });
-        res.json({ items });
-      } catch (err: any) {
-        console.error("[pressing-items] portal GET failed", err);
-        res.status(500).json({ message: err?.message ?? "Failed to load pressing items" });
-      }
+      res.json({ items: [] });
     },
   );
 
-  // ── Portal: snooze ─────────────────────────────────────────────────────
+  // ── Portal: snooze (HARD-GATED OFF — see file header) ─────────────────
+  // Nothing is ever shown to snooze; kept as an inert 404 rather than
+  // removed outright in case any stale client still references the route.
   app.post(
     "/api/portal/pressing-items/:id/snooze",
     requirePortal,
-    async (req: PortalRequest, res: Response) => {
-      if (!req.portalAssociationId) {
-        return res.status(403).json({ message: "Not authorized" });
-      }
-      const id = String(req.params.id);
-      const until = (req.body as { until?: string }).until;
-      if (!until || Number.isNaN(Date.parse(until))) {
-        return res.status(400).json({ message: "ISO 8601 `until` required" });
-      }
-      try {
-        const result = await db
-          .update(pressingItems)
-          .set({ snoozedUntil: new Date(until), updatedAt: new Date() })
-          .where(
-            and(
-              eq(pressingItems.id, id),
-              eq(pressingItems.associationId, req.portalAssociationId),
-            ),
-          )
-          .returning({ id: pressingItems.id });
-        if (result.length === 0) {
-          return res.status(404).json({ message: "Pressing item not found" });
-        }
-        res.json({ id, snoozedUntil: until });
-      } catch (err: any) {
-        console.error("[pressing-items] portal snooze failed", err);
-        res.status(500).json({ message: err?.message ?? "Failed to snooze" });
-      }
+    async (_req: PortalRequest, res: Response) => {
+      res.status(404).json({ message: "Pressing items are not available on the owner portal" });
     },
   );
 
