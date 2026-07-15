@@ -264,6 +264,132 @@ export function resolveAmountDue(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Arrears — "overdue from prior periods" (2026-07-14 My Finances redesign)
+// ---------------------------------------------------------------------------
+//
+// `resolveAmountDue` above answers "what's due THIS period" — it never asks
+// whether PRIOR periods were actually paid. An owner on a monthly plan who
+// missed the last two installments still sees "due: true, amount:
+// installmentAmount" (one month) with no signal that they're two months
+// behind. `computeArrears` is the sibling pure function that answers the
+// other half of the question: how much, if anything, is owed from periods
+// that have already closed.
+//
+// Method: count the number of FULL periods (calendar months / calendar
+// quarters) that have elapsed since the plan's `startDate`, up to but not
+// including the period `now` falls in (the current period is "due this
+// period", handled by `resolveAmountDue` — never double-counted here).
+// Multiply by `installmentAmount` to get the cumulative amount that SHOULD
+// have been paid by now, cap it at the plan's `totalAmount`, and compare
+// against `amountPaid` (the plan's running total, tracked on the
+// `payment_plans` row). Any shortfall is the arrears.
+//
+// Pure function — no DB, no React — parameterized on `now` for deterministic
+// tests (missed prior month, quarterly plan, paid-in-full, partial payment).
+
+export interface ArrearsInput extends PaymentPlanInput {
+  /** Total amount owed under the plan (principal, and interest if any). */
+  totalAmount: number;
+  /** Cumulative amount the owner has actually paid against the plan so far. */
+  amountPaid: number;
+}
+
+export interface ArrearsResolution {
+  /** Dollars overdue from periods BEFORE the current one. Never negative. */
+  overdueAmount: number;
+  /** Whole installments' worth of the overdue amount (for "N payments past due"). */
+  overdueInstallments: number;
+  /** Cumulative amount that should have been paid by `now`, capped at totalAmount. */
+  expectedPaidByNow: number;
+}
+
+const ZERO_ARREARS: ArrearsResolution = {
+  overdueAmount: 0,
+  overdueInstallments: 0,
+  expectedPaidByNow: 0,
+};
+
+function round2(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Number of FULL periods elapsed from `start`'s period up to (but not
+ * including) `now`'s period — i.e. periods that have fully closed. The
+ * period `start` falls in is period #1 (it was "due this period" the moment
+ * the plan began), so a plan that started this month has 0 prior completed
+ * periods; a plan that started 2 months ago has 2.
+ */
+function completedPeriodsSince(
+  frequency: PaymentPlanFrequency,
+  start: Date,
+  now: Date,
+): number {
+  if (frequency === "quarterly") {
+    const startIndex = start.getFullYear() * 4 + quarterIndex(start);
+    const nowIndex = now.getFullYear() * 4 + quarterIndex(now);
+    return Math.max(0, nowIndex - startIndex);
+  }
+  if (frequency === "monthly") {
+    const startIndex = start.getFullYear() * 12 + start.getMonth();
+    const nowIndex = now.getFullYear() * 12 + now.getMonth();
+    return Math.max(0, nowIndex - startIndex);
+  }
+  // Annual / unknown frequency — no canonical period length we can trust for
+  // an arrears projection without risking a false positive. Conservatively
+  // report no elapsed periods (0 arrears) rather than guess a cadence.
+  return 0;
+}
+
+/**
+ * Resolve "overdue from prior periods" for an owner's payment plan. Sibling
+ * of `resolveAmountDue` — together they answer the two distinct questions
+ * the redesigned My Finances banner needs: what's due NOW vs. what's
+ * OVERDUE from before now.
+ */
+export function computeArrears(
+  plan: ArrearsInput | null | undefined,
+  now: Date = new Date(),
+): ArrearsResolution {
+  if (!plan || plan.status !== "active") return ZERO_ARREARS;
+
+  const installmentAmount = Math.max(0, Number(plan.installmentAmount) || 0);
+  if (installmentAmount <= 0) return ZERO_ARREARS;
+
+  const start = toDate(plan.startDate) ?? now;
+  const totalAmount = Math.max(0, Number(plan.totalAmount) || 0);
+  const amountPaid = Math.max(0, Number(plan.amountPaid) || 0);
+
+  const periodsElapsed = completedPeriodsSince(plan.installmentFrequency, start, now);
+  const rawExpected = installmentAmount * periodsElapsed;
+  const expectedPaidByNow = round2(totalAmount > 0 ? Math.min(rawExpected, totalAmount) : rawExpected);
+
+  const overdueAmount = round2(Math.max(0, expectedPaidByNow - amountPaid));
+  const overdueInstallments =
+    overdueAmount > 0 ? Math.max(1, Math.round(overdueAmount / installmentAmount)) : 0;
+
+  return { overdueAmount, overdueInstallments, expectedPaidByNow };
+}
+
+// Wire shape for the API surface — what /api/portal/financial-dashboard
+// returns under `overdueFromPriorPeriods`. `null` when nothing is overdue,
+// so the client can render an honest "nothing overdue" state without
+// special-casing a zero-amount object.
+export interface OverdueFromPriorPeriods {
+  amount: number;
+  installmentsOverdue: number;
+}
+
+/** Project arrears output to the API shape, or null when nothing is overdue. */
+export function toOverdueFromPriorPeriods(
+  res: ArrearsResolution,
+): OverdueFromPriorPeriods | null {
+  if (res.overdueAmount <= 0) return null;
+  return { amount: res.overdueAmount, installmentsOverdue: res.overdueInstallments };
+}
+
 // Wire shape for the API surface — what /api/portal/financial-dashboard
 // returns under `amountDueThisPeriod`. Distinct from `AmountDueResolution`
 // because the API only ships when something is due (or explicitly null).

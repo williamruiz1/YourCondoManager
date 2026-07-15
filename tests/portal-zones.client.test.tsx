@@ -11,6 +11,7 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
@@ -329,6 +330,9 @@ describe("Portal Finances — per-unit hierarchical breakdown (2026-05-25)", () 
     renderAt("/portal/finances", <PortalFinancesPage />);
     await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
 
+    // 2026-07-14 redesign — the by-unit table moved to the Breakdown tab.
+    await userEvent.click(screen.getByTestId("portal-finances-tab-breakdown"));
+
     // Per-unit section renders as the transposed table (financial-dashboard
     // resolves on a subsequent tick after the page mounts).
     await waitFor(() => expect(screen.getByTestId("portal-finances-by-unit")).toBeInTheDocument());
@@ -361,7 +365,9 @@ describe("Portal Finances — per-unit hierarchical breakdown (2026-05-25)", () 
     });
     renderAt("/portal/finances", <PortalFinancesPage />);
     await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId("portal-finances-tab-breakdown"));
     // The by-unit section should be absent when there are no units to show.
+    await waitFor(() => expect(screen.getByTestId("portal-finances-tabpanel-breakdown")).toBeInTheDocument());
     expect(screen.queryByTestId("portal-finances-by-unit")).not.toBeInTheDocument();
   });
 });
@@ -422,9 +428,15 @@ describe("Portal Finances — 'Pay this period' + assessment PLAN redesign (2026
         totalPayments: 6000,
         byUnit: [],
         assessmentPlans: [ROOF_PLAN],
+        // 2026-07-14 redesign — the Assessments tab renders from
+        // `assessmentPlansByUnit` (grouped by unit), not the flat
+        // `assessmentPlans` list.
+        assessmentPlansByUnit: [{ unitId: "u-1", unitLabel: "1417-F", plans: [ROOF_PLAN] }],
       },
     });
     renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() => expect(screen.getByTestId("portal-finances-heading")).toBeInTheDocument());
+    await userEvent.click(screen.getByTestId("portal-finances-tab-assessments"));
     await waitFor(() =>
       expect(screen.getByTestId("portal-finances-assessment-plan-a-roof")).toBeInTheDocument(),
     );
@@ -439,26 +451,30 @@ describe("Portal Finances — 'Pay this period' + assessment PLAN redesign (2026
     expect(plan).toHaveTextContent(/On track/i);
     // No alarming "past due" red state for an on-schedule plan.
     expect(plan).not.toHaveTextContent(/Past due/i);
+    // The unit label is the group heading (per-unit card grouping).
+    expect(screen.getByTestId("portal-finances-assessments-unit-u-1")).toHaveTextContent("1417-F");
   });
 
-  it("shows 'Total remaining — for reference' as NOT due now (context only)", async () => {
+  it("2026-07-14 redesign: pins 'Total remaining' (grand total) above the tabs — not due now, always visible", async () => {
     installFetchStub({
       "/api/portal/financial-dashboard": {
         balance: 12000,
         totalCharges: 0,
         totalPayments: 0,
         byUnit: [],
+        grandTotal: 12000,
         assessmentPlans: [ROOF_PLAN],
+        assessmentPlansByUnit: [{ unitId: "u-1", unitLabel: "1417-F", plans: [ROOF_PLAN] }],
       },
     });
     renderAt("/portal/finances", <PortalFinancesPage />);
+    // The pinned card always renders, but its amount only reflects
+    // `grandTotal` once the dashboard fetch resolves — wait for the actual
+    // value, not just the card's (immediate, pre-fetch) presence.
     await waitFor(() =>
-      expect(screen.getByTestId("portal-finances-total-remaining")).toBeInTheDocument(),
+      expect(screen.getByTestId("portal-finances-pinned-remaining-amount")).toHaveTextContent("12,000.00"),
     );
-    const ctx = screen.getByTestId("portal-finances-total-remaining");
-    expect(screen.getByTestId("portal-finances-total-remaining-amount")).toHaveTextContent("12,000.00");
-    expect(ctx).toHaveTextContent(/Not due now/i);
-    expect(ctx).toHaveTextContent(/paid over time/i);
+    expect(screen.getByTestId("portal-finances-pinned-remaining")).toHaveTextContent(/across all open assessments/i);
   });
 
   it("PAID IN FULL: shows the calm caught-up state, no red 'due' hero", async () => {

@@ -291,7 +291,10 @@ import { slugifyCommunityName, ensureUniqueSlug, normalizeSlugKey } from "@share
 import {
   resolveAmountDue,
   toAmountDueThisPeriod,
+  computeArrears,
+  toOverdueFromPriorPeriods,
   type PaymentPlanInput,
+  type ArrearsInput,
 } from "@shared/payment-period";
 import { registerAiAssistantRoutes } from "./routes/ai-assistant";
 import { registerPressingItemsRoutes } from "./routes/pressing-items";
@@ -14696,39 +14699,89 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         return res.status(403).json({ message: "Not authorized" });
       }
       const ownerUnitId = req.portalUnitId ?? null;
-      const [allEntries, activeSchedules, paymentPlansAll, specialAssessmentUpcomingInstallments, assessmentPlans] = await Promise.all([
+      // 2026-07-14 (My Finances redesign) — this portal SESSION is scoped to
+      // one `portalAccessId`/unit (`ownerUnitId`), but the SAME owner can hold
+      // several units in this association (e.g. William's 3 Cherry Hill Court
+      // units). The dashboard already aggregates ledger data across ALL of an
+      // owner's units via `personId` (see `byUnit`/`perUnit` below); special-
+      // assessment plans and recurring-dues schedules were the two places
+      // still artificially scoped to `ownerUnitId` alone, which meant a
+      // multi-unit owner's OTHER units' assessment plans/dues never
+      // surfaced. Resolve the full owned-unit set the same way
+      // `/api/portal/units-balance` and `/api/portal/my-units` already do.
+      const ownedUnits = await getOwnedPortalUnitsForAssociation({
+        associationId: req.portalAssociationId,
+        personId: req.portalPersonId,
+        email: req.portalEmail || "",
+      });
+      const ownedUnitIds = Array.from(
+        new Set([...ownedUnits.map((u) => u.unitId), ...(ownerUnitId ? [ownerUnitId] : [])]),
+      );
+      const ownedUnitLabelMap = new Map(
+        ownedUnits.map((u) => [
+          u.unitId,
+          [u.building, u.unitNumber].filter(Boolean).join("-") || (u.unitNumber ?? "Unit"),
+        ]),
+      );
+
+      const [allEntries, activeSchedules, paymentPlansAll, upcomingInstallmentsByUnit, assessmentPlansByUnitRaw] = await Promise.all([
         storage.getOwnerLedgerEntries(req.portalAssociationId),
-        // Recurring charge schedules scoped to this owner's unit (or association-wide schedules)
+        // Recurring charge schedules scoped to ANY of this owner's units (or
+        // association-wide schedules with a null unitId).
         db.select().from(recurringChargeSchedules).where(
           and(
             eq(recurringChargeSchedules.associationId, req.portalAssociationId),
             eq(recurringChargeSchedules.status, "active"),
             or(
               isNull(recurringChargeSchedules.unitId),
-              ownerUnitId ? eq(recurringChargeSchedules.unitId, ownerUnitId) : sql`false`
+              ownedUnitIds.length > 0 ? inArray(recurringChargeSchedules.unitId, ownedUnitIds) : sql`false`
             )
           )
         ),
         db.select().from(paymentPlans).where(
           and(eq(paymentPlans.associationId, req.portalAssociationId), eq(paymentPlans.personId, req.portalPersonId))
         ),
-        // 4.3 Q5 — upcoming special-assessment installments for this owner's unit.
-        // Each entry links to GET /api/portal/assessments/:assessmentId/detail.
-        getUpcomingInstallmentsForOwnerUnit({
-          associationId: req.portalAssociationId,
-          unitId: ownerUnitId,
-          personId: req.portalPersonId,
-        }),
+        // 4.3 Q5 — upcoming special-assessment installments, across EVERY
+        // unit this owner holds. Each entry links to
+        // GET /api/portal/assessments/:assessmentId/detail.
+        Promise.all(
+          ownedUnitIds.map(async (unitId) => ({
+            unitId,
+            installments: await getUpcomingInstallmentsForOwnerUnit({
+              associationId: req.portalAssociationId!,
+              unitId,
+              personId: req.portalPersonId!,
+            }),
+          })),
+        ),
         // 2026-07-09 (owner-finances redesign) — special-assessment PLAN
         // progress (total · paid-to-date · remaining · installments paid/total ·
-        // next installment) so the portal shows the assessment as a payment
-        // plan paid over time, not an alarming lump balance due now.
-        getAssessmentPlansForOwnerUnit({
-          associationId: req.portalAssociationId,
-          unitId: ownerUnitId,
-          personId: req.portalPersonId,
-        }),
+        // next installment), across EVERY unit this owner holds — so an
+        // owner with N units sees N per-unit plan cards, not just their
+        // primary unit's (2026-07-14 My Finances redesign).
+        Promise.all(
+          ownedUnitIds.map(async (unitId) => ({
+            unitId,
+            plans: await getAssessmentPlansForOwnerUnit({
+              associationId: req.portalAssociationId!,
+              unitId,
+              personId: req.portalPersonId!,
+            }),
+          })),
+        ),
       ]);
+      const specialAssessmentUpcomingInstallments = upcomingInstallmentsByUnit.flatMap(({ unitId, installments }) =>
+        installments.map((i) => ({ ...i, unitId, unitLabel: ownedUnitLabelMap.get(unitId) ?? null })),
+      );
+      // Per-unit assessment-plan cards (Assessments tab) — only units that
+      // actually carry a plan are included, so a brand-new unit with no
+      // assessments yet doesn't render an empty card.
+      const assessmentPlansByUnit = assessmentPlansByUnitRaw
+        .filter(({ plans }) => plans.length > 0)
+        .map(({ unitId, plans }) => ({ unitId, unitLabel: ownedUnitLabelMap.get(unitId) ?? null, plans }));
+      // Flattened across all units — kept for backward compatibility with
+      // any existing consumer of the (previously single-unit-scoped) field.
+      const assessmentPlans = assessmentPlansByUnitRaw.flatMap(({ plans }) => plans);
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
       const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
       const activePlan = paymentPlansAll.find((p) => p.status === "active") ?? null;
@@ -14831,6 +14884,20 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const amountDueResolution = resolveAmountDue(planInput, new Date());
       const amountDueThisPeriod = toAmountDueThisPeriod(amountDueResolution);
 
+      // 2026-07-14 (My Finances redesign — banner overdue-logic fix) —
+      // `resolveAmountDue` above only ever answers "what's due THIS
+      // period"; it never checked whether PRIOR periods were actually
+      // paid, so an owner behind on their payment plan could see "nothing
+      // overdue / on track" (false). `computeArrears` is the sibling pure
+      // function (shared/payment-period.ts) that answers the other half:
+      // how much, if anything, is owed from periods that have already
+      // closed. Distinct field from `amountDueThisPeriod` — the redesigned
+      // banner shows BOTH honestly, never conflated into one number.
+      const arrearsInput: ArrearsInput | null = activePlan
+        ? { ...planInput!, totalAmount: activePlan.totalAmount, amountPaid: activePlan.amountPaid }
+        : null;
+      const overdueFromPriorPeriods = toOverdueFromPriorPeriods(computeArrears(arrearsInput, new Date()));
+
       // 2026-07-03 (display-only) — the "My Finances" summary tiles are
       // labeled "Total paid (YTD)" / "Total charges (YTD)" and the client
       // reads `dashboard.totalCharges` / `dashboard.totalPayments`, but the
@@ -14861,7 +14928,18 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         // Year-to-date fields consumed by the summary tiles on My Finances.
         totalCharges: myEntriesYtd.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
         totalPayments: Math.abs(myEntriesYtd.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
-        feeSchedules: activeSchedules.map((s) => ({ id: s.id, name: s.chargeDescription, amount: s.amount, frequency: s.frequency })),
+        // 2026-07-14 (My Finances redesign — Dues tab) — attribute each
+        // recurring HOA-dues schedule to its unit (or "All units" when
+        // `unitId` is null / association-wide), across EVERY unit this
+        // owner holds — same widened scoping as assessmentPlansByUnit.
+        feeSchedules: activeSchedules.map((s) => ({
+          id: s.id,
+          name: s.chargeDescription,
+          amount: s.amount,
+          frequency: s.frequency,
+          unitId: s.unitId ?? null,
+          unitLabel: s.unitId ? (ownedUnitLabelMap.get(s.unitId) ?? null) : "All units",
+        })),
         nextDueDate: nextDue ? nextDue.toISOString() : null,
         // 2026-07-01 (display-only) — drives the "Paid in full on <date>" state.
         lastPaymentDate: lastPayment ? lastPayment.toISOString() : null,
@@ -14878,7 +14956,13 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         specialAssessmentUpcomingInstallments,
         // 2026-07-09 — special-assessment payment-PLAN progress (additive,
         // display-only). Drives the owner-portal "payment plan" card.
+        // Flattened across all of this owner's units — kept for backward
+        // compatibility.
         assessmentPlans,
+        // 2026-07-14 (My Finances redesign — Assessments tab) — the SAME
+        // plans, grouped by unit, so a multi-unit owner gets one card per
+        // unit instead of one flat list.
+        assessmentPlansByUnit,
         // 2026-05-25 — per-unit hierarchical breakdown (additive).
         byUnit,
         // 2026-07-03 — per-unit dues-vs-assessment breakdown (additive, read-only).
@@ -14889,6 +14973,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         // are mid-quarter (per William's "shouldn't show due until that
         // quarter is up").
         amountDueThisPeriod,
+        // 2026-07-14 (My Finances redesign — banner overdue-logic fix) —
+        // honest "overdue from prior periods" figure, distinct from
+        // `amountDueThisPeriod`. Null when nothing is overdue.
+        overdueFromPriorPeriods,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
