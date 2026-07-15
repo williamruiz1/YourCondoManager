@@ -29,7 +29,7 @@ type LedgerRow = {
   unitId: string;
   personId: string;
   entryType: string;
-  amount: number;
+  amountCents: number;
   postedAt: Date;
   description: string | null;
   referenceType: string | null;
@@ -130,7 +130,7 @@ vi.mock("../../db", () => ({
             unitId: vals.unitId,
             personId: vals.personId,
             entryType: vals.entryType,
-            amount: vals.amount,
+            amountCents: vals.amountCents,
             postedAt: vals.postedAt instanceof Date ? vals.postedAt : new Date(vals.postedAt),
             description: vals.description ?? null,
             referenceType: vals.referenceType ?? null,

@@ -307,7 +307,7 @@ describe("writeLedgerEntryForCharge (Gap C — idempotent)", () => {
     expect(res.ledgerEntryId).toBeTruthy();
     const rows = rowsFor(ownerLedgerEntries);
     expect(rows).toHaveLength(1);
-    expect(rows[0].amount).toBe(-350); // cents → dollars, negative (reduces balance)
+    expect(rows[0].amountCents).toBe(-35000); // integer cents, negative (reduces balance)
     expect(rows[0].entryType).toBe("payment");
     expect(rows[0].referenceType).toBe("stripe_charge");
     expect(rows[0].referenceId).toBe("ch_1");
@@ -368,7 +368,7 @@ describe("writeLedgerEntryForCharge — A-WEBHOOK-001/002 (founder-os#10737)", (
       associationId: "asn_1",
       unitId: "unt_1",
       personId: "per_1",
-      amount: -350,
+      amountCents: -35000,
       referenceType: "payment-webhook",
       referenceId: "webhook-event-row-1",
       paymentIdentityKey: "pi_SHARED_1",
@@ -505,7 +505,7 @@ describe("writeReversalLedgerEntry (A-RECON-006 — refund/dispute reversal)", (
     const rows = rowsFor(ownerLedgerEntries);
     expect(rows).toHaveLength(2); // original payment + reversal
     const reversal = rows.find((r) => r.referenceType === REFUND_REVERSAL_REFERENCE_TYPE)!;
-    expect(reversal.amount).toBe(350); // POSITIVE — reverses the -350 payment
+    expect(reversal.amountCents).toBe(35000); // POSITIVE — reverses the -35000 payment
     expect(reversal.entryType).toBe("adjustment");
     expect(reversal.referenceId).toBe("re_1");
     // FKs inherited from the original charge entry
@@ -525,7 +525,7 @@ describe("writeReversalLedgerEntry (A-RECON-006 — refund/dispute reversal)", (
     });
     expect(res.created).toBe(true);
     const reversal = rowsFor(ownerLedgerEntries).find((r) => r.referenceId === "re_partial")!;
-    expect(reversal.amount).toBe(120); // +$120, not the full $350
+    expect(reversal.amountCents).toBe(12000); // +$120, not the full $350
   });
 
   it("is idempotent on a duplicate refund webhook (no double-reversal)", async () => {
@@ -570,8 +570,8 @@ describe("writeReversalLedgerEntry (A-RECON-006 — refund/dispute reversal)", (
     expect(reversal.created).toBe(true);
     expect(fee.created).toBe(true);
     const rows = rowsFor(ownerLedgerEntries);
-    expect(rows.find((r) => r.referenceType === DISPUTE_REVERSAL_REFERENCE_TYPE)!.amount).toBe(350);
-    expect(rows.find((r) => r.referenceType === DISPUTE_FEE_REFERENCE_TYPE)!.amount).toBe(15);
+    expect(rows.find((r) => r.referenceType === DISPUTE_REVERSAL_REFERENCE_TYPE)!.amountCents).toBe(35000);
+    expect(rows.find((r) => r.referenceType === DISPUTE_FEE_REFERENCE_TYPE)!.amountCents).toBe(1500);
     // dispute reversal + dispute fee share the dispute id but differ by referenceType,
     // so both post exactly once.
     expect(rows.filter((r) => r.referenceId === "dp_1")).toHaveLength(2);

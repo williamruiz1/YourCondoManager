@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, pgEnum, jsonb, uniqueIndex, index, date, decimal } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, real, timestamp, pgEnum, jsonb, uniqueIndex, index, date, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HUB_VISIBILITY_ALL_VALUES } from "./hub-visibility";
@@ -899,11 +899,12 @@ export const paymentWebhookEvents = pgTable("payment_webhook_events", {
   paymentLinkId: varchar("payment_link_id").references(() => ownerPaymentLinks.id),
   unitId: varchar("unit_id").references(() => units.id),
   personId: varchar("person_id").references(() => persons.id),
-  // A-LEDGER-005 (founder-os#10755): money stored as double precision (float8) — interim
-  // fix off single-precision float4 (~7 sig digits) whose absolute error can exceed
-  // $0.005 near ~$40k, causing cent-recovery off-by-a-cent. Full integer-cents migration
-  // tracked as a follow-up. Always round each term to cents before summing.
-  amount: doublePrecision("amount"),
+  // Money is INTEGER CENTS (founder-os#10779, migration 0068) — exact by construction,
+  // mirroring the convention used by disbursements.amount_cents and the GL tables.
+  // Supersedes the float8 dollars column from 0060 and its round-before-sum discipline.
+  // NULLABLE is meaningful here: this is an audit record of what the gateway reported,
+  // so "the gateway sent no amount" (NULL) stays distinguishable from "zero cents" (0).
+  amountCents: integer("amount_cents"),
   currency: text("currency").default("USD"),
   status: paymentEventStatusEnum("status").notNull().default("received"),
   eventType: text("event_type"),
@@ -966,11 +967,13 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   // unitId, not personId (see buildUnitAccountStatement).
   personId: varchar("person_id").notNull().references(() => persons.id),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull(),
-  // A-LEDGER-005 (founder-os#10755): double precision (float8) — interim fix off float4
-  // (see payment_webhook_events.amount). Callers recover cents via
-  // Math.round(Math.abs(amount) * 100) and MUST round each term to cents before summing.
-  // Full integer-cents migration tracked as a follow-up.
-  amount: doublePrecision("amount").notNull(),
+  // Money is INTEGER CENTS (founder-os#10779, migration 0068) — exact by construction,
+  // mirroring disbursements.amount_cents and the GL cents convention. This REPLACES the
+  // float8-dollars column from 0060: callers no longer recover cents via
+  // Math.round(Math.abs(amount) * 100), and there is no round-before-sum discipline to
+  // remember — summing integer cents is exact. Sign convention is unchanged (payments and
+  // credits are negative; charges/assessments/late-fees are positive).
+  amountCents: integer("amount_cents").notNull(),
   postedAt: timestamp("posted_at").notNull(),
   description: text("description"),
   referenceType: text("reference_type"),

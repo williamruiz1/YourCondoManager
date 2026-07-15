@@ -82,7 +82,9 @@ export async function resolveMany(
     if (e.entryType !== "payment") continue;
     if (!nameById.has(e.associationId)) continue;
     const list = paymentsByAssoc.get(e.associationId) ?? [];
-    list.push({ postedAt: new Date(e.postedAt), amount: Math.abs(e.amount ?? 0) });
+    // amount_cents is integer cents (migration 0068); `calculatedFee` on the late-fee
+    // event is still dollars, so compare in dollars — hence the conversion here.
+    list.push({ postedAt: new Date(e.postedAt), amount: Math.abs(e.amountCents ?? 0) / 100 });
     paymentsByAssoc.set(e.associationId, list);
   }
   // Single-assoc legacy mock: ledger rows may not be tagged with
@@ -96,7 +98,7 @@ export async function resolveMany(
   if (isSingleAssoc && !paymentsByAssoc.has(associations[0].id)) {
     const fallback = allLedgerEntries
       .filter((e) => e.entryType === "payment")
-      .map((e) => ({ postedAt: new Date(e.postedAt), amount: Math.abs(e.amount ?? 0) }));
+      .map((e) => ({ postedAt: new Date(e.postedAt), amount: Math.abs(e.amountCents ?? 0) / 100 }));
     paymentsByAssoc.set(associations[0].id, fallback);
   }
 

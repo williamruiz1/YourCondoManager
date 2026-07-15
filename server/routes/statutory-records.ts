@@ -186,7 +186,7 @@ async function generateDocument(
     const ledgerRows = await db
       .select({
         entryType: ownerLedgerEntries.entryType,
-        amount: ownerLedgerEntries.amount,
+        amountCents: ownerLedgerEntries.amountCents,
         description: ownerLedgerEntries.description,
         referenceType: ownerLedgerEntries.referenceType,
       })
@@ -200,7 +200,7 @@ async function generateDocument(
       );
     const ownerLedger: ResaleCertificateLedgerEntry[] = ledgerRows.map((r) => ({
       entryType: r.entryType,
-      amount: r.amount,
+      amount: r.amountCents / 100,
       description: r.description,
       referenceType: r.referenceType,
     }));

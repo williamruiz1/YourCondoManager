@@ -64,13 +64,13 @@ describe("normalBalanceFor — the debit/credit-normal rule", () => {
 
 describe("INVARIANT 1+2 — every journal balances, and so does the corpus", () => {
   it("a charge journal balances (DR AR == CR Income)", () => {
-    const j = postOwnerLedgerEntry({ id: "e1", entryType: "assessment", amount: 1326.19, postedAt: at("2026-05-08") });
+    const j = postOwnerLedgerEntry({ id: "e1", entryType: "assessment", amountCents: 132619, postedAt: at("2026-05-08") });
     expect(j.legs).toHaveLength(2);
     expect(isJournalBalanced(j)).toBe(true);
   });
 
   it("a payment journal balances (DR Cash == CR AR)", () => {
-    const j = postOwnerLedgerEntry({ id: "e2", entryType: "payment", amount: -500, postedAt: at("2026-05-10") });
+    const j = postOwnerLedgerEntry({ id: "e2", entryType: "payment", amountCents: -50000, postedAt: at("2026-05-10") });
     expect(isJournalBalanced(j)).toBe(true);
     // Cash debit, AR credit
     expect(j.legs.find((l) => l.accountCode === "1010")?.side).toBe("debit");
@@ -78,15 +78,15 @@ describe("INVARIANT 1+2 — every journal balances, and so does the corpus", () 
   });
 
   it("a credit (waiver) journal balances (DR Income == CR AR)", () => {
-    const j = postOwnerLedgerEntry({ id: "e3", entryType: "credit", amount: -100, postedAt: at("2026-05-11") });
+    const j = postOwnerLedgerEntry({ id: "e3", entryType: "credit", amountCents: -10000, postedAt: at("2026-05-11") });
     expect(isJournalBalanced(j)).toBe(true);
     expect(j.legs.find((l) => l.accountCode === "4000")?.side).toBe("debit");
     expect(j.legs.find((l) => l.accountCode === "1200")?.side).toBe("credit");
   });
 
   it("adjustments route by sign and still balance", () => {
-    const up = postOwnerLedgerEntry({ id: "e4", entryType: "adjustment", amount: 75.5, postedAt: at("2026-05-12") });
-    const down = postOwnerLedgerEntry({ id: "e5", entryType: "adjustment", amount: -75.5, postedAt: at("2026-05-12") });
+    const up = postOwnerLedgerEntry({ id: "e4", entryType: "adjustment", amountCents: 7550, postedAt: at("2026-05-12") });
+    const down = postOwnerLedgerEntry({ id: "e5", entryType: "adjustment", amountCents: -7550, postedAt: at("2026-05-12") });
     expect(isJournalBalanced(up)).toBe(true);
     expect(isJournalBalanced(down)).toBe(true);
     expect(up.legs.find((l) => l.accountCode === "1200")?.side).toBe("debit");
@@ -95,12 +95,12 @@ describe("INVARIANT 1+2 — every journal balances, and so does the corpus", () 
 
   it("a mixed corpus passes validateInvariants with no violations", () => {
     const entries: OwnerLedgerEntryLike[] = [
-      { id: "a", entryType: "assessment", amount: 1326.19, postedAt: at("2026-05-08") },
-      { id: "b", entryType: "assessment", amount: 1719.42, postedAt: at("2026-05-08") },
-      { id: "c", entryType: "payment", amount: -500, postedAt: at("2026-05-10") },
-      { id: "d", entryType: "late-fee", amount: 25, postedAt: at("2026-05-11") },
-      { id: "e", entryType: "credit", amount: -50, postedAt: at("2026-05-12") },
-      { id: "f", entryType: "adjustment", amount: -12.34, postedAt: at("2026-05-13") },
+      { id: "a", entryType: "assessment", amountCents: 132619, postedAt: at("2026-05-08") },
+      { id: "b", entryType: "assessment", amountCents: 171942, postedAt: at("2026-05-08") },
+      { id: "c", entryType: "payment", amountCents: -50000, postedAt: at("2026-05-10") },
+      { id: "d", entryType: "late-fee", amountCents: 2500, postedAt: at("2026-05-11") },
+      { id: "e", entryType: "credit", amountCents: -5000, postedAt: at("2026-05-12") },
+      { id: "f", entryType: "adjustment", amountCents: -1234, postedAt: at("2026-05-13") },
     ];
     const journals = postOwnerLedgerEntries(entries);
     expect(validateInvariants(journals)).toEqual([]);
@@ -108,7 +108,7 @@ describe("INVARIANT 1+2 — every journal balances, and so does the corpus", () 
 
   it("a deliberately corrupted journal is caught", () => {
     const journals = postOwnerLedgerEntries([
-      { id: "x", entryType: "assessment", amount: 100, postedAt: at("2026-05-08") },
+      { id: "x", entryType: "assessment", amountCents: 10000, postedAt: at("2026-05-08") },
     ]);
     // Corrupt one leg so DR != CR.
     journals[0].legs[0].amountCents += 1;
@@ -117,17 +117,17 @@ describe("INVARIANT 1+2 — every journal balances, and so does the corpus", () 
   });
 
   it("zero-amount entries produce no legs (balanced no-op) and are dropped", () => {
-    const j = postOwnerLedgerEntry({ id: "z", entryType: "adjustment", amount: 0, postedAt: at("2026-05-08") });
+    const j = postOwnerLedgerEntry({ id: "z", entryType: "adjustment", amountCents: 0, postedAt: at("2026-05-08") });
     expect(j.legs).toHaveLength(0);
-    expect(postOwnerLedgerEntries([{ id: "z", entryType: "adjustment", amount: 0, postedAt: at("2026-05-08") }])).toHaveLength(0);
+    expect(postOwnerLedgerEntries([{ id: "z", entryType: "adjustment", amountCents: 0, postedAt: at("2026-05-08") }])).toHaveLength(0);
   });
 });
 
 describe("INVARIANT 3 — interfund nets to zero per fund", () => {
   it("with no interfund postings, interfund net is empty (trivially zero)", () => {
     const journals = postOwnerLedgerEntries([
-      { id: "a", entryType: "assessment", amount: 1000, postedAt: at("2026-05-08") },
-      { id: "b", entryType: "payment", amount: -400, postedAt: at("2026-05-10") },
+      { id: "a", entryType: "assessment", amountCents: 100000, postedAt: at("2026-05-08") },
+      { id: "b", entryType: "payment", amountCents: -40000, postedAt: at("2026-05-10") },
     ]);
     expect(interfundNetByFund(journals)).toEqual({});
     expect(validateInvariants(journals).some((v) => v.invariant === "interfund")).toBe(false);
@@ -182,21 +182,21 @@ describe("INVARIANT 3 — interfund nets to zero per fund", () => {
 describe("INVARIANT 4 — fund balances derive correctly (AR == owner-ledger Σ amount)", () => {
   it("AR balance equals the owner-ledger net to the cent", () => {
     const entries: OwnerLedgerEntryLike[] = [
-      { id: "a", entryType: "assessment", amount: 1326.19, postedAt: at("2026-05-08") },
-      { id: "b", entryType: "assessment", amount: 1719.42, postedAt: at("2026-05-08") },
-      { id: "c", entryType: "payment", amount: -500.5, postedAt: at("2026-05-10") },
-      { id: "d", entryType: "late-fee", amount: 25, postedAt: at("2026-05-11") },
-      { id: "e", entryType: "credit", amount: -100, postedAt: at("2026-05-12") },
+      { id: "a", entryType: "assessment", amountCents: 132619, postedAt: at("2026-05-08") },
+      { id: "b", entryType: "assessment", amountCents: 171942, postedAt: at("2026-05-08") },
+      { id: "c", entryType: "payment", amountCents: -50050, postedAt: at("2026-05-10") },
+      { id: "d", entryType: "late-fee", amountCents: 2500, postedAt: at("2026-05-11") },
+      { id: "e", entryType: "credit", amountCents: -10000, postedAt: at("2026-05-12") },
     ];
     const journals = postOwnerLedgerEntries(entries);
-    const ownerNetCents = entries.reduce((s, e) => s + toCents(e.amount), 0);
+    const ownerNetCents = entries.reduce((s, e) => s + e.amountCents, 0);
     expect(accountsReceivableCents(journals)).toBe(ownerNetCents);
   });
 
   it("all derived balances are integer cents", () => {
     const journals = postOwnerLedgerEntries([
-      { id: "a", entryType: "assessment", amount: 1234.56, postedAt: at("2026-05-08") },
-      { id: "b", entryType: "payment", amount: -1000, postedAt: at("2026-05-10") },
+      { id: "a", entryType: "assessment", amountCents: 123456, postedAt: at("2026-05-08") },
+      { id: "b", entryType: "payment", amountCents: -100000, postedAt: at("2026-05-10") },
     ]);
     for (const b of deriveAccountBalances(journals)) {
       expect(Number.isInteger(b.balanceCents)).toBe(true);
@@ -205,8 +205,8 @@ describe("INVARIANT 4 — fund balances derive correctly (AR == owner-ledger Σ 
 
   it("a fully-paid owner nets AR to zero", () => {
     const journals = postOwnerLedgerEntries([
-      { id: "a", entryType: "assessment", amount: 300, postedAt: at("2026-05-08") },
-      { id: "b", entryType: "payment", amount: -300, postedAt: at("2026-05-10") },
+      { id: "a", entryType: "assessment", amountCents: 30000, postedAt: at("2026-05-08") },
+      { id: "b", entryType: "payment", amountCents: -30000, postedAt: at("2026-05-10") },
     ]);
     expect(accountsReceivableCents(journals)).toBe(0);
   });

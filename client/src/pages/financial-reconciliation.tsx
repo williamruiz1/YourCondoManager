@@ -455,7 +455,7 @@ export function FinancialReconciliationContent() {
                       </div>
                       <div className="rounded-md bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
                         {matchedEntry
-                          ? `${matchedEntry.description ?? matchedEntry.entryType} · $${Math.abs(matchedEntry.amount).toFixed(2)}`
+                          ? `${matchedEntry.description ?? matchedEntry.entryType} · $${(Math.abs(matchedEntry.amountCents) / 100).toFixed(2)}`
                           : tx.matchStatus === "excluded"
                             ? "Excluded from reconciliation"
                             : "No ledger entry matched yet."}
@@ -511,7 +511,7 @@ export function FinancialReconciliationContent() {
                         <TableCell>{matchStatusBadge(tx.matchStatus)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">
                           {matchedEntry ? (
-                            <span>{matchedEntry.description ?? matchedEntry.entryType} · ${Math.abs(matchedEntry.amount).toFixed(2)}</span>
+                            <span>{matchedEntry.description ?? matchedEntry.entryType} · ${(Math.abs(matchedEntry.amountCents) / 100).toFixed(2)}</span>
                           ) : tx.matchStatus === "excluded" ? <span className="italic">excluded</span> : "—"}
                         </TableCell>
                         <TableCell className="text-right">

@@ -79,8 +79,8 @@ const ASSOC = "assoc-1";
 
 beforeEach(() => {
   ownerRows = [
-    { id: "d1", entryType: "charge", amount: 300, postedAt: new Date("2026-06-01"), description: "dues" },
-    { id: "p1", entryType: "payment", amount: -300, postedAt: new Date("2026-06-02"), description: "pay" },
+    { id: "d1", entryType: "charge", amountCents: 30000, postedAt: new Date("2026-06-01"), description: "dues" },
+    { id: "p1", entryType: "payment", amountCents: -30000, postedAt: new Date("2026-06-02"), description: "pay" },
   ];
   invoiceRows = [
     { id: "v1", amount: 1200, status: "received", invoiceDate: new Date("2026-06-03"), vendorName: "GreenLawn", invoiceNumber: "INV-1", categoryName: "Landscaping" },

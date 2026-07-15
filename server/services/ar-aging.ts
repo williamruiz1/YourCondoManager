@@ -25,7 +25,6 @@ import { db } from "../db";
 import { ownerLedgerEntries, ownerships, persons, units } from "@shared/schema";
 import {
   computeArAging,
-  toCents,
   type AgingLedgerEntry,
   type AgingBuckets,
 } from "./ar-aging-math";
@@ -92,7 +91,7 @@ export async function buildArAgingReport(
     .select({
       unitId: ownerLedgerEntries.unitId,
       entryType: ownerLedgerEntries.entryType,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       postedAt: ownerLedgerEntries.postedAt,
     })
     .from(ownerLedgerEntries)
@@ -104,7 +103,7 @@ export async function buildArAgingReport(
     const list = entriesByUnit.get(r.unitId) ?? [];
     list.push({
       entryType: r.entryType,
-      amountCents: toCents(r.amount),
+      amountCents: r.amountCents,
       postedAt: r.postedAt instanceof Date ? r.postedAt : new Date(r.postedAt),
     });
     entriesByUnit.set(r.unitId, list);

@@ -8266,14 +8266,16 @@ export class DatabaseStorage implements IStorage {
     if (!person) throw new Error("Person not found");
 
     const entries = await db
-      .select({ amount: ownerLedgerEntries.amount })
+      .select({ amountCents: ownerLedgerEntries.amountCents })
       .from(ownerLedgerEntries)
       .where(and(
         eq(ownerLedgerEntries.associationId, payload.associationId),
         eq(ownerLedgerEntries.unitId, payload.unitId),
         eq(ownerLedgerEntries.personId, payload.personId),
       ));
-    const outstandingBalance = Number(entries.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+    // Sum exact integer cents (migration 0068), then express in dollars — payment links
+    // and the requested amount below are dollars-denominated.
+    const outstandingBalance = entries.reduce((sum, row) => sum + row.amountCents, 0) / 100;
     if (outstandingBalance <= 0) {
       throw new Error("Owner ledger balance is not payable");
     }
@@ -8394,6 +8396,10 @@ export class DatabaseStorage implements IStorage {
     const unitId = payload.unitId || link?.unitId || null;
     const amountRaw = typeof payload.amount === "number" ? payload.amount : link?.amount ?? null;
     const amount = amountRaw == null ? null : Number(Math.abs(amountRaw).toFixed(2));
+    // The gateway payload (and owner_payment_links.amount) report DOLLARS; the audit
+    // column is integer cents (migration 0068). NULL is preserved as NULL — "the gateway
+    // sent no amount" must stay distinguishable from "zero cents".
+    const amountCents = amount == null ? null : Math.round(amount * 100);
 
     const [receivedEvent] = await db
       .insert(paymentWebhookEvents)
@@ -8404,7 +8410,7 @@ export class DatabaseStorage implements IStorage {
         paymentLinkId: link?.id ?? null,
         unitId,
         personId,
-        amount,
+        amountCents,
         currency: normalizeCurrency(payload.currency || link?.currency),
         status: "received",
         eventType: payload.eventType ?? null,
@@ -8478,7 +8484,7 @@ export class DatabaseStorage implements IStorage {
     // fee OUT of the owner-ledger credit — the association's ledger records
     // the assessment AT FACE VALUE, never the fee-inclusive total. `amount`
     // above is the FULL Stripe amount_total (unchanged — still recorded
-    // verbatim on `paymentWebhookEvents.amount` for audit); only the ledger
+    // verbatim on `paymentWebhookEvents.amountCents` for audit); only the ledger
     // CREDIT computed here is netted. netLedgerCreditDollars is the single,
     // independently-unit-tested source of truth for this math — see
     // server/services/__tests__/convenience-fee.test.ts.
@@ -8503,7 +8509,12 @@ export class DatabaseStorage implements IStorage {
       associationId: payload.associationId,
       unitId,
       personId,
-      amount: Number((-Math.abs(ledgerCreditDollars)).toFixed(2)),
+      // Negative — a payment credit. The Stripe webhook payload reports money in
+      // DOLLARS, and netLedgerCreditDollars (the independently-unit-tested
+      // convenience-fee math) is dollars-denominated, so this is the one legitimate
+      // EXTERNAL-boundary conversion into the ledger's integer cents (migration 0068) —
+      // not an internal round-trip. Rounding here is exact for any realistic amount.
+      amountCents: -Math.abs(Math.round(ledgerCreditDollars * 100)),
       postedAt: new Date(),
       description: payload.eventType ? `Payment webhook (${payload.eventType})` : "Payment webhook",
       referenceType: "payment-webhook",
@@ -8729,14 +8740,19 @@ export class DatabaseStorage implements IStorage {
 
   async getOwnerLedgerSummary(associationId: string): Promise<Array<{ personId: string; unitId: string; balance: number }>> {
     const entries = await this.getOwnerLedgerEntries(associationId);
-    const rollup = new Map<string, { personId: string; unitId: string; balance: number }>();
+    // Accumulate in exact integer CENTS (migration 0068), then convert to dollars once
+    // per owner. The public contract stays dollars — many routes and the alert tests
+    // depend on it — but the summing underneath is now exact rather than float.
+    const rollup = new Map<string, { personId: string; unitId: string; balanceCents: number }>();
     for (const entry of entries) {
       const key = `${entry.personId}:${entry.unitId}`;
-      const current = rollup.get(key) ?? { personId: entry.personId, unitId: entry.unitId, balance: 0 };
-      current.balance += entry.amount;
+      const current = rollup.get(key) ?? { personId: entry.personId, unitId: entry.unitId, balanceCents: 0 };
+      current.balanceCents += entry.amountCents;
       rollup.set(key, current);
     }
-    return Array.from(rollup.values()).sort((a, b) => b.balance - a.balance);
+    return Array.from(rollup.values())
+      .sort((a, b) => b.balanceCents - a.balanceCents)
+      .map((r) => ({ personId: r.personId, unitId: r.unitId, balance: r.balanceCents / 100 }));
   }
 
   async getGovernanceMeetings(associationId?: string): Promise<GovernanceMeeting[]> {
@@ -11417,7 +11433,8 @@ export class DatabaseStorage implements IStorage {
           unitId: unit.id,
           personId: person.id,
           entryType: txn.entryType,
-          amount: Math.abs(txn.amount),
+          // Bank-statement rows are parsed in DOLLARS — external boundary conversion.
+          amountCents: Math.round(Math.abs(txn.amount) * 100),
           postedAt,
           description: txn.description ?? "Imported from bank statement",
           referenceType: "ai-bank-statement",
@@ -15743,8 +15760,9 @@ export class DatabaseStorage implements IStorage {
 
     const content = sections.map((sectionKey) => {
       if (sectionKey === "financial") {
-        const receivable = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "charge" || entry.entryType === "late-fee" ? entry.amount : 0), 0);
-        const payments = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "payment" ? entry.amount : 0), 0);
+        // Sum exact integer cents (migration 0068); express in dollars for display.
+        const receivable = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "charge" || entry.entryType === "late-fee" ? entry.amountCents : 0), 0) / 100;
+        const payments = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "payment" ? entry.amountCents : 0), 0) / 100;
         return {
           key: "financial",
           title: "Financial Summary",
@@ -16808,30 +16826,36 @@ export class DatabaseStorage implements IStorage {
     for (const entry of ledgerEntries) {
       const postedAt = new Date(entry.postedAt);
       const period = `${postedAt.getUTCFullYear()}-${String(postedAt.getUTCMonth() + 1).padStart(2, "0")}`;
+      // Buckets accumulate in exact integer cents; converted to dollars at output.
       const current = monthlyBuckets.get(period) ?? { charges: 0, payments: 0, credits: 0 };
       if (entry.entryType === "payment") {
-        current.payments += Math.abs(entry.amount);
+        current.payments += Math.abs(entry.amountCents);
       } else if (entry.entryType === "credit" || entry.entryType === "adjustment") {
-        current.credits += Math.abs(entry.amount);
+        current.credits += Math.abs(entry.amountCents);
       } else if (entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee") {
-        current.charges += Math.abs(entry.amount);
+        current.charges += Math.abs(entry.amountCents);
       }
       monthlyBuckets.set(period, current);
     }
 
-    const totalCharges = charges.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
-    const totalPayments = payments.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
-    const totalCredits = credits.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
-    const openBalance = Number((totalCharges - totalPayments - totalCredits).toFixed(2));
+    const totalChargesCents = charges.reduce((acc, entry) => acc + Math.abs(entry.amountCents), 0);
+    const totalPaymentsCents = payments.reduce((acc, entry) => acc + Math.abs(entry.amountCents), 0);
+    const totalCreditsCents = credits.reduce((acc, entry) => acc + Math.abs(entry.amountCents), 0);
+    const totalCharges = totalChargesCents / 100;
+    const totalPayments = totalPaymentsCents / 100;
+    const totalCredits = totalCreditsCents / 100;
+    // Exact integer subtraction — no float residue to round away.
+    const openBalance = (totalChargesCents - totalPaymentsCents - totalCreditsCents) / 100;
     const collectionBase = totalCharges === 0 ? 0 : ((totalPayments + totalCredits) / totalCharges) * 100;
     const monthlyTrend = Array.from(monthlyBuckets.entries())
       .sort((a, b) => a[0].localeCompare(b[0]))
       .slice(-6)
       .map(([period, values]) => ({
         period,
-        charges: Number(values.charges.toFixed(2)),
-        payments: Number(values.payments.toFixed(2)),
-        credits: Number(values.credits.toFixed(2)),
+        charges: values.charges / 100,
+        payments: values.payments / 100,
+        credits: values.credits / 100,
+        // Ratio of cents to cents — unit-free, so no conversion needed.
         collectionRate: values.charges === 0 ? 0 : Number((((values.payments + values.credits) / values.charges) * 100).toFixed(2)),
       }));
     const accountBalances = new Map<string, number>();
@@ -16839,7 +16863,8 @@ export class DatabaseStorage implements IStorage {
 
     for (const entry of ledgerEntries) {
       const key = `${entry.personId}:${entry.unitId}`;
-      accountBalances.set(key, (accountBalances.get(key) ?? 0) + entry.amount);
+      // accountBalances accumulates exact integer cents; converted where displayed.
+      accountBalances.set(key, (accountBalances.get(key) ?? 0) + entry.amountCents);
       if (entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee") {
         const postedAt = new Date(entry.postedAt);
         const existing = accountLatestChargeAt.get(key);
@@ -16881,7 +16906,7 @@ export class DatabaseStorage implements IStorage {
       .map(([period, value]) => ({
         period,
         delinquentAccounts: value.delinquentAccounts,
-        totalBalance: Number(value.totalBalance.toFixed(2)),
+        totalBalance: value.totalBalance / 100,
       }));
     const budgetIds = new Set(budgetsList.map((budget) => budget.id));
     const scopedVersions = allBudgetVersions.filter((version) => budgetIds.has(version.budgetId));
@@ -17037,11 +17062,12 @@ export class DatabaseStorage implements IStorage {
         openBalance,
         collectionRate: Number(collectionBase.toFixed(2)),
         monthlyTrend,
+        // Buckets accumulate exact integer cents (migration 0068) -> dollars at output.
         agingBuckets: {
-          current: Number(agingBuckets.current.toFixed(2)),
-          thirtyDays: Number(agingBuckets.thirtyDays.toFixed(2)),
-          sixtyDays: Number(agingBuckets.sixtyDays.toFixed(2)),
-          ninetyPlus: Number(agingBuckets.ninetyPlus.toFixed(2)),
+          current: agingBuckets.current / 100,
+          thirtyDays: agingBuckets.thirtyDays / 100,
+          sixtyDays: agingBuckets.sixtyDays / 100,
+          ninetyPlus: agingBuckets.ninetyPlus / 100,
         },
         delinquencyMovement,
       },

@@ -105,7 +105,7 @@ export interface MonthCloseState {
     personName: string;
     unitNumber: string | null;
     postedAt: string;
-    amount: number;
+    amountCents: number;
     description: string | null;
   }>;
   /** The current close record, or null if the month has never been closed
@@ -183,7 +183,7 @@ export async function getMonthCloseState(input: {
       unitNumber: e.unitNumber,
       postedAt:
         e.postedAt instanceof Date ? e.postedAt.toISOString() : String(e.postedAt),
-      amount: e.amount,
+      amountCents: e.amountCents,
       description: e.description,
     })),
     isClosed,

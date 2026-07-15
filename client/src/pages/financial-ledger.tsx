@@ -618,7 +618,7 @@ export function FinancialLedgerContent() {
               personName.get(e.personId) || e.personId,
               unitName.get(e.unitId) || e.unitId,
               e.entryType,
-              e.amount.toFixed(2),
+              (e.amountCents / 100).toFixed(2),
               e.description || "",
             ])}
             filename="ledger-entries"
@@ -656,7 +656,7 @@ export function FinancialLedgerContent() {
                     <Pill tone="info">{e.entryType}</Pill>
                   </div>
                   <div className="flex items-center justify-between gap-3">
-                    <div className="text-sm font-semibold">${e.amount.toFixed(2)}</div>
+                    <div className="text-sm font-semibold">${(e.amountCents / 100).toFixed(2)}</div>
                     <div className="max-w-[55%] truncate text-xs text-muted-foreground" title={e.description || ""}>
                       {e.description || "No description"}
                     </div>
@@ -695,7 +695,7 @@ export function FinancialLedgerContent() {
                     <TableCell>{personName.get(e.personId) || e.personId}</TableCell>
                     <TableCell>{unitName.get(e.unitId) || e.unitId}</TableCell>
                     <TableCell><Pill tone="info">{e.entryType}</Pill></TableCell>
-                    <TableCell>${e.amount.toFixed(2)}</TableCell>
+                    <TableCell>${(e.amountCents / 100).toFixed(2)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground max-w-xs truncate" title={e.description || ""}>{e.description || "—"}</TableCell>
                   </TableRow>
                 ))}
@@ -930,7 +930,7 @@ function VirtualizedOperatorLedger({
             <div className="px-4 py-3">
               <Pill tone="info">{e.entryType}</Pill>
             </div>
-            <div className="px-4 py-3">${e.amount.toFixed(2)}</div>
+            <div className="px-4 py-3">${(e.amountCents / 100).toFixed(2)}</div>
             <div
               className="truncate px-4 py-3 text-muted-foreground"
               title={e.description || ""}

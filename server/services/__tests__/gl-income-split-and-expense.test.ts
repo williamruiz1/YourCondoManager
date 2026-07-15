@@ -30,7 +30,6 @@ import {
   validateInvariants,
   deriveAccountBalances,
   accountsReceivableCents,
-  toCents,
   DEFAULT_EXPENSE_ACCOUNT_CODE,
   ACCOUNTS_PAYABLE_CODE,
   type OwnerLedgerEntryLike,
@@ -52,7 +51,7 @@ describe("CHANGE 1 — dues income (4000) is separate from special-assessment in
   });
 
   it("a recurring-dues charge credits 4000 HOA Dues Income (DR AR / CR 4000)", () => {
-    const j = postOwnerLedgerEntry({ id: "d1", entryType: "charge", amount: 300, postedAt: at("2026-06-01") });
+    const j = postOwnerLedgerEntry({ id: "d1", entryType: "charge", amountCents: 30000, postedAt: at("2026-06-01") });
     expect(isJournalBalanced(j)).toBe(true);
     expect(j.legs.find((l) => l.accountCode === "1200")?.side).toBe("debit");
     const income = j.legs.find((l) => l.side === "credit");
@@ -61,13 +60,13 @@ describe("CHANGE 1 — dues income (4000) is separate from special-assessment in
   });
 
   it("a late-fee charge also credits 4000 (a dues-side fee, not a special assessment)", () => {
-    const j = postOwnerLedgerEntry({ id: "lf", entryType: "late-fee", amount: 25, postedAt: at("2026-06-01") });
+    const j = postOwnerLedgerEntry({ id: "lf", entryType: "late-fee", amountCents: 2500, postedAt: at("2026-06-01") });
     expect(isJournalBalanced(j)).toBe(true);
     expect(j.legs.find((l) => l.side === "credit")?.accountCode).toBe("4000");
   });
 
   it("a SPECIAL ASSESSMENT credits 4200 Special Assessment Income (DR AR / CR 4200)", () => {
-    const j = postOwnerLedgerEntry({ id: "sa", entryType: "assessment", amount: 1326.19, postedAt: at("2026-06-01") });
+    const j = postOwnerLedgerEntry({ id: "sa", entryType: "assessment", amountCents: 132619, postedAt: at("2026-06-01") });
     expect(isJournalBalanced(j)).toBe(true);
     expect(j.legs.find((l) => l.accountCode === "1200")?.side).toBe("debit");
     const income = j.legs.find((l) => l.side === "credit");
@@ -76,7 +75,7 @@ describe("CHANGE 1 — dues income (4000) is separate from special-assessment in
   });
 
   it("a dues credit (waiver) reverses the DUES account (DR 4000 / CR AR)", () => {
-    const j = postOwnerLedgerEntry({ id: "cr", entryType: "credit", amount: -100, postedAt: at("2026-06-02") });
+    const j = postOwnerLedgerEntry({ id: "cr", entryType: "credit", amountCents: -10000, postedAt: at("2026-06-02") });
     expect(isJournalBalanced(j)).toBe(true);
     expect(j.legs.find((l) => l.accountCode === "4000")?.side).toBe("debit");
     expect(j.legs.find((l) => l.accountCode === "1200")?.side).toBe("credit");
@@ -84,8 +83,8 @@ describe("CHANGE 1 — dues income (4000) is separate from special-assessment in
 
   it("dues and assessment income are reported on DIFFERENT accounts in the derived balances", () => {
     const journals = postOwnerLedgerEntries([
-      { id: "d", entryType: "charge", amount: 300, postedAt: at("2026-06-01") },
-      { id: "a", entryType: "assessment", amount: 500, postedAt: at("2026-06-01") },
+      { id: "d", entryType: "charge", amountCents: 30000, postedAt: at("2026-06-01") },
+      { id: "a", entryType: "assessment", amountCents: 50000, postedAt: at("2026-06-01") },
     ]);
     const balances = deriveAccountBalances(journals);
     const dues = balances.find((b) => b.accountCode === "4000" && b.fund === "operating");
@@ -98,15 +97,15 @@ describe("CHANGE 1 — dues income (4000) is separate from special-assessment in
 
   it("RECONCILE PRESERVED — AR still equals owner-ledger Σ amount after the income split", () => {
     const entries: OwnerLedgerEntryLike[] = [
-      { id: "d", entryType: "charge", amount: 300.5, postedAt: at("2026-06-01") },
-      { id: "a", entryType: "assessment", amount: 1719.42, postedAt: at("2026-06-01") },
-      { id: "lf", entryType: "late-fee", amount: 25, postedAt: at("2026-06-02") },
-      { id: "p", entryType: "payment", amount: -200, postedAt: at("2026-06-03") },
-      { id: "cr", entryType: "credit", amount: -50, postedAt: at("2026-06-04") },
+      { id: "d", entryType: "charge", amountCents: 30050, postedAt: at("2026-06-01") },
+      { id: "a", entryType: "assessment", amountCents: 171942, postedAt: at("2026-06-01") },
+      { id: "lf", entryType: "late-fee", amountCents: 2500, postedAt: at("2026-06-02") },
+      { id: "p", entryType: "payment", amountCents: -20000, postedAt: at("2026-06-03") },
+      { id: "cr", entryType: "credit", amountCents: -5000, postedAt: at("2026-06-04") },
     ];
     const journals = postOwnerLedgerEntries(entries);
     expect(validateInvariants(journals)).toEqual([]);
-    const ownerNetCents = entries.reduce((s, e) => s + toCents(e.amount), 0);
+    const ownerNetCents = entries.reduce((s, e) => s + e.amountCents, 0);
     expect(accountsReceivableCents(journals)).toBe(ownerNetCents);
   });
 });
@@ -224,9 +223,9 @@ describe("category → expense-account mapping (keyword routing, default 5000)",
 describe("INTEGRATION — income (dues + assessments) + expense corpus balances", () => {
   it("a mixed corpus of dues, special assessments, payments, and vendor bills passes all invariants", () => {
     const ownerEntries: OwnerLedgerEntryLike[] = [
-      { id: "d1", entryType: "charge", amount: 300, postedAt: at("2026-06-01") },
-      { id: "a1", entryType: "assessment", amount: 1500, postedAt: at("2026-06-01") },
-      { id: "p1", entryType: "payment", amount: -300, postedAt: at("2026-06-02") },
+      { id: "d1", entryType: "charge", amountCents: 30000, postedAt: at("2026-06-01") },
+      { id: "a1", entryType: "assessment", amountCents: 150000, postedAt: at("2026-06-01") },
+      { id: "p1", entryType: "payment", amountCents: -30000, postedAt: at("2026-06-02") },
     ];
     const invoices: VendorInvoiceLike[] = [
       { id: "v1", amount: 1200, status: "received", postedAt: at("2026-06-03"), expenseAccountCode: "5500" },

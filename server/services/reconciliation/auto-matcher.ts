@@ -543,7 +543,7 @@ export async function runAutoMatch(
     const refHit = unitCentric ? findReferenceInDescriptor(creditDesc, knownRefs) : null;
 
     for (const entry of pendingEntries) {
-      const entryAbsCents = Math.round(Math.abs(entry.amount) * 100);
+      const entryAbsCents = Math.abs(entry.amountCents);
       const owner = personById.get(entry.personId);
 
       const dateDelta = diffDays(creditDate, entry.postedAt);
@@ -888,25 +888,23 @@ async function computeOpenBalancesPerOwner(
   const rows = await db
     .select({
       personId: ownerLedgerEntries.personId,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       entryType: ownerLedgerEntries.entryType,
     })
     .from(ownerLedgerEntries)
     .where(eq(ownerLedgerEntries.associationId, associationId));
 
-  const balanceByPerson = new Map<string, number>(); // dollars (cents math at output)
+  // Integer cents (migration 0068), so this accumulates exactly. The float8 version of
+  // this loop summed raw dollars and only rounded at the very end — i.e. it silently
+  // skipped the round-each-term-before-summing discipline and could drift. Exact by
+  // construction now.
+  const cents = new Map<string, number>();
   for (const r of rows) {
     // Convention: amounts for `charge|assessment|late-fee` are stored positive
     // (owner owes), `payment|credit|adjustment` are stored negative (reduces
-    // balance). Summing the signed `amount` field yields the current balance.
-    const prev = balanceByPerson.get(r.personId) ?? 0;
-    balanceByPerson.set(r.personId, prev + r.amount);
-  }
-
-  // Convert to cents.
-  const cents = new Map<string, number>();
-  for (const [pid, dollars] of balanceByPerson) {
-    cents.set(pid, Math.round(dollars * 100));
+    // balance). Summing the signed cents yields the current balance.
+    const prev = cents.get(r.personId) ?? 0;
+    cents.set(r.personId, prev + r.amountCents);
   }
   return cents;
 }
@@ -1241,8 +1239,9 @@ export async function createPaymentFromSuggestion(input: {
 
   // Create the payment entry. Convention: payment amounts stored as negative
   // (reduces owner balance). The bank tx amountCents is also negative
-  // (credit/inflow); convert to dollars and preserve the sign.
-  const amountDollars = btx.amountCents / 100; // already negative
+  // (credit/inflow), and the ledger stores integer cents too (migration 0068) — so this
+  // is a direct carry that preserves the sign, with no dollars round-trip.
+  const amountCents = btx.amountCents; // already negative
   const postedAt = new Date(btx.date);
   const now = new Date();
 
@@ -1253,7 +1252,7 @@ export async function createPaymentFromSuggestion(input: {
       unitId: input.unitId,
       personId: input.personId,
       entryType: "payment",
-      amount: amountDollars,
+      amountCents,
       postedAt,
       description:
         input.description ?? `Auto-created from bank deposit (${btx.merchantName ?? btx.name})`,

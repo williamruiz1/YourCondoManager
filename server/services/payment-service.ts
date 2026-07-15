@@ -435,29 +435,37 @@ export async function getOwnerBalanceSummary(params: {
     )
     .orderBy(desc(ownerLedgerEntries.postedAt));
 
-  let totalCharges = 0;
-  let totalPayments = 0;
   const chargeTypes = new Set(["charge", "assessment", "late-fee"]);
   const creditTypes = new Set(["payment", "credit", "adjustment"]);
 
+  // Accumulate in exact integer CENTS (migration 0068), then convert to dollars once at
+  // the boundary below. The float8 era summed dollars directly here and never rounded per
+  // term, so drift could accumulate across an owner's entries. The public shape of this
+  // function is unchanged (dollars) — only the math underneath is now exact.
+  let totalChargesCents = 0;
+  let totalPaymentsCents = 0;
+
   for (const entry of ledgerEntries) {
-    const amt = Number(entry.amount) || 0;
+    const cents = entry.amountCents;
     if (chargeTypes.has(entry.entryType)) {
-      totalCharges += amt;
+      totalChargesCents += cents;
     } else if (creditTypes.has(entry.entryType)) {
-      totalPayments += Math.abs(amt);
+      totalPaymentsCents += Math.abs(cents);
     }
   }
 
-  const totalBalance = totalCharges - totalPayments;
+  const totalBalanceCents = totalChargesCents - totalPaymentsCents;
+  const totalCharges = totalChargesCents / 100;
+  const totalPayments = totalPaymentsCents / 100;
+  const totalBalance = totalBalanceCents / 100;
 
   // Open charges: positive-amount charge/assessment/late-fee entries
   const openCharges = ledgerEntries
-    .filter((e) => chargeTypes.has(e.entryType) && (Number(e.amount) || 0) > 0)
+    .filter((e) => chargeTypes.has(e.entryType) && e.amountCents > 0)
     .map((e) => ({
       id: e.id,
       entryType: e.entryType,
-      amount: Number(e.amount) || 0,
+      amount: e.amountCents / 100,
       description: e.description,
       postedAt: e.postedAt.toISOString(),
       unitId: e.unitId,

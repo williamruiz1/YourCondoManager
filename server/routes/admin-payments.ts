@@ -376,7 +376,9 @@ async function recordSinglePayment(
       unitId,
       personId: input.personId,
       entryType: "payment",
-      amount: negativeAmount,
+      // `input.amount` arrives from the admin UI in DOLLARS — external boundary; the
+      // ledger stores integer cents (migration 0068).
+      amountCents: Math.round(negativeAmount * 100),
       postedAt: input.receivedAt,
       description,
       referenceType: "manual-recorded-payment",
@@ -449,7 +451,7 @@ async function recordSinglePayment(
     associationId: inserted.associationId,
     unitId: inserted.unitId,
     personId: inserted.personId,
-    amount: inserted.amount,
+    amount: inserted.amountCents / 100,
     method: input.method,
     receivedAt: inserted.postedAt,
     description: inserted.description ?? description,
@@ -527,18 +529,25 @@ async function reverseLedgerEntry(params: {
     );
 
   // Cumulative cap: sum prior reversals of THIS target (they reference it).
-  const alreadyReversed = unitEntries
+  // Computed in exact integer cents (migration 0068), then expressed in dollars for the
+  // dollars-denominated reversePayment module + the error messages below. The old
+  // `Math.round((a - b) * 100) / 100` re-rounding existed only to scrub float residue
+  // out of this subtraction — integer cents make it exact.
+  const alreadyReversedCents = unitEntries
     .filter(
       (e) =>
         e.referenceType === "refund-reversal" &&
         e.referenceId === target.id &&
         e.entryType === "adjustment" &&
-        e.amount > 0,
+        e.amountCents > 0,
     )
-    .reduce((s, e) => s + e.amount, 0);
-  const originalMagnitude = Math.abs(target.amount);
-  const remaining = Math.round((originalMagnitude - alreadyReversed) * 100) / 100;
-  if (remaining <= 0) {
+    .reduce((s, e) => s + e.amountCents, 0);
+  const originalMagnitudeCents = Math.abs(target.amountCents);
+  const remainingCents = originalMagnitudeCents - alreadyReversedCents;
+  const alreadyReversed = alreadyReversedCents / 100;
+  const originalMagnitude = originalMagnitudeCents / 100;
+  const remaining = remainingCents / 100;
+  if (remainingCents <= 0) {
     const err: any = new Error(
       `Entry ${target.id} is already fully reversed ($${alreadyReversed.toFixed(2)} of $${originalMagnitude.toFixed(2)})`,
     );
@@ -547,7 +556,10 @@ async function reverseLedgerEntry(params: {
     throw err;
   }
   const requested = params.amount ?? remaining;
-  if (requested > remaining + 1e-9) {
+  // Compare in exact integer cents — the old `+ 1e-9` epsilon existed purely to absorb
+  // float comparison error and is unnecessary now.
+  const requestedCents = Math.round(requested * 100);
+  if (requestedCents > remainingCents) {
     const err: any = new Error(
       `Reversal $${requested.toFixed(2)} exceeds the remaining reversible amount $${remaining.toFixed(2)} (original $${originalMagnitude.toFixed(2)}, already reversed $${alreadyReversed.toFixed(2)})`,
     );
@@ -556,9 +568,12 @@ async function reverseLedgerEntry(params: {
     throw err;
   }
 
+  // `reversePayment` (payment-edge-cases.ts) is a pure, independently-unit-tested,
+  // DOLLARS-denominated module. Adapt the cents rows to its contract at the boundary
+  // rather than churning refund math inside it.
   const result = reversePayment({
-    entries: unitEntries,
-    target,
+    entries: unitEntries.map((e) => ({ ...e, amount: e.amountCents / 100 })),
+    target: { ...target, amount: target.amountCents / 100 },
     amount: requested,
     postedAt: new Date(),
     description: `Refund $${requested.toFixed(2)} — reversal of ${target.entryType} (entry ${target.id}) — ${params.reason}`,
@@ -571,7 +586,8 @@ async function reverseLedgerEntry(params: {
       unitId: target.unitId,
       personId: target.personId,
       entryType: result.entry.entryType,
-      amount: result.entry.amount,
+      // Back across the same boundary: the module returns dollars; the ledger is cents.
+      amountCents: Math.round(result.entry.amount * 100),
       postedAt: result.entry.postedAt,
       description: result.entry.description,
       referenceType: result.entry.referenceType,
@@ -930,7 +946,8 @@ export function registerAdminPaymentsRoutes(
               associationId: r.associationId,
               unitId: r.unitId,
               personId: r.personId,
-              amount: r.amount,
+              // API contract stays dollars for this admin list surface.
+              amount: r.amountCents / 100,
               postedAt: r.postedAt,
               description: r.description,
               method: method || "other",

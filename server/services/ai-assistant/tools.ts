@@ -218,7 +218,7 @@ export async function getNextPaymentDue(
   // The "next due" is the earliest-posted charge with a positive amount
   // that hasn't been fully paid. Phase 0 picks first-positive; Phase 1
   // adapter may compute against an offset / due-date schedule.
-  const open = entries.find((e) => (Number(e.amount) || 0) > 0);
+  const open = entries.find((e) => e.amountCents > 0);
 
   if (!open) {
     return {
@@ -231,7 +231,9 @@ export async function getNextPaymentDue(
     };
   }
 
-  const amount = Number(open.amount) || 0;
+  // amount_cents is exact integer cents (migration 0068); this summary surface is
+  // dollars-facing, so convert once here.
+  const amount = open.amountCents / 100;
   const dueDate = open.postedAt.toISOString().slice(0, 10);
   return {
     ownerId,

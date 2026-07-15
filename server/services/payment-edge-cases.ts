@@ -16,7 +16,12 @@
  *
  * The owner's balance is the simple signed sum of all entries — exactly as
  * `getOwnerLedgerSummary` (storage.ts) and `computeStatement`
- * (account-statement-math.ts) compute it (`balance += entry.amount`):
+ * (account-statement-math.ts) compute it (`balance += entry.amountCents`).
+ *
+ * UNITS: this module is deliberately DOLLARS-denominated and stays that way. The ledger
+ * column is integer cents (migration 0068 / founder-os#10779); callers adapt at this
+ * module's boundary (see admin-payments.ts), because the refund/overpayment math here is
+ * pure, independently unit-tested, and does not depend on the storage format:
  *
  *     balance > 0  → owner owes the association (open receivable)
  *     balance = 0  → owner is square

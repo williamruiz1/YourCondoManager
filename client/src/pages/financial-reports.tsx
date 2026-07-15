@@ -143,15 +143,18 @@ export function FinancialReportsContent() {
     const charges = filtered.filter((e) => e.entryType === "charge" || e.entryType === "assessment" || e.entryType === "late-fee");
     const adjustments = filtered.filter((e) => e.entryType === "adjustment");
 
-    const totalIncome = income.reduce((sum, e) => sum + e.amount, 0);
-    const totalCharges = charges.reduce((sum, e) => sum + e.amount, 0);
-    const totalAdjustments = adjustments.reduce((sum, e) => sum + e.amount, 0);
+    // The ledger API returns integer cents (owner_ledger_entries.amount_cents,
+    // migration 0068). Sum exactly in cents, then express dollars for the currency
+    // formatters below.
+    const totalIncome = income.reduce((sum, e) => sum + e.amountCents, 0) / 100;
+    const totalCharges = charges.reduce((sum, e) => sum + e.amountCents, 0) / 100;
+    const totalAdjustments = adjustments.reduce((sum, e) => sum + e.amountCents, 0) / 100;
     const netPosition = totalIncome - totalCharges + totalAdjustments;
 
     // Group by entry type
     const byType: Record<string, number> = {};
     filtered.forEach((e) => {
-      byType[e.entryType] = (byType[e.entryType] ?? 0) + e.amount;
+      byType[e.entryType] = (byType[e.entryType] ?? 0) + e.amountCents / 100;
     });
 
     return { totalIncome, totalCharges, totalAdjustments, netPosition, byType, filtered };
@@ -165,11 +168,11 @@ export function FinancialReportsContent() {
 
     const billed = filtered
       .filter((e) => e.entryType === "charge" || e.entryType === "assessment")
-      .reduce((sum, e) => sum + e.amount, 0);
+      .reduce((sum, e) => sum + e.amountCents, 0) / 100;
 
     const collected = filtered
       .filter((e) => e.entryType === "payment")
-      .reduce((sum, e) => sum + e.amount, 0);
+      .reduce((sum, e) => sum + e.amountCents, 0) / 100;
 
     const rate = billed > 0 ? Math.min(100, (collected / billed) * 100) : 100;
     const outstanding = Math.max(0, billed - collected);
@@ -198,7 +201,7 @@ export function FinancialReportsContent() {
     // Compute actual payments collected for reserve period
     const entries = ledgerQuery.data ?? [];
     const payments = entries.filter((e) => e.entryType === "payment" || e.entryType === "credit");
-    const totalCollected = Math.abs(payments.reduce((sum, e) => sum + e.amount, 0));
+    const totalCollected = Math.abs(payments.reduce((sum, e) => sum + e.amountCents, 0)) / 100;
     const reservePercent = totalBudgeted > 0 ? Math.round((totalReservePlanned / totalBudgeted) * 100) : 0;
     const estimatedReserveBalance = totalCollected * (reservePercent / 100);
 

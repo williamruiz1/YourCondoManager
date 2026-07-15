@@ -167,7 +167,7 @@ describe("Cherry Hill recurring-dues schedule — execution-engine coverage", ()
       unitId: "chc-unit-1",
       personId: "person-billy",
       entryType: "charge",
-      amount: 280,
+      amountCents: 28000,
       description: "Monthly HOA Dues",
       referenceType: "recurring_charge_schedule",
       referenceId: "sched-chc-1",

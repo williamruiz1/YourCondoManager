@@ -10,7 +10,14 @@
  * assessments / late-fees are stored positive (owner owes more), payments /
  * credits are stored negative (owner owes less). The running balance is the
  * simple signed sum, mirroring `getOwnerLedgerSummary` in storage.ts
- * (`balance += entry.amount`).
+ * (`balance += entry.amountCents`).
+ *
+ * UNITS (migration 0068 / founder-os#10779): the INPUT is integer CENTS, matching the
+ * `owner_ledger_entries.amount_cents` column, and all internal accumulation is exact
+ * integer math. The OUTPUT contract is unchanged — dollars, as the client, the PDF
+ * renderer and the statutory-records surface already expect — converted once at the
+ * boundary via `cents / 100`. Previously this module summed float dollars and rounded
+ * only at the end, so a long ledger could drift a cent before the final ROUND.
  *
  * The math invariant — verified by unit tests:
  *
@@ -36,7 +43,7 @@ export type StatementEntryType =
 export interface StatementLedgerEntry {
   id: string;
   entryType: StatementEntryType | string;
-  amount: number; // signed dollars
+  amountCents: number; // signed INTEGER CENTS (owner_ledger_entries.amount_cents)
   postedAt: Date;
   description: string | null;
 }
@@ -72,7 +79,12 @@ export interface AccountStatement {
   lineItems: StatementLineItem[];
 }
 
-const ROUND = (n: number): number => Math.round(n * 100) / 100;
+/**
+ * Integer cents -> dollars, at the output boundary only. Exact: `cents` is already an
+ * integer, so this is a single division with no accumulated float error to round away.
+ * (Replaces the old `Math.round(n * 100) / 100` float-dollars rounding helper.)
+ */
+const toDollars = (cents: number): number => cents / 100;
 
 /**
  * Inclusive-of-both-endpoints date-range check on the entry's posted date.
@@ -115,12 +127,12 @@ export function computeStatement(input: {
 
   // Opening balance = signed sum of every entry posted strictly BEFORE the
   // period start. This is the balance the owner carried into the period.
-  let openingBalance = 0;
+  let openingBalanceCents = 0;
   const inPeriod: StatementLedgerEntry[] = [];
 
   for (const e of entries) {
     if (e.postedAt.getTime() < from.getTime()) {
-      openingBalance += e.amount;
+      openingBalanceCents += e.amountCents;
     } else if (isInPeriod(e.postedAt, from, to)) {
       inPeriod.push(e);
     }
@@ -136,7 +148,8 @@ export function computeStatement(input: {
   });
 
   // Category roll-up + period net change.
-  const categoryTotals: StatementCategoryTotals = {
+  // Accumulated in integer cents; converted to dollars once, at the return below.
+  const categoryTotalsCents: StatementCategoryTotals = {
     charges: 0,
     assessments: 0,
     lateFees: 0,
@@ -144,30 +157,30 @@ export function computeStatement(input: {
     credits: 0,
     adjustments: 0,
   };
-  let periodNetChange = 0;
+  let periodNetChangeCents = 0;
 
   for (const e of inPeriod) {
-    periodNetChange += e.amount;
+    periodNetChangeCents += e.amountCents;
     switch (e.entryType) {
       case "charge":
-        categoryTotals.charges += e.amount;
+        categoryTotalsCents.charges += e.amountCents;
         break;
       case "assessment":
-        categoryTotals.assessments += e.amount;
+        categoryTotalsCents.assessments += e.amountCents;
         break;
       case "late-fee":
-        categoryTotals.lateFees += e.amount;
+        categoryTotalsCents.lateFees += e.amountCents;
         break;
       case "payment":
         // payments stored negative; report the absolute money-received figure
-        categoryTotals.payments += Math.abs(e.amount);
+        categoryTotalsCents.payments += Math.abs(e.amountCents);
         break;
       case "credit":
-        categoryTotals.credits += Math.abs(e.amount);
+        categoryTotalsCents.credits += Math.abs(e.amountCents);
         break;
       case "adjustment":
         // adjustments can be either sign — keep signed
-        categoryTotals.adjustments += e.amount;
+        categoryTotalsCents.adjustments += e.amountCents;
         break;
       default:
         // Unknown entry types still affect the balance (already added to
@@ -176,7 +189,9 @@ export function computeStatement(input: {
     }
   }
 
-  const closingBalance = openingBalance + periodNetChange;
+  // Exact in cents: openingBalance + periodNetChange === closingBalance holds as integer
+  // arithmetic, so the invariant can no longer be broken by float drift.
+  const closingBalanceCents = openingBalanceCents + periodNetChangeCents;
 
   return {
     associationId,
@@ -184,21 +199,21 @@ export function computeStatement(input: {
     unitId,
     periodStart: toIsoDate(from),
     periodEnd: toIsoDate(to),
-    openingBalance: ROUND(openingBalance),
-    closingBalance: ROUND(closingBalance),
-    periodNetChange: ROUND(periodNetChange),
+    openingBalance: toDollars(openingBalanceCents),
+    closingBalance: toDollars(closingBalanceCents),
+    periodNetChange: toDollars(periodNetChangeCents),
     categoryTotals: {
-      charges: ROUND(categoryTotals.charges),
-      assessments: ROUND(categoryTotals.assessments),
-      lateFees: ROUND(categoryTotals.lateFees),
-      payments: ROUND(categoryTotals.payments),
-      credits: ROUND(categoryTotals.credits),
-      adjustments: ROUND(categoryTotals.adjustments),
+      charges: toDollars(categoryTotalsCents.charges),
+      assessments: toDollars(categoryTotalsCents.assessments),
+      lateFees: toDollars(categoryTotalsCents.lateFees),
+      payments: toDollars(categoryTotalsCents.payments),
+      credits: toDollars(categoryTotalsCents.credits),
+      adjustments: toDollars(categoryTotalsCents.adjustments),
     },
     lineItems: inPeriod.map((e) => ({
       id: e.id,
       entryType: e.entryType,
-      amount: ROUND(e.amount),
+      amount: toDollars(e.amountCents),
       postedAt: e.postedAt.toISOString(),
       description: e.description,
     })),

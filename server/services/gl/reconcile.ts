@@ -21,7 +21,6 @@ import {
   deriveAccountBalances,
   accountsReceivableCents,
   validateInvariants,
-  toCents,
   type OwnerLedgerEntryLike,
   type JournalEntry,
 } from "./posting";
@@ -43,11 +42,12 @@ export interface ReconcileReport {
 
 /**
  * Compute the owner-ledger balance EXACTLY as the live product does
- * (server/storage.ts getOwnerLedgerSummary: balance += entry.amount), but in
- * integer cents so the comparison with the integer-cents GL is exact.
+ * (server/storage.ts getOwnerLedgerSummary: balance += entry.amountCents). Both sides
+ * are integer cents now (migration 0068), so the comparison with the GL is exact and
+ * needs no toCents() conversion.
  */
 export function ownerLedgerBalanceCents(entries: OwnerLedgerEntryLike[]): number {
-  return entries.reduce((sum, e) => sum + toCents(e.amount), 0);
+  return entries.reduce((sum, e) => sum + e.amountCents, 0);
 }
 
 /** Per-fund signed net (operating/reserve) of the equity-relevant balances,

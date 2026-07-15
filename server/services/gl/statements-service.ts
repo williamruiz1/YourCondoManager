@@ -202,7 +202,7 @@ async function loadOwnerLedgerForReconcile(
   return rows.map((r) => ({
     id: r.id,
     entryType: r.entryType,
-    amount: r.amount,
+    amountCents: r.amountCents,
     postedAt: r.postedAt,
     description: r.description,
   }));

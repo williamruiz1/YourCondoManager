@@ -477,6 +477,13 @@
 			"when": 1784025036002,
 			"tag": "0067_fee_matrix_topology_fix",
 			"breakpoints": true
+		},
+		{
+			"idx": 68,
+			"version": "7",
+			"when": 1784025036003,
+			"tag": "0068_ledger_integer_cents",
+			"breakpoints": true
 		}
 	]
 }

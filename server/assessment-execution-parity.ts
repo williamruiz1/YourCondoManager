@@ -91,10 +91,12 @@ interface NormalizedLedgerRow {
  * `referenceType='special_assessment_installment'` and a composite
  * `referenceId` of the form `<assessmentId>:<installmentNumber>:<unitId>`.
  */
+// Takes integer cents from the ledger (migration 0068) and normalizes to DOLLARS, because
+// the shadow side of this parity check (`assessmentRunLog.amount`) is dollar-denominated.
 function normalizeLedgerRow(row: {
   id: string;
   unitId: string;
-  amount: number;
+  amountCents: number;
   referenceType: string | null;
   referenceId: string | null;
 }): NormalizedLedgerRow {
@@ -103,7 +105,7 @@ function normalizeLedgerRow(row: {
       ruleType: "recurring",
       ruleId: row.referenceId ?? null,
       unitId: row.unitId,
-      amount: row.amount,
+      amount: row.amountCents / 100,
       ledgerEntryId: row.id,
     };
   }
@@ -114,7 +116,7 @@ function normalizeLedgerRow(row: {
       ruleType: "special-assessment",
       ruleId: assessmentId,
       unitId: row.unitId,
-      amount: row.amount,
+      amount: row.amountCents / 100,
       ledgerEntryId: row.id,
     };
   }
@@ -122,7 +124,7 @@ function normalizeLedgerRow(row: {
     ruleType: null,
     ruleId: row.referenceId ?? null,
     unitId: row.unitId,
-    amount: row.amount,
+    amount: row.amountCents / 100,
     ledgerEntryId: row.id,
   };
 }
@@ -151,7 +153,7 @@ export async function compareShadowRuns(
     .select({
       id: ownerLedgerEntries.id,
       unitId: ownerLedgerEntries.unitId,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       referenceType: ownerLedgerEntries.referenceType,
       referenceId: ownerLedgerEntries.referenceId,
     })

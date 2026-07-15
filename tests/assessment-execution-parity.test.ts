@@ -19,7 +19,8 @@ interface FakeLedgerRow {
   id: string;
   associationId: string;
   unitId: string;
-  amount: number;
+  /** Integer cents — owner_ledger_entries.amount_cents (migration 0068). */
+  amountCents: number;
   referenceType: string | null;
   referenceId: string | null;
   postedAt: Date;
@@ -62,7 +63,7 @@ vi.mock("../server/db", () => {
                   fakeLedger.map((r) => ({
                     id: r.id,
                     unitId: r.unitId,
-                    amount: r.amount,
+                    amountCents: r.amountCents,
                     referenceType: r.referenceType,
                     referenceId: r.referenceId,
                   })),
@@ -94,7 +95,7 @@ describe("compareShadowRuns — clean parity", () => {
       id: "ledger-1",
       associationId: "assoc-1",
       unitId: "unit-1",
-      amount: 350,
+      amountCents: 35000,
       referenceType: "recurring_charge_schedule",
       referenceId: "rec-A",
       postedAt: posted,
@@ -127,7 +128,7 @@ describe("compareShadowRuns — detects fabricated drift", () => {
       id: "ledger-1",
       associationId: "assoc-1",
       unitId: "unit-1",
-      amount: 350,
+      amountCents: 35000,
       referenceType: "recurring_charge_schedule",
       referenceId: "rec-A",
       postedAt: posted,
@@ -161,7 +162,7 @@ describe("compareShadowRuns — detects fabricated drift", () => {
       id: "ledger-1",
       associationId: "assoc-1",
       unitId: "unit-1",
-      amount: 350,
+      amountCents: 35000,
       referenceType: "recurring_charge_schedule",
       referenceId: "rec-A",
       postedAt: posted,
@@ -216,7 +217,7 @@ describe("compareShadowRuns — detects fabricated drift", () => {
       id: "ledger-1",
       associationId: "assoc-1",
       unitId: "unit-7",
-      amount: 1000,
+      amountCents: 100000,
       referenceType: "special_assessment_installment",
       referenceId: "sa-1:1:unit-7",
       postedAt: posted,

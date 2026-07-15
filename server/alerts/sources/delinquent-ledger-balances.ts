@@ -91,6 +91,9 @@ export async function resolveMany(
   // Build per-association summary + earliest-charge maps. For single-assoc,
   // call storage.getOwnerLedgerSummary so the existing test mock for that
   // method remains the source of truth.
+  // Shape stays DOLLARS to match storage.getOwnerLedgerSummary (the single-assoc source
+  // below, and what the alert tests mock). The multi-assoc rollup accumulates in exact
+  // integer cents (migration 0068) and converts once, so both paths agree to the cent.
   const summaryByAssoc = new Map<string, Array<{ personId: string; unitId: string; balance: number }>>();
   if (isSingleAssoc) {
     const summary = await storage.getOwnerLedgerSummary(associations[0].id);
@@ -106,17 +109,19 @@ export async function resolveMany(
       byAssoc.set(entry.associationId, list);
     }
     for (const [assocId, entries] of byAssoc.entries()) {
-      const rollup = new Map<string, { personId: string; unitId: string; balance: number }>();
+      const rollup = new Map<string, { personId: string; unitId: string; balanceCents: number }>();
       for (const entry of entries) {
         const key = `${entry.personId}:${entry.unitId}`;
         const current =
-          rollup.get(key) ?? { personId: entry.personId, unitId: entry.unitId, balance: 0 };
-        current.balance += entry.amount;
+          rollup.get(key) ?? { personId: entry.personId, unitId: entry.unitId, balanceCents: 0 };
+        current.balanceCents += entry.amountCents;
         rollup.set(key, current);
       }
       summaryByAssoc.set(
         assocId,
-        Array.from(rollup.values()).sort((a, b) => b.balance - a.balance),
+        Array.from(rollup.values())
+          .sort((a, b) => b.balanceCents - a.balanceCents)
+          .map((r) => ({ personId: r.personId, unitId: r.unitId, balance: r.balanceCents / 100 })),
       );
     }
   }

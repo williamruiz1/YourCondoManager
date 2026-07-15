@@ -20,6 +20,12 @@ const ASSOC = "assoc-1";
 const PERSON = "person-1";
 const UNIT = "unit-1";
 
+/**
+ * Fixture helper. Takes the amount in DOLLARS (so the cases below stay readable as the
+ * money they represent) and converts to the integer CENTS the statement math now consumes
+ * (migration 0068). The statement OUTPUT is still dollars, so every expectation below is
+ * unchanged by the cents migration.
+ */
 function entry(
   id: string,
   entryType: StatementLedgerEntry["entryType"],
@@ -27,7 +33,13 @@ function entry(
   postedAt: string,
   description: string | null = null,
 ): StatementLedgerEntry {
-  return { id, entryType, amount, postedAt: new Date(postedAt), description };
+  return {
+    id,
+    entryType,
+    amountCents: Math.round(amount * 100),
+    postedAt: new Date(postedAt),
+    description,
+  };
 }
 
 // Standard period: all of March 2026.
@@ -386,7 +398,9 @@ describe("computeStatement — cross-period continuity", () => {
   });
 
   it("an all-time statement closes at the live ledger balance (signed sum of every entry)", () => {
-    const liveBalance = LEDGER.reduce((sum, e) => sum + e.amount, 0);
+    // Sum the exact integer cents, then express in dollars to match the statement's
+    // dollars output contract.
+    const liveBalance = LEDGER.reduce((sum, e) => sum + e.amountCents, 0) / 100;
     const allTime = statementFor("2020-01-01T00:00:00.000Z", "2026-12-31T23:59:59.999Z");
     expect(allTime.openingBalance).toBe(0);
     expect(allTime.closingBalance).toBe(liveBalance);

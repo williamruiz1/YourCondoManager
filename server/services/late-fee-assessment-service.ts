@@ -278,7 +278,8 @@ export const lateFeeAssessmentHandler: RuleExecutionHandler = async (ctx) => {
       unitId,
       personId: resolvedPersonId,
       entryType: "late-fee",
-      amount: feeAmount,
+      // Late-fee rules are dollar-denominated — convert once at the ledger boundary.
+      amountCents: Math.round(feeAmount * 100),
       postedAt: ctx.dueDate,
       description: `Late fee — ${rule.name} (${periodKey})`,
       referenceType: LATE_FEE_REFERENCE_TYPE,

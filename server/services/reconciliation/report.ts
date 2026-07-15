@@ -59,7 +59,7 @@ export interface ReconciliationReport {
     unitId: string;
     unitNumber: string | null;
     postedAt: Date;
-    amount: number;
+    amountCents: number;
     description: string | null;
   }>;
   byOwner: Array<{
@@ -108,8 +108,10 @@ export async function buildReconciliationReport(input: {
         lte(ownerLedgerEntries.postedAt, periodEnd),
       ),
     );
+  // Cents are stored exactly (migration 0068), so this is a plain integer sum — the
+  // round-each-term-before-summing discipline the float8 era required is gone.
   const ledgerPaymentsCents = ledgerRows.reduce(
-    (sum, r) => sum + Math.round(Math.abs(r.amount) * 100),
+    (sum, r) => sum + Math.abs(r.amountCents),
     0,
   );
 
@@ -162,7 +164,7 @@ export async function buildReconciliationReport(input: {
       unitId: r.unitId,
       unitNumber: unit?.unitNumber ?? null,
       postedAt: r.postedAt,
-      amount: r.amount,
+      amountCents: r.amountCents,
       description: r.description,
     };
   });
@@ -177,7 +179,7 @@ export async function buildReconciliationReport(input: {
       paymentsRecordedCents: 0,
       paymentsSettledCents: 0,
     };
-    const cents = Math.round(Math.abs(r.amount) * 100);
+    const cents = Math.abs(r.amountCents);
     acc.paymentsRecordedCents += cents;
     if (r.bankTransactionId !== null && r.settledAt !== null) {
       acc.paymentsSettledCents += cents;

@@ -42,11 +42,11 @@ const AT = new Date("2026-06-01T00:00:00Z");
 function ownerLedger(): OwnerLedgerEntryLike[] {
   return [
     // Recurring dues billed $300 → income 4000 (HOA Dues), AR up.
-    { id: "d1", entryType: "charge", amount: 300, postedAt: AT },
+    { id: "d1", entryType: "charge", amountCents: 30000, postedAt: AT },
     // Owner pays $300 → cash up, AR down.
-    { id: "p1", entryType: "payment", amount: -300, postedAt: AT },
+    { id: "p1", entryType: "payment", amountCents: -30000, postedAt: AT },
     // Special assessment billed $500 → income 4200 (Special Assessment), AR up.
-    { id: "a1", entryType: "assessment", amount: 500, postedAt: AT },
+    { id: "a1", entryType: "assessment", amountCents: 50000, postedAt: AT },
   ];
 }
 

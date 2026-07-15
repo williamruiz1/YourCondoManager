@@ -44,16 +44,17 @@ function loadChcSeedEntries(): OwnerLedgerEntryLike[] {
   }
   const block = text.slice(start, end);
 
-  // Each entry is an object literal with entryType + amount fields.
+  // Each entry is an object literal with entryType + amountCents fields (integer cents
+  // since migration 0068 / founder-os#10779).
   const entries: OwnerLedgerEntryLike[] = [];
-  const objectRegex = /\{[^{}]*?entryType:\s*"([^"]+)"[^{}]*?amount:\s*(-?\d+(?:\.\d+)?)[^{}]*?\}/gs;
+  const objectRegex = /\{[^{}]*?entryType:\s*"([^"]+)"[^{}]*?amountCents:\s*(-?\d+)[^{}]*?\}/gs;
   let m: RegExpExecArray | null;
   let i = 0;
   while ((m = objectRegex.exec(block)) !== null) {
     entries.push({
       id: `chc-seed-${i++}`,
       entryType: m[1] as OwnerLedgerEntryLike["entryType"],
-      amount: Number(m[2]),
+      amountCents: Number(m[2]),
       postedAt: new Date("2026-05-08T00:00:00Z"),
     });
   }
@@ -93,12 +94,12 @@ describe("CHC reconcile-to-the-cent — the acceptance gate (BLINDSPOT F4)", () 
     // live money flow (admin-payments.ts stores payments as negative amounts).
     const withPayment: OwnerLedgerEntryLike[] = [
       ...entries,
-      { id: "chc-pay-1", entryType: "payment", amount: -1326.19, postedAt: new Date("2026-06-01T00:00:00Z") },
+      { id: "chc-pay-1", entryType: "payment", amountCents: -132619, postedAt: new Date("2026-06-01T00:00:00Z") },
     ];
     const report = reconcileFromOwnerLedger(withPayment);
     expect(report.ok).toBe(true);
     expect(report.differenceCents).toBe(0);
     // AR drops by exactly the payment.
-    expect(report.glAccountsReceivableCents).toBe(2160778 - toCents(1326.19));
+    expect(report.glAccountsReceivableCents).toBe(2160778 - 132619);
   });
 });

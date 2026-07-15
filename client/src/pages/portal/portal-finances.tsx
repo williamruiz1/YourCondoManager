@@ -997,7 +997,14 @@ function FinancesHubContent() {
     [paymentTransactions],
   );
   const activityItems = useMemo(
-    () => buildActivityFeed(ledger, pendingTransactions, unitLabelMap),
+    () =>
+      buildActivityFeed(
+        // The ledger API returns integer cents (migration 0068); buildActivityFeed is a
+        // pure, unit-tested DOLLARS-denominated helper — adapt at its boundary.
+        ledger.map((e) => ({ ...e, amount: e.amountCents / 100 })),
+        pendingTransactions,
+        unitLabelMap,
+      ),
     [ledger, pendingTransactions, unitLabelMap],
   );
 
@@ -1957,7 +1964,7 @@ function LedgerContent() {
                           </TableCell>
                         ) : null}
                         <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
-                        <TableCell className="text-right text-xs">${Number(entry.amount).toFixed(2)}</TableCell>
+                        <TableCell className="text-right text-xs">${(entry.amountCents / 100).toFixed(2)}</TableCell>
                       </TableRow>
                     ))
                   )}
@@ -2139,7 +2146,7 @@ function VirtualizedPortalLedger({
             <div className="truncate px-4 py-3" title={entry.description ?? undefined}>
               {entry.description ?? "—"}
             </div>
-            <div className="px-4 py-3 text-right">${Number(entry.amount).toFixed(2)}</div>
+            <div className="px-4 py-3 text-right">${(entry.amountCents / 100).toFixed(2)}</div>
           </div>
         )}
       />

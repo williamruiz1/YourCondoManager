@@ -296,7 +296,8 @@ export async function runAutopayRetries(): Promise<{
           unitId: originalTxn.unitId,
           personId: originalTxn.personId,
           entryType: "payment",
-          amount: -(originalTxn.amountCents / 100),
+          // Payments are stored negative. Both sides are integer cents (migration 0068).
+          amountCents: -originalTxn.amountCents,
           postedAt: new Date(),
           description: originalTxn.description || "Autopay retry payment",
           referenceType: "autopay_payment_transaction",

@@ -178,8 +178,13 @@ export interface JournalEntry {
 export interface OwnerLedgerEntryLike {
   id: string;
   entryType: "charge" | "assessment" | "payment" | "late-fee" | "credit" | "adjustment";
-  /** Dollars (float), as stored in owner_ledger_entries.amount (a `real`). */
-  amount: number;
+  /**
+   * Signed INTEGER CENTS, exactly as stored in `owner_ledger_entries.amount_cents`
+   * (migration 0068). The GL core has always worked in cents internally; the source
+   * column is now cents too, so owner-ledger postings need no `toCents()` boundary
+   * conversion at all — the value carries straight through.
+   */
+  amountCents: number;
   postedAt: Date;
   description?: string | null;
 }
@@ -227,7 +232,9 @@ export interface OwnerLedgerEntryLike {
  */
 export function postOwnerLedgerEntry(entry: OwnerLedgerEntryLike): JournalEntry {
   const fund: GlFund = "operating";
-  const cents = toCents(entry.amount);
+  // Already integer cents (migration 0068) — no toCents() boundary conversion needed.
+  // `toCents` is still the boundary for vendor invoices, which remain dollar-denominated.
+  const cents = entry.amountCents;
   const magnitude = Math.abs(cents);
   const description = entry.description ?? `${entry.entryType} ${centsToDollars(cents).toFixed(2)}`;
 

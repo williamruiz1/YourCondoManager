@@ -283,7 +283,9 @@ export async function runAutopayCollectionForAssociation(
           associationId,
           unitId: enrollment.unitId,
           personId: enrollment.personId,
-          amount: -chargeAmount,
+          // Negative — a payment credit. Reuses the same `amountCents` already computed
+          // for the Stripe charge above, so the ledger and the charge cannot disagree.
+          amountCents: -amountCents,
           postedAt: now,
           description: enrollment.description || "Autopay HOA dues",
           referenceType: "autopay_payment_transaction",

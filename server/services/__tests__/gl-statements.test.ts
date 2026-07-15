@@ -53,14 +53,15 @@ function loadChcSeedEntries(): OwnerLedgerEntryLike[] {
   const block = text.slice(start, end);
 
   const entries: OwnerLedgerEntryLike[] = [];
-  const objectRegex = /\{[^{}]*?entryType:\s*"([^"]+)"[^{}]*?amount:\s*(-?\d+(?:\.\d+)?)[^{}]*?\}/gs;
+  // amountCents — integer cents since migration 0068 (founder-os#10779).
+  const objectRegex = /\{[^{}]*?entryType:\s*"([^"]+)"[^{}]*?amountCents:\s*(-?\d+)[^{}]*?\}/gs;
   let m: RegExpExecArray | null;
   let i = 0;
   while ((m = objectRegex.exec(block)) !== null) {
     entries.push({
       id: `chc-seed-${i++}`,
       entryType: m[1] as OwnerLedgerEntryLike["entryType"],
-      amount: Number(m[2]),
+      amountCents: Number(m[2]),
       postedAt: new Date("2026-05-08T00:00:00Z"),
     });
   }
@@ -96,7 +97,7 @@ describe("Financial statements — balance sheet (the Phase-2 acceptance gate)",
   it("balances AFTER a payment moves cash↑ / AR↓ (the live money path)", () => {
     const withPayment = postOwnerLedgerEntries([
       ...loadChcSeedEntries(),
-      { id: "pay-1", entryType: "payment", amount: -1326.19, postedAt: new Date("2026-06-01T00:00:00Z") },
+      { id: "pay-1", entryType: "payment", amountCents: -132619, postedAt: new Date("2026-06-01T00:00:00Z") },
     ]);
     const bs = buildBalanceSheet(withPayment);
     expect(bs.differenceCents).toBe(0);

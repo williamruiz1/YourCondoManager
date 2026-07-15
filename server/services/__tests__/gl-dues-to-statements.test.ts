@@ -23,7 +23,6 @@ import {
   accountsReceivableCents,
   deriveAccountBalances,
   validateInvariants,
-  toCents,
   type OwnerLedgerEntryLike,
 } from "../gl/posting";
 import { reconcileFromOwnerLedger } from "../gl/reconcile";
@@ -31,11 +30,16 @@ import { buildBalanceSheet } from "../gl/statements";
 
 const POSTED = new Date("2026-06-29T12:00:00Z");
 
-/** A dues CHARGE then a dues PAYMENT of the same amount — the canonical flow. */
+/**
+ * A dues CHARGE then a dues PAYMENT of the same amount — the canonical flow.
+ * Takes DOLLARS (readable at the call sites) and converts to the integer cents the GL
+ * core now consumes (migration 0068 / founder-os#10779).
+ */
 function duesChargeThenPayment(dollars: number): OwnerLedgerEntryLike[] {
+  const cents = Math.round(dollars * 100);
   return [
-    { id: "charge-1", entryType: "charge", amount: dollars, postedAt: POSTED, description: "HOA dues" },
-    { id: "pay-1", entryType: "payment", amount: -dollars, postedAt: POSTED, description: "Payment webhook" },
+    { id: "charge-1", entryType: "charge", amountCents: cents, postedAt: POSTED, description: "HOA dues" },
+    { id: "pay-1", entryType: "payment", amountCents: -cents, postedAt: POSTED, description: "Payment webhook" },
   ];
 }
 
@@ -44,7 +48,7 @@ describe("dues payment → GL legs (DR Operating Cash 1010 / CR Accounts Receiva
     const payment: OwnerLedgerEntryLike = {
       id: "pay-1",
       entryType: "payment",
-      amount: -300,
+      amountCents: -30000,
       postedAt: POSTED,
       description: "Payment webhook",
     };
@@ -91,8 +95,8 @@ describe("charge + full payment → balances + reconcile-to-cent", () => {
   it("reconcile-to-cent PASSES: GL A/R == owner-ledger Σ amount (gate that lets the GL post)", () => {
     // A partially-paid case so the reconciled balance is non-zero and exact.
     const entries: OwnerLedgerEntryLike[] = [
-      { id: "c1", entryType: "charge", amount: 500.55, postedAt: POSTED },
-      { id: "p1", entryType: "payment", amount: -200.55, postedAt: POSTED },
+      { id: "c1", entryType: "charge", amountCents: 50055, postedAt: POSTED },
+      { id: "p1", entryType: "payment", amountCents: -20055, postedAt: POSTED },
     ];
     const report = reconcileFromOwnerLedger(entries);
 
@@ -126,7 +130,7 @@ describe("dues activity appears on the financial statements (balance sheet)", ()
 
   it("an unpaid charge surfaces as Accounts Receivable on the balance sheet", () => {
     const journals = postOwnerLedgerEntries([
-      { id: "c1", entryType: "charge", amount: 450, postedAt: POSTED, description: "HOA dues" },
+      { id: "c1", entryType: "charge", amountCents: 45000, postedAt: POSTED, description: "HOA dues" },
     ]);
     const sheet = buildBalanceSheet(journals);
     const operating = sheet.funds.find((f) => f.fund === "operating")!;
@@ -141,7 +145,7 @@ describe("webhook-retry idempotency (model layer)", () => {
     const payment: OwnerLedgerEntryLike = {
       id: "pay-42",
       entryType: "payment",
-      amount: -125.25,
+      amountCents: -12525,
       postedAt: POSTED,
     };
     const first = postOwnerLedgerEntry(payment);
@@ -153,7 +157,7 @@ describe("webhook-retry idempotency (model layer)", () => {
     expect(second.journalId).toBe(first.journalId);
     expect(second.sourceId).toBe("pay-42");
     expect(second.legs).toEqual(first.legs);
-    expect(toCents(payment.amount)).toBe(-12525);
+    expect(payment.amountCents).toBe(-12525);
     for (const leg of first.legs) expect(leg.amountCents).toBe(12525);
   });
 
@@ -161,17 +165,17 @@ describe("webhook-retry idempotency (model layer)", () => {
     // Distinct ids = two real payments (owner paid twice) → A/R goes negative
     // (a credit balance) — that's correct, not a bug.
     const twoRealPayments = postOwnerLedgerEntries([
-      { id: "c1", entryType: "charge", amount: 300, postedAt: POSTED },
-      { id: "p1", entryType: "payment", amount: -300, postedAt: POSTED },
-      { id: "p2", entryType: "payment", amount: -300, postedAt: POSTED },
+      { id: "c1", entryType: "charge", amountCents: 30000, postedAt: POSTED },
+      { id: "p1", entryType: "payment", amountCents: -30000, postedAt: POSTED },
+      { id: "p2", entryType: "payment", amountCents: -30000, postedAt: POSTED },
     ]);
     expect(accountsReceivableCents(twoRealPayments)).toBe(-30000);
 
     // The SAME payment row id re-derived (a webhook RETRY) produces the SAME
     // single journal — not two — so it can never double-pay through the GL.
     const retried = postOwnerLedgerEntries([
-      { id: "c1", entryType: "charge", amount: 300, postedAt: POSTED },
-      { id: "p1", entryType: "payment", amount: -300, postedAt: POSTED },
+      { id: "c1", entryType: "charge", amountCents: 30000, postedAt: POSTED },
+      { id: "p1", entryType: "payment", amountCents: -30000, postedAt: POSTED },
     ]);
     const journalIds = retried.map((j) => j.journalId);
     expect(new Set(journalIds).size).toBe(journalIds.length); // all unique

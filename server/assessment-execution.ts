@@ -113,7 +113,8 @@ export interface RuleExecutionOutcome {
     unitId: string;
     personId: string;
     entryType: "charge" | "assessment" | "payment" | "late-fee" | "credit" | "adjustment";
-    amount: number;
+    /** Integer cents — matches owner_ledger_entries.amount_cents (migration 0068). */
+    amountCents: number;
     postedAt: Date;
     description: string | null;
     referenceType: string | null;
@@ -390,7 +391,9 @@ export const recurringChargesHandler: RuleExecutionHandler = async (ctx) => {
       unitId: ctx.unit.id,
       personId: ownership.personId,
       entryType: schedule.entryType,
-      amount: schedule.amount,
+      // recurring_charge_schedules.amount is dollars (out of scope for 0068) — convert
+      // once at the ledger boundary.
+      amountCents: Math.round(schedule.amount * 100),
       postedAt: ctx.dueDate,
       description: schedule.chargeDescription,
       referenceType: "recurring_charge_schedule",
@@ -626,7 +629,9 @@ export const specialAssessmentsHandler: RuleExecutionHandler = async (ctx) => {
       unitId: ctx.unit.id,
       personId: ownership.personId,
       entryType: "assessment",
-      amount,
+      // `amount` is dollars (special-assessment rules are dollar-denominated) — convert
+      // once at the ledger boundary.
+      amountCents: Math.round(amount * 100),
       postedAt: ctx.dueDate,
       description,
       referenceType: SPECIAL_ASSESSMENT_REFERENCE_TYPE,
@@ -909,7 +914,8 @@ async function executeSingle(
       associationId: entry.associationId,
       unitId: entry.unit.id,
       personId: outcome.ledgerEntryPayload.personId,
-      amount: outcome.ledgerEntryPayload.amount,
+      // run-log `amount` is dollars-denominated (assessment_run_log.amount) — convert.
+      amount: outcome.ledgerEntryPayload.amountCents / 100,
       entryType: outcome.ledgerEntryPayload.entryType,
       description: outcome.ledgerEntryPayload.description,
       dueDate: entry.dueDate,

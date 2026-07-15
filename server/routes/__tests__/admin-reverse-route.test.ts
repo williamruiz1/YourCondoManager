@@ -166,7 +166,7 @@ function seedPayment(over: Partial<Row> = {}): Row {
     unitId: "u1",
     personId: "p1",
     entryType: "payment",
-    amount: -200,
+    amountCents: -20000,
     postedAt: new Date("2026-06-01T00:00:00Z"),
     description: "Check #1042",
     referenceType: "manual-recorded-payment",
@@ -208,7 +208,7 @@ describe("POST /api/admin/payments/reverse", () => {
 
   it("A2 full reversal posts the equal-and-opposite adjustment + audit; invariant holds", async () => {
     // A charge (+200) and its payment (−200): balance 0 before reversal.
-    seedPayment({ entryType: "assessment", amount: 200, referenceType: null, referenceId: null });
+    seedPayment({ entryType: "assessment", amountCents: 20000, referenceType: null, referenceId: null });
     const target = seedPayment();
 
     const { status, json } = await post(makeApp("platform-admin"), "/api/admin/payments/reverse", {
@@ -226,9 +226,9 @@ describe("POST /api/admin/payments/reverse", () => {
     const reversal = ledgerRows.find((r) => r.referenceType === "refund-reversal");
     expect(reversal).toBeTruthy();
     expect(reversal!.entryType).toBe("adjustment");
-    expect(reversal!.amount).toBe(200);
+    expect(reversal!.amountCents).toBe(20000);
     expect(reversal!.referenceId).toBe(target.id);
-    expect(ledgerRows.find((r) => r.id === target.id)!.amount).toBe(-200);
+    expect(ledgerRows.find((r) => r.id === target.id)!.amountCents).toBe(-20000);
 
     // Audited with who/what/why.
     const audit = auditInserts.find((a) => a.action === "payment.reverse");
@@ -317,7 +317,7 @@ describe("POST /api/admin/payments/reverse", () => {
 describe("POST /api/admin/payments/refund — ledger-reversal side effect (A5)", () => {
   it("posts the matching ledger reversal when the charge's ledger entry exists", async () => {
     const chargeEntry = seedPayment({
-      amount: -200,
+      amountCents: -20000,
       referenceType: "stripe_charge",
       referenceId: "ch_live_1",
       description: "Stripe payment",
@@ -336,7 +336,7 @@ describe("POST /api/admin/payments/refund — ledger-reversal side effect (A5)",
     expect(json.ledgerReversal.reversedEntryId).toBe(chargeEntry.id);
     const reversal = ledgerRows.find((r) => r.referenceType === "refund-reversal");
     expect(reversal).toBeTruthy();
-    expect(reversal!.amount).toBe(200);
+    expect(reversal!.amountCents).toBe(20000);
     // Both the Stripe refund and the ledger reversal are audited.
     expect(auditInserts.some((a) => a.action === "payment.refund")).toBe(true);
     expect(auditInserts.some((a) => a.action === "payment.refund-ledger-reversal")).toBe(true);

@@ -202,12 +202,13 @@ export async function writeLedgerEntryForCharge(
 
   // Layer 2 — A-WEBHOOK-001/002: the canonical, DB-enforced cross-path write.
   const paymentIdentityKey = input.paymentIntentId?.trim() || input.chargeId;
-  const amount = -(input.amountCents / 100);
+  // Stripe reports cents and the ledger stores cents (migration 0068) — direct carry,
+  // no dollars round-trip. Negative: a payment credit.
   const result = await postPaymentLedgerEntry({
     associationId: meta.associationId,
     unitId: meta.unitId,
     personId: meta.personId,
-    amount,
+    amountCents: -input.amountCents,
     postedAt: input.postedAt,
     description: input.description?.trim() || "Stripe payment",
     referenceType: CHARGE_REFERENCE_TYPE,
@@ -225,7 +226,7 @@ export async function writeLedgerEntryForCharge(
   }
 
   log(
-    `[${input.source}] wrote ledger entry id=${result.entry!.id} key=${idempotencyKey} identity=${paymentIdentityKey} amount=${amount} at=${new Date().toISOString()}`,
+    `[${input.source}] wrote ledger entry id=${result.entry!.id} key=${idempotencyKey} identity=${paymentIdentityKey} amountCents=${-input.amountCents} at=${new Date().toISOString()}`,
     AUDIT_SOURCE,
   );
   return { created: true, ledgerEntryId: result.entry!.id, skipped: undefined };
@@ -308,7 +309,9 @@ export async function writeReversalLedgerEntry(
       unitId: original[0].unitId,
       personId: original[0].personId,
       entryType: "adjustment",
-      amount: input.amountCents / 100, // POSITIVE — reverses the negative payment
+      // POSITIVE — reverses the negative payment. Stripe reports cents and the ledger
+      // now stores cents (migration 0068), so this carries across with no conversion.
+      amountCents: input.amountCents,
       postedAt: input.postedAt ?? new Date(),
       description: input.description?.trim() || "Stripe reversal",
       referenceType: input.referenceType,

@@ -31,7 +31,7 @@ type Credit = {
 type LedgerEntry = {
   id: string;
   associationId: string;
-  amount: number; // negative for payment entries
+  amountCents: number; // integer cents; negative for payment entries
   referenceType: string | null;
   bankTransactionId: string | null;
   settledAt: Date | null;
@@ -176,7 +176,7 @@ vi.mock("@shared/schema", () => {
       referenceType: col("referenceType"),
       settledAt: col("settledAt"),
       bankTransactionId: col("bankTransactionId"),
-      amount: col("amount"),
+      amountCents: col("amountCents"),
       description: col("description"),
       createdAt: col("createdAt"),
     },
@@ -206,7 +206,7 @@ function entry(over: Partial<LedgerEntry>): LedgerEntry {
   return {
     id: over.id ?? "ole-1",
     associationId: over.associationId ?? ASSOC_A,
-    amount: over.amount ?? -250, // payment intent, negative per pay-intent convention
+    amountCents: over.amountCents ?? -25000, // payment intent, negative per pay-intent convention
     referenceType: over.referenceType ?? "plaid-pay-intent",
     bankTransactionId: over.bankTransactionId ?? null,
     settledAt: over.settledAt ?? null,
@@ -226,7 +226,7 @@ beforeEach(() => {
 describe("Issue #448 — Plaid bank-tx reconciliation", () => {
   it("auto-matches exact-amount + same-day credit and entry", async () => {
     state.credits = [credit({ id: "btx-A", amountCents: -25000, date: new Date("2026-05-10") })];
-    state.entries = [entry({ id: "ole-A", amount: -250, createdAt: new Date("2026-05-10") })];
+    state.entries = [entry({ id: "ole-A", amountCents: -25000, createdAt: new Date("2026-05-10") })];
 
     const r = await reconcileBankTransactions(ASSOC_A);
 
@@ -246,7 +246,7 @@ describe("Issue #448 — Plaid bank-tx reconciliation", () => {
 
   it("does not auto-match when amounts differ by more than zero cents", async () => {
     state.credits = [credit({ id: "btx-A", amountCents: -25001 })]; // $250.01
-    state.entries = [entry({ id: "ole-A", amount: -250 })]; // $250.00
+    state.entries = [entry({ id: "ole-A", amountCents: -25000 })]; // $250.00
 
     const r = await reconcileBankTransactions(ASSOC_A);
 
@@ -299,7 +299,7 @@ describe("Issue #448 — Plaid bank-tx reconciliation", () => {
 
   it("manualMatchBankTransaction succeeds within $1 tolerance", async () => {
     state.credits = [credit({ id: "btx-A", amountCents: -25055 })]; // $250.55
-    state.entries = [entry({ id: "ole-A", amount: -250 })]; // $250.00 — within $1
+    state.entries = [entry({ id: "ole-A", amountCents: -25000 })]; // $250.00 — within $1
 
     const r = await manualMatchBankTransaction({
       associationId: ASSOC_A,
@@ -314,7 +314,7 @@ describe("Issue #448 — Plaid bank-tx reconciliation", () => {
 
   it("manualMatchBankTransaction rejects outside-$1 tolerance", async () => {
     state.credits = [credit({ id: "btx-A", amountCents: -27500 })]; // $275
-    state.entries = [entry({ id: "ole-A", amount: -250 })]; // $250 — $25 off
+    state.entries = [entry({ id: "ole-A", amountCents: -25000 })]; // $250 — $25 off
 
     const r = await manualMatchBankTransaction({
       associationId: ASSOC_A,
@@ -350,9 +350,9 @@ describe("Issue #448 — Plaid bank-tx reconciliation", () => {
   it("listPendingReconciliation returns unmatched credits with ±$1 candidates", async () => {
     state.credits = [credit({ id: "btx-1", amountCents: -25000 })];
     state.entries = [
-      entry({ id: "ole-close", amount: -250.5 }),    // within $1 — candidate
-      entry({ id: "ole-far",   amount: -300 }),       // outside $1 — not a candidate
-      entry({ id: "ole-exact", amount: -250 }),       // within $1 — candidate
+      entry({ id: "ole-close", amountCents: -25050 }),    // within $1 — candidate
+      entry({ id: "ole-far",   amountCents: -30000 }),       // outside $1 — not a candidate
+      entry({ id: "ole-exact", amountCents: -25000 }),       // within $1 — candidate
     ];
 
     const pending = await listPendingReconciliation(ASSOC_A);
@@ -382,7 +382,7 @@ describe("Issue #448 — Plaid bank-tx reconciliation", () => {
 
   it("a debit (positive amountCents) never matches as a credit", async () => {
     state.credits = [credit({ id: "btx-A", amountCents: 25000 })]; // POSITIVE = debit
-    state.entries = [entry({ id: "ole-A", amount: -250 })];
+    state.entries = [entry({ id: "ole-A", amountCents: -25000 })];
 
     const r = await reconcileBankTransactions(ASSOC_A);
 
@@ -411,8 +411,8 @@ describe("A-RECON-004 — a consumed credit cannot double-settle", () => {
     // ledger link marks btx-A consumed, so it is never re-evaluated.
     state.credits = [credit({ id: "btx-A", amountCents: -25000, date: new Date("2026-05-10") })];
     state.entries = [
-      entry({ id: "ole-settled", amount: -250, bankTransactionId: "btx-A", settledAt: new Date("2026-05-09") }),
-      entry({ id: "ole-pending", amount: -250, createdAt: new Date("2026-05-10") }),
+      entry({ id: "ole-settled", amountCents: -25000, bankTransactionId: "btx-A", settledAt: new Date("2026-05-09") }),
+      entry({ id: "ole-pending", amountCents: -25000, createdAt: new Date("2026-05-10") }),
     ];
 
     const r = await reconcileBankTransactions(ASSOC_A);
@@ -426,8 +426,8 @@ describe("A-RECON-004 — a consumed credit cannot double-settle", () => {
   it("two equal-amount pending entries + one credit → only ONE settled, and a re-run never settles the second", async () => {
     state.credits = [credit({ id: "btx-A", amountCents: -25000, date: new Date("2026-05-10") })];
     state.entries = [
-      entry({ id: "ole-X", amount: -250, createdAt: new Date("2026-05-10") }),
-      entry({ id: "ole-Y", amount: -250, createdAt: new Date("2026-05-10") }),
+      entry({ id: "ole-X", amountCents: -25000, createdAt: new Date("2026-05-10") }),
+      entry({ id: "ole-Y", amountCents: -25000, createdAt: new Date("2026-05-10") }),
     ];
 
     // Run 1 — exactly one entry settles; the other stays pending.
@@ -446,7 +446,7 @@ describe("A-RECON-004 — a consumed credit cannot double-settle", () => {
 
   it("applyMatch is atomic — a mid-match DB failure leaves zero partial writes", async () => {
     state.credits = [credit({ id: "btx-A", amountCents: -25000, date: new Date("2026-05-10") })];
-    state.entries = [entry({ id: "ole-A", amount: -250, createdAt: new Date("2026-05-10") })];
+    state.entries = [entry({ id: "ole-A", amountCents: -25000, createdAt: new Date("2026-05-10") })];
     state.failNextUpdate = true;
 
     await expect(reconcileBankTransactions(ASSOC_A)).rejects.toThrow(/simulated DB failure/);
@@ -459,8 +459,8 @@ describe("A-RECON-004 — a consumed credit cannot double-settle", () => {
   it("manualMatchBankTransaction rejects a credit already consumed by a ledger link", async () => {
     state.credits = [credit({ id: "btx-A", amountCents: -25000 })];
     state.entries = [
-      entry({ id: "ole-settled", amount: -250, bankTransactionId: "btx-A", settledAt: new Date("2026-05-09") }),
-      entry({ id: "ole-target", amount: -250 }),
+      entry({ id: "ole-settled", amountCents: -25000, bankTransactionId: "btx-A", settledAt: new Date("2026-05-09") }),
+      entry({ id: "ole-target", amountCents: -25000 }),
     ];
 
     const r = await manualMatchBankTransaction({
@@ -482,8 +482,8 @@ describe("A-RECON-004 — a consumed credit cannot double-settle", () => {
       credit({ id: "btx-open", amountCents: -25000 }),
     ];
     state.entries = [
-      entry({ id: "ole-links-consumed", amount: -250, bankTransactionId: "btx-consumed", settledAt: new Date("2026-05-09") }),
-      entry({ id: "ole-pending", amount: -250 }),
+      entry({ id: "ole-links-consumed", amountCents: -25000, bankTransactionId: "btx-consumed", settledAt: new Date("2026-05-09") }),
+      entry({ id: "ole-pending", amountCents: -25000 }),
     ];
 
     const pending = await listPendingReconciliation(ASSOC_A);

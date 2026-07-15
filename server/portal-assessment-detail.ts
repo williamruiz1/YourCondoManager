@@ -243,22 +243,25 @@ export async function buildAssessmentDetailForOwnerUnit(params: {
   });
 
   // Build running balance across this owner's posted entries.
-  let running = 0;
+  // Running balance accumulates in exact integer cents (migration 0068); this portal
+  // view is dollars-facing, so convert per row at the boundary.
+  let runningCents = 0;
   const ledgerEntriesView = myLedgerEntries.map((e) => {
-    running += e.amount;
+    runningCents += e.amountCents;
     return {
       id: e.id,
       postedAt: new Date(e.postedAt).toISOString(),
-      amount: e.amount,
-      balance: running,
+      amount: e.amountCents / 100,
+      balance: runningCents / 100,
     };
   });
 
-  const totalPaidAbs = Math.abs(
-    myLedgerEntries
-      .filter((e) => e.entryType === "payment" || e.entryType === "credit")
-      .reduce((acc, e) => acc + e.amount, 0),
-  );
+  const totalPaidAbs =
+    Math.abs(
+      myLedgerEntries
+        .filter((e) => e.entryType === "payment" || e.entryType === "credit")
+        .reduce((acc, e) => acc + e.amountCents, 0),
+    ) / 100;
 
   // 2026-07-12 — same LEGACY-assessment ledger-truth treatment as
   // `getAssessmentPlansForOwnerUnit` (the owner-portal "My Finances" summary
@@ -305,9 +308,9 @@ export async function buildAssessmentDetailForOwnerUnit(params: {
       const untrackedEntries = rawAssessmentEntries.filter(
         (e) => e.referenceType !== SPECIAL_ASSESSMENT_REFERENCE_TYPE,
       );
-      legacyLedgerRemaining = round2(
-        Math.max(0, untrackedEntries.reduce((sum, e) => sum + e.amount, 0)),
-      );
+      // Exact integer-cents sum (migration 0068).
+      legacyLedgerRemaining =
+        Math.max(0, untrackedEntries.reduce((sum, e) => sum + e.amountCents, 0)) / 100;
     }
   }
 
@@ -592,9 +595,10 @@ export async function getAssessmentPlansForOwnerUnit(params: {
     const untrackedEntries = rawAssessmentEntries.filter(
       (e) => e.referenceType !== SPECIAL_ASSESSMENT_REFERENCE_TYPE,
     );
-    legacyLedgerRemaining = round2(
-      Math.max(0, untrackedEntries.reduce((sum, e) => sum + e.amount, 0)),
-    );
+    // Exact integer-cents sum (migration 0068); round2 is no longer scrubbing float
+    // residue — the division is the only conversion.
+    legacyLedgerRemaining =
+      Math.max(0, untrackedEntries.reduce((sum, e) => sum + e.amountCents, 0)) / 100;
   }
 
   const plans: AssessmentPlanProgress[] = [];

@@ -50,8 +50,8 @@ export interface PostPaymentLedgerEntryInput {
   associationId: string;
   unitId: string;
   personId: string;
-  /** Signed dollar amount — caller computes this exactly as before (negative for a payment credit). */
-  amount: number;
+  /** Signed INTEGER CENTS (migration 0068) — negative for a payment credit. */
+  amountCents: number;
   postedAt?: Date;
   description?: string | null;
   /** Kept for reporting/back-compat — unchanged per-path label ('payment-webhook' | 'autopay_payment_transaction' | 'stripe_charge'). */
@@ -99,7 +99,7 @@ export async function postPaymentLedgerEntry(
         unitId: input.unitId,
         personId: input.personId,
         entryType: "payment",
-        amount: input.amount,
+        amountCents: input.amountCents,
         postedAt: input.postedAt ?? new Date(),
         description: input.description?.trim() || null,
         referenceType: input.referenceType,
@@ -118,7 +118,7 @@ export async function postPaymentLedgerEntry(
 
     if (inserted) {
       log(
-        `[${input.source}] wrote ledger entry id=${inserted.id} identity=${key} ref=${logRef} amount=${input.amount}`,
+        `[${input.source}] wrote ledger entry id=${inserted.id} identity=${key} ref=${logRef} amountCents=${input.amountCents}`,
         AUDIT_SOURCE,
       );
       return { created: true, entry: inserted };
@@ -170,7 +170,7 @@ export async function postPaymentLedgerEntry(
       unitId: input.unitId,
       personId: input.personId,
       entryType: "payment",
-      amount: input.amount,
+      amountCents: input.amountCents,
       postedAt: input.postedAt ?? new Date(),
       description: input.description?.trim() || null,
       referenceType: input.referenceType,
@@ -178,6 +178,6 @@ export async function postPaymentLedgerEntry(
       paymentIdentityKey: null,
     })
     .returning();
-  log(`[${input.source}] wrote ledger entry id=${inserted.id} (no payment identity key) ref=${logRef} amount=${input.amount}`, AUDIT_SOURCE);
+  log(`[${input.source}] wrote ledger entry id=${inserted.id} (no payment identity key) ref=${logRef} amountCents=${input.amountCents}`, AUDIT_SOURCE);
   return { created: true, entry: inserted };
 }

@@ -237,7 +237,7 @@ describe("lateFeeAssessmentHandler — flat fee success", () => {
     expect(outcome.amount).toBe(25);
     expect(outcome.ledgerEntryPayload).toBeDefined();
     expect(outcome.ledgerEntryPayload?.entryType).toBe("late-fee");
-    expect(outcome.ledgerEntryPayload?.amount).toBe(25);
+    expect(outcome.ledgerEntryPayload?.amountCents).toBe(2500);
     expect(outcome.ledgerEntryPayload?.referenceType).toBe(LATE_FEE_REFERENCE_TYPE);
     expect(outcome.ledgerEntryPayload?.referenceId).toContain("rule-flat-1:unit-1:");
     expect(outcome.ledgerEntryPayload?.description).toContain("Standard Late Fee");
@@ -285,7 +285,7 @@ describe("lateFeeAssessmentHandler — percent fee success", () => {
 
     expect(outcome.status).toBe("success");
     expect(outcome.amount).toBe(15);
-    expect(outcome.ledgerEntryPayload?.amount).toBe(15);
+    expect(outcome.ledgerEntryPayload?.amountCents).toBe(1500);
   });
 });
 
@@ -313,7 +313,7 @@ describe("lateFeeAssessmentHandler — maxFee cap", () => {
     const outcome = await lateFeeAssessmentHandler(ctx);
 
     expect(outcome.amount).toBe(100);
-    expect(outcome.ledgerEntryPayload?.amount).toBe(100);
+    expect(outcome.ledgerEntryPayload?.amountCents).toBe(10000);
   });
 
   it("does not cap below zero", async () => {

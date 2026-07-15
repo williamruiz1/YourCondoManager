@@ -39,7 +39,7 @@ function makeLedgerEntry(overrides: Partial<Record<string, unknown>> = {}) {
     unitId: "unit-1",
     personId: "person-1",
     entryType: "payment",
-    amount: 50,
+    amountCents: 5000,
     postedAt: new Date("2026-02-10T00:00:00Z"),
     description: null,
     referenceType: null,
@@ -89,7 +89,7 @@ describe("resolver: unpaid-late-fees", () => {
     vi.mocked(storage.getOwnerLedgerEntries).mockResolvedValueOnce([
       makeLedgerEntry({
         entryType: "payment",
-        amount: -75, // absolute value >= 50
+        amountCents: -7500, // absolute value >= $50
         postedAt: new Date("2026-02-20T00:00:00Z"), // within 30d
       }),
     ] as any);
@@ -104,7 +104,7 @@ describe("resolver: unpaid-late-fees", () => {
     vi.mocked(storage.getOwnerLedgerEntries).mockResolvedValueOnce([
       makeLedgerEntry({
         entryType: "payment",
-        amount: 50,
+        amountCents: 5000,
         postedAt: new Date("2026-04-15T00:00:00Z"), // way past 30d
       }),
     ] as any);
@@ -117,7 +117,7 @@ describe("resolver: unpaid-late-fees", () => {
       makeEvent({ id: "lfev-short", calculatedFee: 100 }),
     ] as any);
     vi.mocked(storage.getOwnerLedgerEntries).mockResolvedValueOnce([
-      makeLedgerEntry({ amount: 25, postedAt: new Date("2026-02-10T00:00:00Z") }),
+      makeLedgerEntry({ amountCents: 2500, postedAt: new Date("2026-02-10T00:00:00Z") }),
     ] as any);
     const items = await resolve("assoc-1", { associationName: "X", now });
     expect(items).toHaveLength(1);
@@ -128,7 +128,7 @@ describe("resolver: unpaid-late-fees", () => {
     vi.mocked(storage.getOwnerLedgerEntries).mockResolvedValueOnce([
       makeLedgerEntry({
         entryType: "charge",
-        amount: 500,
+        amountCents: 50000,
         postedAt: new Date("2026-02-15T00:00:00Z"),
       }),
     ] as any);

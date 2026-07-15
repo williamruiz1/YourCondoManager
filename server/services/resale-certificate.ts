@@ -117,7 +117,7 @@ export async function gatherResaleCertificateInputs(
   const ledgerRows = await db
     .select({
       entryType: ownerLedgerEntries.entryType,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       description: ownerLedgerEntries.description,
       referenceType: ownerLedgerEntries.referenceType,
     })
@@ -131,7 +131,7 @@ export async function gatherResaleCertificateInputs(
     );
   const ownerLedger: ResaleCertificateLedgerEntry[] = ledgerRows.map((r) => ({
     entryType: r.entryType,
-    amount: r.amount,
+    amount: r.amountCents / 100,
     description: r.description,
     referenceType: r.referenceType,
   }));
