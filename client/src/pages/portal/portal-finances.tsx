@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/empty-state";
 import { PortalAssessmentDetailDialog } from "@/components/portal-assessment-detail-dialog";
 import { VirtualizedLedgerTable } from "@/components/virtualized-ledger-table";
@@ -166,6 +167,74 @@ export function computeDueNow(
   return { duesDue, assessmentInstallmentDue, totalDueNow: duesDue + assessmentInstallmentDue };
 }
 
+// 2026-07-14 (My Finances redesign — Overview "Recent activity") — the wire
+// shape of `GET /api/portal/payment-transactions` this page cares about.
+// The endpoint already returns the full `PaymentTransaction` row; only the
+// fields the activity feed reads are typed here.
+export interface PortalPaymentTransaction {
+  id: string;
+  unitId: string;
+  amountCents: number;
+  status: string;
+  checkoutMethod: string | null;
+  createdAt: string;
+}
+
+export interface ActivityItem {
+  id: string;
+  kind: "pending" | "ledger";
+  title: string;
+  subtitle: string;
+  amount: number;
+  date: string;
+}
+
+// PR #514 shipped the payment-confirmation banner on `/portal` (reads the
+// Stripe-redirect query params). This is the sibling piece for the My
+// Finances redesign: a just-submitted payment (still "initiated"/"pending" —
+// e.g. an ACH payment mid-settlement) shows here immediately in a
+// "Processing" state, merged chronologically with the settled ledger
+// entries, instead of the owner seeing silence until the ledger catches up.
+// Pure over its inputs so it's unit-testable without rendering.
+export function buildActivityFeed(
+  ledger: Array<{
+    id: string;
+    entryType: string;
+    amount: number;
+    postedAt: string | Date | null;
+    description: string | null;
+  }>,
+  pendingTransactions: PortalPaymentTransaction[],
+  unitLabelMap: Map<string, string>,
+  limit = 6,
+): ActivityItem[] {
+  const pendingItems: ActivityItem[] = pendingTransactions.map((tx) => {
+    const unitLabel = unitLabelMap.get(tx.unitId);
+    const methodLabel = tx.checkoutMethod === "card" ? "Card" : tx.checkoutMethod === "ach" ? "ACH" : null;
+    return {
+      id: `pending-${tx.id}`,
+      kind: "pending",
+      title: unitLabel ? `Payment submitted — ${unitLabel}` : "Payment submitted",
+      subtitle: methodLabel ? `Processing · ${methodLabel}` : "Processing",
+      amount: tx.amountCents / 100,
+      date: tx.createdAt,
+    };
+  });
+  const ledgerItems: ActivityItem[] = ledger
+    .filter((e) => e.postedAt != null)
+    .map((e) => ({
+      id: `ledger-${e.id}`,
+      kind: "ledger" as const,
+      title: ledgerTypeLabel(e.entryType),
+      subtitle: e.description ?? "",
+      amount: e.amount,
+      date: typeof e.postedAt === "string" ? e.postedAt : new Date(e.postedAt as Date).toISOString(),
+    }));
+  return [...pendingItems, ...ledgerItems]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, limit);
+}
+
 type FinanceUnitEntry = {
   id: string;
   entryType: FinanceCategoryKey | string;
@@ -190,6 +259,27 @@ type FinanceUnitBreakdown = {
 // virtualization overhead on tiny tables.
 const LEDGER_VIRTUALIZE_THRESHOLD = 50;
 
+// 2026-07-14 (My Finances redesign) — special-assessment plans grouped by the
+// unit they belong to, so an owner with N units gets N per-unit cards on the
+// Assessments tab instead of one flat list (per PR #515 wireframe signoff).
+export type AssessmentPlansByUnit = {
+  unitId: string;
+  unitLabel: string | null;
+  plans: AssessmentPlanProgress[];
+};
+
+// 2026-07-14 (My Finances redesign — Dues tab) — a recurring HOA-dues
+// schedule attributed to the unit it applies to ("All units" when the
+// schedule is association-wide).
+export type FeeSchedule = {
+  id: string;
+  name: string;
+  amount: number;
+  frequency: string;
+  unitId: string | null;
+  unitLabel: string | null;
+};
+
 type FinancialDashboard = {
   balance: number;
   nextDueDate?: string;
@@ -205,6 +295,8 @@ type FinancialDashboard = {
     remainingInstallments: number;
     allocationMethod: string;
     allocationReason: string;
+    unitId?: string;
+    unitLabel?: string | null;
   }>;
   // 2026-05-25 — additive, server-side per-unit grouping.
   byUnit?: FinanceUnitBreakdown[];
@@ -214,7 +306,12 @@ type FinancialDashboard = {
   // 2026-07-09 — special-assessment payment-PLAN progress (additive,
   // display-only). Drives the owner-portal "payment plan" card so the
   // assessment reads as paid-over-time, not an alarming lump balance.
+  // Flattened across all of the owner's units.
   assessmentPlans?: AssessmentPlanProgress[];
+  // 2026-07-14 — the SAME plans, grouped by unit (Assessments tab).
+  assessmentPlansByUnit?: AssessmentPlansByUnit[];
+  // 2026-07-14 (Dues tab) — recurring HOA-dues schedules, attributed by unit.
+  feeSchedules?: FeeSchedule[];
   grandTotal?: number;
   // 2026-05-25 (live session) — plan-aware "Amount due this period".
   // null when no active payment plan, or when on a quarterly plan and
@@ -226,6 +323,13 @@ type FinancialDashboard = {
     periodEnd: string;
     frequency: "monthly" | "quarterly" | "annual" | string;
     reason: string;
+  } | null;
+  // 2026-07-14 (My Finances redesign — banner overdue-logic fix) — honest
+  // "overdue from prior periods" figure, distinct from `amountDueThisPeriod`.
+  // Null when nothing is overdue.
+  overdueFromPriorPeriods?: {
+    amount: number;
+    installmentsOverdue: number;
   } | null;
 };
 
@@ -529,6 +633,155 @@ function PerUnitTransposedTable({
   );
 }
 
+// ---------- Special-assessment payment-plan card (2026-07-09; extracted
+// 2026-07-14 for the My Finances redesign so it can render inside a
+// per-UNIT group on the Assessments tab, not just a flat list) ----------
+//
+// A special assessment is paid over time in installments, so it is shown as
+// a PLAN — total · paid so far · remaining "over time" · installments
+// paid/total · progress · next installment — NEVER a red lump balance. Red
+// appears only when an installment is genuinely past due.
+function AssessmentPlanCard({
+  plan,
+  assessmentInstallmentDue,
+}: {
+  plan: AssessmentPlanProgress;
+  assessmentInstallmentDue: number;
+}) {
+  const view = deriveAssessmentPlanView(plan);
+  return (
+    <Card
+      className={view.isPastDue ? "border-destructive/40" : "border-outline-variant/15"}
+      data-testid={`portal-finances-assessment-plan-${plan.assessmentId}`}
+    >
+      <CardContent className="py-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              Payment plan
+            </p>
+            <h2 className="font-headline text-lg text-on-surface">{plan.assessmentName}</h2>
+          </div>
+          {view.isPaidOff ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+              <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+              Paid off
+            </span>
+          ) : view.isPastDue ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
+              <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
+              Past due
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
+              On track
+            </span>
+          )}
+        </div>
+
+        <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary/[0.06] px-3 py-1.5 text-xs font-medium text-primary">
+          Paid over time in installments — not due all at once
+        </p>
+
+        {/* stat tiles: total · paid · remaining (over time) */}
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              Assessment total
+            </p>
+            <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">
+              ${formatCurrency(plan.total)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              Paid so far
+            </p>
+            <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">
+              ${formatCurrency(plan.paidToDate)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              Remaining (over time)
+            </p>
+            <p
+              className="mt-1 font-headline text-xl tabular-nums text-primary"
+              data-testid={`portal-finances-assessment-plan-${plan.assessmentId}-remaining`}
+            >
+              ${formatCurrency(plan.remaining)}
+            </p>
+          </div>
+        </div>
+
+        {/* progress bar */}
+        <div className="mt-4">
+          <div className="mb-2 flex items-baseline justify-between text-sm">
+            <span className="font-semibold text-primary">{view.pctPaid}% paid</span>
+            <span className="text-on-surface-variant">
+              {/* 2026-07-12 — a legacy assessment with no real installment
+                  schedule (`hasSchedule: false`) has no trustworthy
+                  "N of M installments paid" count (see
+                  server/portal-assessment-detail.ts). Say so plainly
+                  instead of a misleading "0 of 1" / "0 installments". */}
+              {view.hasSchedule ? view.installmentsLabel : "Paid over time — no fixed installment schedule"}
+            </span>
+          </div>
+          <div
+            className="h-2.5 w-full overflow-hidden rounded-full bg-surface-container"
+            role="img"
+            aria-label={`${view.pctPaid}% of ${plan.assessmentName} paid`}
+          >
+            <div className="h-full rounded-full bg-primary" style={{ width: `${view.pctPaid}%` }} />
+          </div>
+        </div>
+
+        {/* next installment + detail link */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+          {view.isPaidOff ? (
+            <p className="text-sm text-on-surface-variant">This assessment is fully paid.</p>
+          ) : plan.nextInstallmentAmount != null ? (
+            <p className="text-sm text-on-surface-variant">
+              Next installment:{" "}
+              <b className="tabular-nums text-on-surface">
+                ${formatCurrency(plan.nextInstallmentAmount)}
+              </b>
+              {plan.nextInstallmentDueDate ? (
+                <>
+                  {" "}due{" "}
+                  <b className="text-on-surface">
+                    {new Date(plan.nextInstallmentDueDate).toLocaleDateString()}
+                  </b>
+                </>
+              ) : null}
+              {assessmentInstallmentDue > 0 ? (
+                <span className="text-on-surface-variant"> · included in &ldquo;Pay this period&rdquo; above</span>
+              ) : null}
+            </p>
+          ) : (
+            // 2026-07-12 — no `nextInstallmentAmount` but NOT paid off:
+            // a legacy assessment with no real installment schedule
+            // (the CHC driveway assessment). Say so plainly instead of
+            // falling through to the (wrong) "fully paid" message.
+            <p className="text-sm text-on-surface-variant">
+              Paid over time — no fixed installment schedule. Contact your
+              manager for the payment schedule.
+            </p>
+          )}
+          <Link
+            href={`/portal/finances/assessments/${plan.assessmentId}`}
+            className="text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            data-testid={`portal-finances-assessment-plan-${plan.assessmentId}-detail`}
+          >
+            View details &rarr;
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ---------- Hub surface (/portal/finances) ----------
 
 function FinancesHubContent() {
@@ -640,17 +893,29 @@ function FinancesHubContent() {
     () => computeDueNow(byUnit, upcoming),
     [byUnit, upcoming],
   );
+
+  // 2026-07-14 (My Finances redesign — banner overdue-logic fix) — the
+  // fixed `resolveAmountDue`/`computeArrears` pair now surfaces an honest
+  // "overdue from prior periods" figure, distinct from "due this period".
+  // Computed here (before the fee preview below) so the primary CTA can pay
+  // the FULL catch-up amount — this period + everything overdue — when
+  // there's real arrears, rather than silently under-collecting.
+  const overdueFromPriorPeriods = dashboard?.overdueFromPriorPeriods ?? null;
+  const overdueAmount = overdueFromPriorPeriods?.amount ?? 0;
+  const totalToCatchUp = totalDueNow + overdueAmount;
+  const heroPrimaryAmount = overdueAmount > 0 ? totalToCatchUp : totalDueNow;
+
   // CT convenience-fee structure (memo §6) — preview for the hero "Pay this
   // period" amount. `cardFeeEnabled` is false for every association until
   // its flag is explicitly turned on, so the picker below stays hidden and
   // the hero CTA is byte-identical to today everywhere except an explicitly
   // enabled association.
-  const heroFeePreview = usePaymentFeePreview(totalDueNow);
+  const heroFeePreview = usePaymentFeePreview(heroPrimaryAmount);
   const heroCardFeeEnabled = heroFeePreview.data?.cardFeeEnabled ?? false;
   const heroAmountForMethod =
     paymentMethod === "card" && heroFeePreview.data
       ? heroFeePreview.data.cardTotalCents / 100
-      : totalDueNow;
+      : heroPrimaryAmount;
   // Same preview, scoped to whatever the owner has typed in the custom-amount
   // box below (0 while empty/invalid — the hook no-ops when amountCents <= 0).
   const customFeePreview = usePaymentFeePreview(Number(paymentAmount) || 0);
@@ -687,6 +952,55 @@ function FinancesHubContent() {
     year: "numeric",
   });
 
+  // 2026-07-14 (My Finances redesign — Assessments tab) — the SAME plans,
+  // grouped by unit, so a multi-unit owner (William: 3 Cherry Hill Court
+  // units) gets one card per unit instead of one flat list.
+  const assessmentPlansByUnit = dashboard?.assessmentPlansByUnit ?? [];
+
+  // 2026-07-14 (My Finances redesign — Dues tab) — recurring HOA-dues
+  // schedules, attributed by unit.
+  const feeSchedules = dashboard?.feeSchedules ?? [];
+
+  // `overdueFromPriorPeriods`/`overdueAmount`/`totalToCatchUp` are computed
+  // above (before the fee preview). `hasPastDue` (the assessment-plan
+  // schedule signal, just above) stays part of "is anything overdue" so the
+  // banner never regresses the existing past-due detection it already had —
+  // even on associations with no generic payment-plan arrears to report.
+  const isOverdue = hasPastDue || overdueAmount > 0;
+
+  // 2026-07-14 (My Finances redesign — pinned reference row) — "Paid this
+  // year" (YTD payments, same figure already computed for the summary
+  // tiles) and "Total remaining" (the full remaining balance across every
+  // unit — dues AND assessments — the same grand total shown in the
+  // Breakdown tab). Pinned above the tabs per the wireframe so they stay
+  // visible regardless of which tab is open.
+  const totalRemaining = dashboard?.grandTotal ?? balance;
+
+  // 2026-07-14 (My Finances redesign — Overview "Recent activity", PR #514
+  // coordination) — merge in-flight payment_transactions (not yet reflected
+  // in the ledger, e.g. an ACH payment still settling) alongside the
+  // settled ledger entries, so a just-submitted payment shows immediately
+  // in a "Processing" state instead of silence — reflecting (not
+  // re-implementing) the confirmation-visibility fix PR #514 shipped on
+  // `/portal`. Read-only; no money logic here.
+  const { data: paymentTransactions = [] } = useQuery<PortalPaymentTransaction[]>({
+    queryKey: ["portal/payment-transactions", session.id],
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/payment-transactions");
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json) ? (json as PortalPaymentTransaction[]) : [];
+    },
+  });
+  const pendingTransactions = useMemo(
+    () => paymentTransactions.filter((tx) => tx.status === "initiated" || tx.status === "pending"),
+    [paymentTransactions],
+  );
+  const activityItems = useMemo(
+    () => buildActivityFeed(ledger, pendingTransactions, unitLabelMap),
+    [ledger, pendingTransactions, unitLabelMap],
+  );
+
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6" data-testid="portal-finances">
       <div>
@@ -698,6 +1012,57 @@ function FinancesHubContent() {
         </p>
       </div>
 
+      {/* ============ PINNED REFERENCE ROW (2026-07-14 My Finances redesign) ============
+          William: pin "paid this year" + "total remaining" at the top so
+          they're always visible regardless of which tab is open (per the
+          PR #515 wireframe — these sit ABOVE the tab strip). */}
+      <section className="grid gap-4 md:grid-cols-2" data-testid="portal-finances-pinned">
+        <Card className="border-outline-variant/15 bg-surface">
+          <CardContent className="py-5">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Paid this year</p>
+            <p className="mt-1 font-headline text-2xl tabular-nums text-on-surface" data-testid="portal-finances-pinned-paid-ytd">
+              ${formatCurrency(dashboard?.totalPayments ?? 0)}
+            </p>
+            <Link
+              href="/portal/finances/ledger"
+              className="mt-2 inline-flex items-center rounded text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              data-testid="portal-finances-hero-ledger-link"
+            >
+              <Receipt className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+              View your full ledger
+            </Link>
+          </CardContent>
+        </Card>
+        <Card className="border-outline-variant/15 bg-surface" data-testid="portal-finances-pinned-remaining">
+          <CardContent className="py-5">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Total remaining</p>
+            <p
+              className={`mt-1 font-headline text-2xl tabular-nums ${totalRemaining > 0 ? "text-destructive" : "text-on-surface"}`}
+              data-testid="portal-finances-pinned-remaining-amount"
+            >
+              ${formatCurrency(totalRemaining)}
+            </p>
+            <p className="mt-2 text-xs text-on-surface-variant">
+              Across all open assessments &amp; dues — see the Breakdown tab.
+            </p>
+          </CardContent>
+        </Card>
+      </section>
+
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview" data-testid="portal-finances-tab-overview">Overview</TabsTrigger>
+          <TabsTrigger value="assessments" data-testid="portal-finances-tab-assessments">
+            Assessments
+            {assessmentPlansByUnit.length > 0 ? (
+              <Badge variant="outline" className="ml-1.5">{assessmentPlansByUnit.length}</Badge>
+            ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="dues" data-testid="portal-finances-tab-dues">Dues</TabsTrigger>
+          <TabsTrigger value="breakdown" data-testid="portal-finances-tab-breakdown">Breakdown</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="mt-4 flex flex-col gap-6" data-testid="portal-finances-tabpanel-overview">
       {/* 2026-07-01 (display-only) — "Paid in full" state. When the owner owes
           nothing right now, show a clear positive confirmation (with the last
           payment date when available) instead of a $0.00 balance framing. */}
@@ -740,19 +1105,21 @@ function FinancesHubContent() {
         <section data-testid="portal-finances-pay-this-period">
           <Card
             className={`overflow-hidden ${
-              hasPastDue ? "border-destructive/40 bg-destructive/[0.04]" : "border-primary/25 bg-primary/[0.04]"
+              isOverdue ? "border-destructive/40 bg-destructive/[0.04]" : "border-primary/25 bg-primary/[0.04]"
             }`}
           >
             <CardContent className="py-6">
-              {/* status row — reassuring by default; red only when past due */}
+              {/* status row — reassuring by default; red only when overdue */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                {hasPastDue ? (
+                {isOverdue ? (
                   <span
                     className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive"
                     data-testid="portal-finances-status-chip"
                   >
                     <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
-                    Past due — please pay
+                    {overdueFromPriorPeriods
+                      ? `${overdueFromPriorPeriods.installmentsOverdue} payment${overdueFromPriorPeriods.installmentsOverdue === 1 ? "" : "s"} past due`
+                      : "Past due — please pay"}
                   </span>
                 ) : (
                   <span
@@ -764,9 +1131,15 @@ function FinancesHubContent() {
                   </span>
                 )}
                 <span className="text-sm text-on-surface-variant">
-                  {hasPastDue
-                    ? "An amount is past due — here's what's outstanding."
-                    : "Nothing is overdue. Here's what's due this month."}
+                  {/* 2026-07-14 (banner overdue-logic fix) — honest, distinct
+                      framing of "due this period" vs "overdue from prior
+                      periods". Never conflates a new installment with an
+                      unpaid one from before. */}
+                  {overdueAmount > 0
+                    ? `$${formatCurrency(overdueAmount)} is overdue from prior periods.`
+                    : hasPastDue
+                      ? "An amount is past due — here's what's outstanding."
+                      : "Nothing is overdue. Here's what's due this month."}
                 </span>
               </div>
 
@@ -775,7 +1148,7 @@ function FinancesHubContent() {
               </p>
               <p
                 className={`mt-1 font-headline text-4xl md:text-5xl tabular-nums ${
-                  hasPastDue ? "text-destructive" : "text-primary"
+                  isOverdue ? "text-destructive" : "text-primary"
                 }`}
                 data-testid="portal-finances-due-now-total"
               >
@@ -801,6 +1174,36 @@ function FinancesHubContent() {
                   </span>
                 ) : null}
               </div>
+
+              {/* 2026-07-14 (banner overdue-logic fix) — the redesigned
+                  breakout row: due now / overdue from prior periods / total
+                  to catch up, shown ONLY when there's a real generic-plan
+                  arrears figure (never fabricated for the assessment-plan
+                  past-due signal, which has no reliable dollar amount — see
+                  shared/payment-period.ts computeArrears). */}
+              {overdueAmount > 0 ? (
+                <div
+                  className="mt-4 grid grid-cols-1 gap-3 border-t border-outline-variant/15 pt-4 sm:grid-cols-3"
+                  data-testid="portal-finances-catchup-breakout"
+                >
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Due now</p>
+                    <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">${formatCurrency(totalDueNow)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Overdue (prior periods)</p>
+                    <p className="mt-1 font-headline text-xl tabular-nums text-destructive" data-testid="portal-finances-overdue-amount">
+                      ${formatCurrency(overdueAmount)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Total to catch up</p>
+                    <p className="mt-1 font-headline text-xl tabular-nums text-on-surface" data-testid="portal-finances-catchup-total">
+                      ${formatCurrency(totalToCatchUp)}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
 
               {/* CT convenience-fee structure (memo §6) — payment-method
                   picker + disclosure. Only rendered when the association's
@@ -841,9 +1244,12 @@ function FinancesHubContent() {
                 </div>
               ) : null}
 
-              {/* CTA — primary pays THIS period; secondary jumps to the amount box */}
+              {/* CTA — primary pays the full catch-up amount when overdue
+                  (this period + everything overdue), otherwise just this
+                  period; a secondary "pay just this period" option appears
+                  only when there's real arrears to separate from. */}
               <div className="mt-5 flex flex-wrap items-center gap-3">
-                {totalDueNow > 0 ? (
+                {heroPrimaryAmount > 0 ? (
                   <Button
                     onClick={() => {
                       setPayError(null);
@@ -855,7 +1261,22 @@ function FinancesHubContent() {
                   >
                     {startCheckout.isPending
                       ? t("portal.finances.makePayment.redirecting")
-                      : `Pay $${formatCurrency(heroAmountForMethod)}${paymentMethod === "card" && heroCardFeeEnabled ? " by card" : ""}`}
+                      : `Pay $${formatCurrency(heroAmountForMethod)}${overdueAmount > 0 ? " — catch up now" : ""}${paymentMethod === "card" && heroCardFeeEnabled ? " by card" : ""}`}
+                  </Button>
+                ) : null}
+                {overdueAmount > 0 && totalDueNow > 0 ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setPayError(null);
+                      setPaymentAmount(totalDueNow.toFixed(2));
+                      window.location.hash = "make-payment";
+                    }}
+                    className="min-h-11"
+                    data-testid="portal-finances-pay-just-this-period"
+                  >
+                    Pay just this period (${formatCurrency(totalDueNow)})
                   </Button>
                 ) : null}
                 <a
@@ -879,210 +1300,11 @@ function FinancesHubContent() {
         </section>
       )}
 
-      {/* ============ SPECIAL ASSESSMENT = PAYMENT PLAN (2026-07-09) ============
-          A special assessment is paid over time in installments, so it is shown
-          as a PLAN — total · paid so far · remaining "over time" · installments
-          paid/total · progress · next installment — NEVER a red lump balance.
-          Red appears only when an installment is genuinely past due. Driven by
-          the server-computed `assessmentPlans` (reconciles: paid + remaining =
-          total). */}
-      {planViews.length > 0 ? (
-        <section
-          data-testid="portal-finances-assessment-plans"
-          aria-label="Special assessment payment plans"
-          className="grid gap-4"
-        >
-          {planViews.map(({ plan, view }) => (
-            <Card
-              key={plan.assessmentId}
-              className={view.isPastDue ? "border-destructive/40" : "border-outline-variant/15"}
-              data-testid={`portal-finances-assessment-plan-${plan.assessmentId}`}
-            >
-              <CardContent className="py-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-                      Payment plan
-                    </p>
-                    <h2 className="font-headline text-lg text-on-surface">{plan.assessmentName}</h2>
-                  </div>
-                  {view.isPaidOff ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                      <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-                      Paid off
-                    </span>
-                  ) : view.isPastDue ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
-                      <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
-                      Past due
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
-                      On track
-                    </span>
-                  )}
-                </div>
-
-                <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary/[0.06] px-3 py-1.5 text-xs font-medium text-primary">
-                  Paid over time in installments — not due all at once
-                </p>
-
-                {/* stat tiles: total · paid · remaining (over time) */}
-                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div className="rounded-xl bg-surface-container/60 px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-                      Assessment total
-                    </p>
-                    <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">
-                      ${formatCurrency(plan.total)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-surface-container/60 px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-                      Paid so far
-                    </p>
-                    <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">
-                      ${formatCurrency(plan.paidToDate)}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-surface-container/60 px-4 py-3">
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-                      Remaining (over time)
-                    </p>
-                    <p
-                      className="mt-1 font-headline text-xl tabular-nums text-primary"
-                      data-testid={`portal-finances-assessment-plan-${plan.assessmentId}-remaining`}
-                    >
-                      ${formatCurrency(plan.remaining)}
-                    </p>
-                  </div>
-                </div>
-
-                {/* progress bar */}
-                <div className="mt-4">
-                  <div className="mb-2 flex items-baseline justify-between text-sm">
-                    <span className="font-semibold text-primary">{view.pctPaid}% paid</span>
-                    <span className="text-on-surface-variant">
-                      {/* 2026-07-12 — a legacy assessment with no real installment
-                          schedule (`hasSchedule: false`) has no trustworthy
-                          "N of M installments paid" count (see
-                          server/portal-assessment-detail.ts). Say so plainly
-                          instead of a misleading "0 of 1" / "0 installments". */}
-                      {view.hasSchedule ? view.installmentsLabel : "Paid over time — no fixed installment schedule"}
-                    </span>
-                  </div>
-                  <div
-                    className="h-2.5 w-full overflow-hidden rounded-full bg-surface-container"
-                    role="img"
-                    aria-label={`${view.pctPaid}% of ${plan.assessmentName} paid`}
-                  >
-                    <div className="h-full rounded-full bg-primary" style={{ width: `${view.pctPaid}%` }} />
-                  </div>
-                </div>
-
-                {/* next installment + detail link */}
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                  {view.isPaidOff ? (
-                    <p className="text-sm text-on-surface-variant">This assessment is fully paid.</p>
-                  ) : plan.nextInstallmentAmount != null ? (
-                    <p className="text-sm text-on-surface-variant">
-                      Next installment:{" "}
-                      <b className="tabular-nums text-on-surface">
-                        ${formatCurrency(plan.nextInstallmentAmount)}
-                      </b>
-                      {plan.nextInstallmentDueDate ? (
-                        <>
-                          {" "}due{" "}
-                          <b className="text-on-surface">
-                            {new Date(plan.nextInstallmentDueDate).toLocaleDateString()}
-                          </b>
-                        </>
-                      ) : null}
-                      {assessmentInstallmentDue > 0 ? (
-                        <span className="text-on-surface-variant"> · included in &ldquo;Pay this period&rdquo; above</span>
-                      ) : null}
-                    </p>
-                  ) : (
-                    // 2026-07-12 — no `nextInstallmentAmount` but NOT paid off:
-                    // a legacy assessment with no real installment schedule
-                    // (the CHC driveway assessment). Say so plainly instead of
-                    // falling through to the (wrong) "fully paid" message.
-                    <p className="text-sm text-on-surface-variant">
-                      Paid over time — no fixed installment schedule. Contact your
-                      manager for the payment schedule.
-                    </p>
-                  )}
-                  <Link
-                    href={`/portal/finances/assessments/${plan.assessmentId}`}
-                    className="text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                    data-testid={`portal-finances-assessment-plan-${plan.assessmentId}-detail`}
-                  >
-                    View details &rarr;
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </section>
-      ) : null}
-
-      {/* ============ CONTEXT: this year + total remaining (2026-07-09) ============
-          Muted, secondary context. The "Total remaining" is the full remaining
-          special-assessment obligation — explicitly labeled "paid over time —
-          not due now" so it can never read as an amount due today. */}
-      <section className="grid gap-4 md:grid-cols-2">
-        <Card className="border-outline-variant/15 bg-surface">
-          <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">This year</p>
-            <div className="mt-3 flex flex-wrap gap-x-8 gap-y-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalPaidYtd")}</p>
-                <p className="mt-1 font-headline text-2xl tabular-nums text-on-surface">${formatCurrency(dashboard?.totalPayments ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">{t("portal.finances.cards.totalChargesYtd")}</p>
-                <p className="mt-1 font-headline text-2xl tabular-nums text-on-surface">${formatCurrency(dashboard?.totalCharges ?? 0)}</p>
-              </div>
-            </div>
-            <Link
-              href="/portal/finances/ledger"
-              className="mt-4 inline-flex items-center rounded text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              data-testid="portal-finances-hero-ledger-link"
-            >
-              <Receipt className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-              View your full ledger
-            </Link>
-          </CardContent>
-        </Card>
-
-        {totalRemainingOverTime > 0 ? (
-          <Card className="border-outline-variant/15 bg-surface" data-testid="portal-finances-total-remaining">
-            <CardContent className="py-5">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-                Total remaining — for reference
-              </p>
-              <div className="mt-2 flex flex-wrap items-baseline justify-between gap-2">
-                <p
-                  className="font-headline text-2xl tabular-nums text-on-surface-variant"
-                  data-testid="portal-finances-total-remaining-amount"
-                >
-                  ${formatCurrency(totalRemainingOverTime)}
-                </p>
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
-                  Not due now
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-on-surface-variant">
-                This is your remaining special-assessment balance across all units. It is{" "}
-                <b className="text-on-surface">paid over time in installments</b>, not a payment due today —
-                your actual amount due this period is shown at the top.
-              </p>
-            </CardContent>
-          </Card>
-        ) : null}
-      </section>
+      {/* 2026-07-14 (My Finances redesign) — the special-assessment PLAN cards
+          (formerly a flat list here) moved to the Assessments tab, grouped by
+          unit (see `assessmentPlansByUnit` below). The "This year / Total
+          remaining — for reference" context card was superseded by the pinned
+          reference row above the tabs. */}
 
       {/* 2026-06-30 — Owner PAY flow is Stripe (William finding #1). The Plaid
           "connect your bank" card was REMOVED from the owner pay experience —
@@ -1241,45 +1463,11 @@ function FinancesHubContent() {
         </Card>
       </section>
 
-      {/* 2026-07-03 — per-unit breakdown, TRANSPOSED (units = columns, line
-          items = rows) and shown for EVERY owner — single-unit owners get a
-          clean two-column (unit + total) table, multi-unit owners get one
-          column per unit plus an "All units" total column (William ask). */}
-      {perUnit.length > 0 ? (
-        <section
-          data-testid="portal-finances-by-unit"
-          aria-labelledby="portal-finances-by-unit-heading"
-        >
-          <div className="mb-3 flex items-end justify-between gap-4">
-            <div>
-              <h2 id="portal-finances-by-unit-heading" className="font-headline text-lg">
-                By unit
-              </h2>
-              <p className="text-xs text-on-surface-variant">
-                {perUnit.length > 1
-                  ? `What each of your ${perUnit.length} units owes — HOA dues and special assessments shown separately.`
-                  : "HOA dues and special assessments for your unit, shown separately."}
-              </p>
-            </div>
-            <p
-              className="font-headline text-xl text-on-surface tabular-nums"
-              data-testid="portal-finances-by-unit-grand-total"
-            >
-              ${formatCurrency(dashboard?.grandTotal ?? balance)}
-            </p>
-          </div>
-          <PerUnitTransposedTable
-            units={perUnit}
-            hasUpcomingInstallments={upcoming.length > 0}
-          />
-        </section>
-      ) : null}
-
-      {/* 2026-07-09 — the standalone "Upcoming installments" link list was
-          folded INTO the per-assessment payment-plan cards above (each plan
-          card shows its next installment + a "View details" link), so this
-          redundant section was removed to keep the page calm and scannable. */}
-
+      {/* ============ RECENT ACTIVITY (2026-07-14 redesign) ============
+          Merges in-flight payment_transactions (a just-submitted payment
+          shows "Processing" immediately) with settled ledger entries, sorted
+          chronologically — see `buildActivityFeed`. Reflects (does not
+          re-implement) the PR #514 confirmation-visibility fix. */}
       <section data-testid="portal-finances-recent-ledger" aria-labelledby="portal-finances-recent-heading">
         <div className="mb-3 flex items-center justify-between">
           <h2 id="portal-finances-recent-heading" className="font-headline text-lg">{t("portal.finances.recentLedger.title")}</h2>
@@ -1290,48 +1478,159 @@ function FinancesHubContent() {
             {t("portal.finances.recentLedger.viewFull")}
           </Link>
         </div>
-        {ledger.length === 0 ? (
+        {activityItems.length === 0 ? (
           <Card>
             <CardContent className="py-6 text-sm text-on-surface-variant" role="status">{t("portal.finances.recentLedger.empty")}</CardContent>
           </Card>
         ) : (
           <Card>
-            <CardContent className="p-0">
-              <Table aria-labelledby="portal-finances-recent-heading">
-                <caption className="sr-only">{t("portal.finances.recentLedger.title")}</caption>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>{t("portal.finances.col.date")}</TableHead>
-                    <TableHead>{t("portal.finances.col.type")}</TableHead>
-                    {byUnit.length > 1 ? <TableHead>{t("portal.finances.col.unit")}</TableHead> : null}
-                    <TableHead>{t("portal.finances.col.description")}</TableHead>
-                    <TableHead className="text-right">{t("portal.finances.col.amount")}</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {ledger.slice(0, 8).map((entry) => (
-                    <TableRow key={entry.id}>
-                      <TableCell className="text-xs">
-                        {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        <Badge variant="outline">{ledgerTypeLabel(entry.entryType)}</Badge>
-                      </TableCell>
-                      {byUnit.length > 1 ? (
-                        <TableCell className="text-xs text-on-surface-variant">
-                          {unitLabelMap.get(entry.unitId) ?? "—"}
-                        </TableCell>
+            <CardContent className="divide-y divide-outline-variant/15 py-0">
+              {activityItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center justify-between gap-3 py-3"
+                  data-testid={`portal-finances-activity-${item.id}`}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold">{item.title}</p>
+                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-on-surface-variant">
+                      {item.kind === "pending" ? (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-300 bg-amber-50 text-amber-800"
+                          data-testid={`portal-finances-activity-${item.id}-processing`}
+                        >
+                          Processing
+                        </Badge>
                       ) : null}
-                      <TableCell className="text-xs">{entry.description ?? "—"}</TableCell>
-                      <TableCell className="text-right text-xs">${Number(entry.amount).toFixed(2)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      <span>{new Date(item.date).toLocaleDateString()}</span>
+                      {item.subtitle ? <span>· {item.subtitle}</span> : null}
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-right text-sm font-semibold tabular-nums">
+                    ${formatCurrency(item.amount)}
+                  </p>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
       </section>
+        </TabsContent>
+
+        {/* ============ ASSESSMENTS TAB (2026-07-14 redesign) ============
+            Special-assessment payment PLANS, grouped by UNIT — an owner with
+            N units (William: 3 Cherry Hill Court units) gets N per-unit
+            cards, each listing that unit's plan(s), instead of one flat
+            list with no unit attribution. Driven by the server's
+            `assessmentPlansByUnit` (each unit's plans resolved via
+            `getAssessmentPlansForOwnerUnit`, widened from the single primary
+            unit to every unit this owner holds). */}
+        <TabsContent value="assessments" className="mt-4 flex flex-col gap-6" data-testid="portal-finances-tabpanel-assessments">
+          {assessmentPlansByUnit.length === 0 ? (
+            <EmptyState
+              icon={Receipt}
+              title="No special assessments"
+              description="You don't currently have any special-assessment payment plans."
+            />
+          ) : (
+            assessmentPlansByUnit.map((unit) => (
+              <section key={unit.unitId} data-testid={`portal-finances-assessments-unit-${unit.unitId}`}>
+                <h2 className="mb-3 font-headline text-lg">{unit.unitLabel ?? "Unit"}</h2>
+                <div className="grid gap-4">
+                  {unit.plans.map((plan) => (
+                    <AssessmentPlanCard
+                      key={plan.assessmentId}
+                      plan={plan}
+                      assessmentInstallmentDue={assessmentInstallmentDue}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))
+          )}
+        </TabsContent>
+
+        {/* ============ DUES TAB (2026-07-14 redesign) ============
+            Recurring HOA-dues schedules, attributed by unit (or "All units"
+            for an association-wide schedule) — separate from special
+            assessments, which live on the Assessments tab. */}
+        <TabsContent value="dues" className="mt-4 flex flex-col gap-6" data-testid="portal-finances-tabpanel-dues">
+          {feeSchedules.length === 0 ? (
+            <EmptyState
+              icon={Receipt}
+              title="No recurring dues on file"
+              description="Your association hasn't set up a recurring dues schedule yet."
+            />
+          ) : (
+            <Card>
+              <CardContent className="divide-y divide-outline-variant/15 py-0">
+                {feeSchedules.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center justify-between gap-3 py-3"
+                    data-testid={`portal-finances-dues-row-${s.id}`}
+                  >
+                    <div>
+                      <p className="text-sm font-semibold">
+                        {s.unitLabel ? `${s.unitLabel} — ${s.name}` : s.name}
+                      </p>
+                      <p className="text-xs capitalize text-on-surface-variant">{s.frequency}</p>
+                    </div>
+                    <p className="shrink-0 text-right text-sm font-semibold tabular-nums">
+                      ${formatCurrency(s.amount)} / {s.frequency === "monthly" ? "mo" : s.frequency === "quarterly" ? "qtr" : "yr"}
+                    </p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        {/* ============ BREAKDOWN TAB (2026-07-03; relocated 2026-07-14) ============
+            The by-unit table — moved here from the page bottom per the
+            redesign. TRANSPOSED (units = columns, line items = rows) and
+            shown for EVERY owner — single-unit owners get a clean two-column
+            (unit + total) table, multi-unit owners get one column per unit
+            plus an "All units" total column (William ask). */}
+        <TabsContent value="breakdown" className="mt-4 flex flex-col gap-6" data-testid="portal-finances-tabpanel-breakdown">
+          {perUnit.length > 0 ? (
+            <section
+              data-testid="portal-finances-by-unit"
+              aria-labelledby="portal-finances-by-unit-heading"
+            >
+              <div className="mb-3 flex items-end justify-between gap-4">
+                <div>
+                  <h2 id="portal-finances-by-unit-heading" className="font-headline text-lg">
+                    By unit
+                  </h2>
+                  <p className="text-xs text-on-surface-variant">
+                    {perUnit.length > 1
+                      ? `What each of your ${perUnit.length} units owes — HOA dues and special assessments shown separately.`
+                      : "HOA dues and special assessments for your unit, shown separately."}
+                  </p>
+                </div>
+                <p
+                  className="font-headline text-xl text-on-surface tabular-nums"
+                  data-testid="portal-finances-by-unit-grand-total"
+                >
+                  ${formatCurrency(dashboard?.grandTotal ?? balance)}
+                </p>
+              </div>
+              <PerUnitTransposedTable
+                units={perUnit}
+                hasUpcomingInstallments={upcoming.length > 0}
+              />
+            </section>
+          ) : (
+            <EmptyState
+              icon={Receipt}
+              title="Nothing to break down yet"
+              description="Once charges post to your account, the by-unit breakdown will appear here."
+            />
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
