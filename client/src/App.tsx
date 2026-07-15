@@ -91,6 +91,7 @@ const FinancialBankConnectionsPage = lazyWithReload(() => import("@/pages/financ
 const GovernancePage = lazyWithReload(() => import("@/pages/governance"), "@/pages/governance");
 const VendorsPage = lazyWithReload(() => import("@/pages/vendors"), "@/pages/vendors");
 const WorkOrdersPage = lazyWithReload(() => import("@/pages/work-orders"), "@/pages/work-orders");
+const ViolationsManagementPage = lazyWithReload(() => import("@/pages/violations-management"), "@/pages/violations-management");
 const MaintenanceSchedulesPage = lazyWithReload(() => import("@/pages/maintenance-schedules"), "@/pages/maintenance-schedules");
 const ResidentFeedbackPage = lazyWithReload(() => import("@/pages/resident-feedback"), "@/pages/resident-feedback");
 const InspectionsPage = lazyWithReload(() => import("@/pages/inspections"), "@/pages/inspections");
@@ -508,6 +509,10 @@ function WorkspaceRouter({
         {/* Operations — consolidated routes (Wave 18: zone-scoped ErrorBoundary) */}
         <Route path="/app/vendors"><ZoneBoundary zone="Operations"><VendorsPage /></ZoneBoundary></Route>
         <Route path="/app/work-orders"><ZoneBoundary zone="Operations"><WorkOrdersPage /></ZoneBoundary></Route>
+        {/* founder-os#10569 (YCM Redesign M8) — flag-gated inside the page
+         * component itself (VIOLATIONS_MANAGEMENT_ENABLED, default OFF);
+         * nav placement deferred pending the 9-item IA decision (#10189). */}
+        <Route path="/app/violations"><ZoneBoundary zone="Operations"><ViolationsManagementPage /></ZoneBoundary></Route>
         <Route path="/app/resident-feedback"><ZoneBoundary zone="Operations"><ResidentFeedbackPage /></ZoneBoundary></Route>
         <Route path="/app/maintenance-schedules"><ZoneBoundary zone="Operations"><MaintenanceSchedulesPage /></ZoneBoundary></Route>
         <Route path="/app/inspections"><ZoneBoundary zone="Operations"><InspectionsPage /></ZoneBoundary></Route>

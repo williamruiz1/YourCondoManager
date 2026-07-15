@@ -73,7 +73,20 @@ export type FeatureFlagKey =
   // Removal scheduled with the Phase 1 LLM-conversational-primitive wiring
   // (founder-os#1244) once both phases ship and any community can opt in
   // without further gating.
-  | "AI_ASSISTANT_ENABLED";
+  | "AI_ASSISTANT_ENABLED"
+  // founder-os#10569 (YCM Redesign M8) — the Manager-app Violations
+  // MANAGEMENT surface (list · filter · detail · status timeline · notice
+  // history) layered on top of the pre-existing `violations` table + the
+  // board-mode "Log a violation" wizard (founder-os#9487, already ships
+  // unconditionally). Default OFF until William signs off on the wireframe
+  // (artifacts/ycm-redesign-m8-violations/ycm-redesign-m8-violations-wireframe.html).
+  // Gates the /app/violations nav entry + route and the
+  // /api/violations/management/* routes ONLY — never the pre-existing
+  // GET/POST/PATCH /api/violations or the Log-Violation wizard, which are
+  // untouched by this flag. Flip ON via FEATURE_FLAG_VIOLATIONS_MANAGEMENT_ENABLED=true
+  // (server) + VITE_FEATURE_FLAG_VIOLATIONS_MANAGEMENT_ENABLED=true (client
+  // build) once approved.
+  | "VIOLATIONS_MANAGEMENT_ENABLED";
 
 /**
  * Compile-time defaults. Used when no env override is present.
@@ -82,6 +95,7 @@ const DEFAULTS: Record<FeatureFlagKey, boolean> = {
   BOARD_SHUNT_ACTIVE: true,
   ASSESSMENT_EXECUTION_UNIFIED: true,
   AI_ASSISTANT_ENABLED: false,
+  VIOLATIONS_MANAGEMENT_ENABLED: false,
 };
 
 /**
