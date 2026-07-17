@@ -31,6 +31,7 @@ import {
   ensureStripeCustomer,
   initiateStripeSetupCheckout,
   fetchStripeCheckoutSession,
+  PROCESSING_PAYMENT_STATUSES,
 } from "../services/payment-service";
 import { resolveConnectChargeRouting } from "../services/stripe-connect-resolver";
 import { computeApplicationFeeCents } from "../services/stripe-charge-metadata";
@@ -112,15 +113,22 @@ export function registerPaymentPortalRoutes(
   });
 
   // ── Portal: Payment History ──────────────────────────────────────────────
+  //
+  // `?processing=1` restricts to the "submitted, not yet settled" statuses
+  // (PROCESSING_PAYMENT_STATUSES) — the read-API a pending-payment UI item
+  // scopes to, without the client having to filter the full (up to 50-row)
+  // history client-side. Omitted = unfiltered, unchanged existing behavior.
 
   app.get("/api/portal/payment-transactions", requirePortal, async (req: PortalRequest, res: Response) => {
     try {
       if (!req.portalAssociationId || !req.portalPersonId) {
         return res.status(403).json({ message: "Not authorized" });
       }
+      const processingOnly = req.query.processing === "1" || req.query.processing === "true";
       const transactions = await getOwnerPaymentHistory({
         associationId: req.portalAssociationId,
         personId: req.portalPersonId,
+        statuses: processingOnly ? PROCESSING_PAYMENT_STATUSES : undefined,
       });
       res.json(transactions);
     } catch (error: any) {
@@ -555,6 +563,10 @@ export function registerPaymentPortalRoutes(
   });
 
   // ── Admin: Payment Transactions ──────────────────────────────────────────
+  //
+  // `?processing=1` restricts to PROCESSING_PAYMENT_STATUSES (takes
+  // precedence over `?status=`) — the "is a payment currently clearing"
+  // manager-facing view. Unchanged when omitted.
 
   app.get(
     "/api/admin/payment-transactions",
@@ -567,6 +579,7 @@ export function registerPaymentPortalRoutes(
           assertAssociationScope(req, associationId);
         }
 
+        const processingOnly = req.query.processing === "1" || req.query.processing === "true";
         const status = typeof req.query.status === "string" ? req.query.status : undefined;
         const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) : 50;
         const offset = typeof req.query.offset === "string" ? parseInt(req.query.offset, 10) : 0;
@@ -574,6 +587,7 @@ export function registerPaymentPortalRoutes(
         const result = await getAdminPaymentTransactions({
           associationId: associationId || undefined,
           status,
+          statuses: processingOnly ? PROCESSING_PAYMENT_STATUSES : undefined,
           limit,
           offset,
         });

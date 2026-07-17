@@ -171,6 +171,12 @@ export function computeDueNow(
 // shape of `GET /api/portal/payment-transactions` this page cares about.
 // The endpoint already returns the full `PaymentTransaction` row; only the
 // fields the activity feed reads are typed here.
+//
+// 2026-07-17 (pending-payment visibility, William) — added the optional bank
+// hint (`bankName`/`last4`, populated when the payment used a saved method —
+// null/absent for most one-time Checkout payments, which have no linked
+// saved method) and `failureReason`, so a returned/declined ACH payment shows
+// as "Failed" instead of silently vanishing (it never posts a ledger entry).
 export interface PortalPaymentTransaction {
   id: string;
   unitId: string;
@@ -178,11 +184,14 @@ export interface PortalPaymentTransaction {
   status: string;
   checkoutMethod: string | null;
   createdAt: string;
+  bankName?: string | null;
+  last4?: string | null;
+  failureReason?: string | null;
 }
 
 export interface ActivityItem {
   id: string;
-  kind: "pending" | "ledger";
+  kind: "pending" | "failed" | "ledger";
   title: string;
   subtitle: string;
   amount: number;
@@ -195,7 +204,19 @@ export interface ActivityItem {
 // e.g. an ACH payment mid-settlement) shows here immediately in a
 // "Processing" state, merged chronologically with the settled ledger
 // entries, instead of the owner seeing silence until the ledger catches up.
-// Pure over its inputs so it's unit-testable without rendering.
+//
+// 2026-07-17 (William: "the moment the platform has a submitted payment I
+// would like there to be a pending line item ... so that they know it is
+// processing") — also surfaces a FAILED transaction (a returned/declined ACH
+// debit) as its own "failed" item. A failed payment never posts a ledger
+// entry, so without this it disappears from the owner's view entirely —
+// "processing, not vanish silently" applies to both directions.
+//
+// Pure over its inputs so it's unit-testable without rendering. Existing
+// "pending" item shape (title/subtitle text) is UNCHANGED for backward
+// compatibility with the pre-existing test suite; the bank hint (when
+// present) is appended, never substituted, so the exact-match assertions on
+// legacy inputs (no bankName/last4) keep passing byte-for-byte.
 export function buildActivityFeed(
   ledger: Array<{
     id: string;
@@ -204,18 +225,44 @@ export function buildActivityFeed(
     postedAt: string | Date | null;
     description: string | null;
   }>,
-  pendingTransactions: PortalPaymentTransaction[],
+  nonSettledTransactions: PortalPaymentTransaction[],
   unitLabelMap: Map<string, string>,
   limit = 6,
 ): ActivityItem[] {
-  const pendingItems: ActivityItem[] = pendingTransactions.map((tx) => {
+  const nonSettledItems: ActivityItem[] = nonSettledTransactions.map((tx) => {
     const unitLabel = unitLabelMap.get(tx.unitId);
     const methodLabel = tx.checkoutMethod === "card" ? "Card" : tx.checkoutMethod === "ach" ? "ACH" : null;
+    const bankHint =
+      tx.bankName && tx.last4
+        ? `${tx.bankName} ••${tx.last4}`
+        : tx.last4
+          ? `Bank account ••${tx.last4}`
+          : null;
+
+    if (tx.status === "failed") {
+      return {
+        id: `failed-${tx.id}`,
+        kind: "failed" as const,
+        title: unitLabel ? `Payment failed — ${unitLabel}` : "Payment failed",
+        subtitle: tx.failureReason?.trim()
+          ? tx.failureReason.trim()
+          : methodLabel
+            ? `Failed · ${methodLabel}`
+            : "Failed",
+        amount: tx.amountCents / 100,
+        date: tx.createdAt,
+      };
+    }
+
     return {
       id: `pending-${tx.id}`,
-      kind: "pending",
+      kind: "pending" as const,
       title: unitLabel ? `Payment submitted — ${unitLabel}` : "Payment submitted",
-      subtitle: methodLabel ? `Processing · ${methodLabel}` : "Processing",
+      subtitle: methodLabel
+        ? bankHint
+          ? `Processing · ${methodLabel} · ${bankHint}`
+          : `Processing · ${methodLabel}`
+        : "Processing",
       amount: tx.amountCents / 100,
       date: tx.createdAt,
     };
@@ -230,7 +277,7 @@ export function buildActivityFeed(
       amount: e.amount,
       date: typeof e.postedAt === "string" ? e.postedAt : new Date(e.postedAt as Date).toISOString(),
     }));
-  return [...pendingItems, ...ledgerItems]
+  return [...nonSettledItems, ...ledgerItems]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, limit);
 }
@@ -992,13 +1039,30 @@ function FinancesHubContent() {
       return Array.isArray(json) ? (json as PortalPaymentTransaction[]) : [];
     },
   });
+  // 2026-07-17 (William: pending-payment visibility) — "still processing"
+  // (initiated/pending — the moment a payment is submitted, before it
+  // settles) is what drives the "Pay this period" caption + the pending
+  // total below. Kept separate from `nonSettledTransactions` (which also
+  // includes failed) because a failed payment should NOT be counted as "in
+  // flight toward" the amount due.
   const pendingTransactions = useMemo(
     () => paymentTransactions.filter((tx) => tx.status === "initiated" || tx.status === "pending"),
     [paymentTransactions],
   );
+  const pendingPaymentCents = useMemo(
+    () => pendingTransactions.reduce((sum, tx) => sum + tx.amountCents, 0),
+    [pendingTransactions],
+  );
+  // Failed payments never post a ledger entry, so without surfacing them
+  // separately here they'd vanish from the owner's view entirely the moment
+  // a bank return/decline lands.
+  const nonSettledTransactions = useMemo(
+    () => paymentTransactions.filter((tx) => tx.status === "initiated" || tx.status === "pending" || tx.status === "failed"),
+    [paymentTransactions],
+  );
   const activityItems = useMemo(
-    () => buildActivityFeed(ledger, pendingTransactions, unitLabelMap),
-    [ledger, pendingTransactions, unitLabelMap],
+    () => buildActivityFeed(ledger, nonSettledTransactions, unitLabelMap),
+    [ledger, nonSettledTransactions, unitLabelMap],
   );
 
   return (
@@ -1174,6 +1238,27 @@ function FinancesHubContent() {
                   </span>
                 ) : null}
               </div>
+
+              {/* 2026-07-17 (William: pending-payment visibility) — a
+                  submitted-but-not-yet-settled payment (ACH mid-transit) is
+                  acknowledged here so the owner doesn't wonder whether "Pay
+                  this period" already reflects it. Display-only caption —
+                  the total above is NEVER reduced by a pending payment;
+                  amounts owed only change once the ledger actually posts. */}
+              {pendingPaymentCents > 0 ? (
+                <p
+                  className="mt-3 flex items-center gap-1.5 text-sm text-on-surface-variant"
+                  data-testid="portal-finances-pending-payment-caption"
+                >
+                  <span
+                    className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800"
+                    aria-hidden="true"
+                  >
+                    Processing
+                  </span>
+                  A ${formatCurrency(pendingPaymentCents / 100)} payment is processing toward this — it'll update once it clears.
+                </p>
+              ) : null}
 
               {/* 2026-07-14 (banner overdue-logic fix) — the redesigned
                   breakout row: due now / overdue from prior periods / total
@@ -1469,7 +1554,7 @@ function FinancesHubContent() {
           chronologically — see `buildActivityFeed`. Reflects (does not
           re-implement) the PR #514 confirmation-visibility fix. */}
       <section data-testid="portal-finances-recent-ledger" aria-labelledby="portal-finances-recent-heading">
-        <div className="mb-3 flex items-center justify-between">
+        <div className="mb-1 flex items-center justify-between">
           <h2 id="portal-finances-recent-heading" className="font-headline text-lg">{t("portal.finances.recentLedger.title")}</h2>
           <Link
             href="/portal/finances/ledger"
@@ -1478,6 +1563,14 @@ function FinancesHubContent() {
             {t("portal.finances.recentLedger.viewFull")}
           </Link>
         </div>
+        {/* 2026-07-17 (William: pending-payment visibility) — set the
+            expectation once, above the list, rather than repeating it on
+            every "Processing" row. */}
+        {pendingTransactions.length > 0 ? (
+          <p className="mb-3 text-xs text-on-surface-variant" data-testid="portal-finances-processing-timeline-note">
+            Bank transfers (ACH) typically take 3–5 business days to clear.
+          </p>
+        ) : null}
         {activityItems.length === 0 ? (
           <Card>
             <CardContent className="py-6 text-sm text-on-surface-variant" role="status">{t("portal.finances.recentLedger.empty")}</CardContent>
@@ -1501,6 +1594,15 @@ function FinancesHubContent() {
                           data-testid={`portal-finances-activity-${item.id}-processing`}
                         >
                           Processing
+                        </Badge>
+                      ) : null}
+                      {item.kind === "failed" ? (
+                        <Badge
+                          variant="outline"
+                          className="border-destructive/40 bg-destructive/10 text-destructive"
+                          data-testid={`portal-finances-activity-${item.id}-failed`}
+                        >
+                          Failed
                         </Badge>
                       ) : null}
                       <span>{new Date(item.date).toLocaleDateString()}</span>

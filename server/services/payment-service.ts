@@ -9,13 +9,15 @@
  */
 
 import crypto from "crypto";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
 import { checkoutSessionKey, offSessionChargeKey } from "./stripe-idempotency";
 import {
   paymentTransactions,
   ownerLedgerEntries,
   savedPaymentMethods,
+  units,
+  persons,
   type PaymentTransaction,
 } from "@shared/schema";
 import {
@@ -42,6 +44,20 @@ const TERMINAL_STATUSES = new Set(["succeeded", "failed", "canceled", "reversed"
 function isTerminalStatus(status: string): boolean {
   return TERMINAL_STATUSES.has(status);
 }
+
+/**
+ * The two `payment_transactions.status` values that mean "submitted, not yet
+ * settled" — i.e. what a "processing" / "pending" line item on the owner
+ * portal or the manager Payments screen should be built from. Single source
+ * of truth so the owner balance-summary aggregate (`getOwnerBalanceSummary`)
+ * and the two new pending-payment surfaces (owner + admin) can never drift
+ * out of sync on what counts as "still processing".
+ *
+ * William (2026-07-17): "The moment the platform has a submitted payment I
+ * would like there to be a pending line item for the account managers and
+ * owners to see so that they know it is processing."
+ */
+export const PROCESSING_PAYMENT_STATUSES = ["initiated", "pending"] as const;
 
 // ── Create Payment Transaction ───────────────────────────────────────────────
 
@@ -382,20 +398,48 @@ export async function getPaymentTransactionById(id: string): Promise<PaymentTran
   return txn ?? null;
 }
 
+/**
+ * `PaymentTransaction` plus the display-only bank hint (bank name + last4)
+ * from the linked `savedPaymentMethods` row, when one exists.
+ * `paymentMethodId` is only populated for off-session/autopay-charged rows
+ * today — a one-time Checkout payment has no linked saved method, so
+ * `bankName`/`last4` are `null` there. Consumers must render a graceful
+ * fallback (e.g. "ACH" / "Bank transfer") rather than assume this is always
+ * populated.
+ */
+export interface OwnerPaymentTransactionRow extends PaymentTransaction {
+  bankName: string | null;
+  last4: string | null;
+}
+
 export async function getOwnerPaymentHistory(params: {
   associationId: string;
   personId: string;
   limit?: number;
-}): Promise<PaymentTransaction[]> {
+  /**
+   * Restrict to specific `payment_transactions.status` values (e.g.
+   * `PROCESSING_PAYMENT_STATUSES` for a "still processing" list). Omitted =
+   * all statuses (existing, unfiltered behavior — unchanged for callers that
+   * don't pass this).
+   */
+  statuses?: readonly string[];
+}): Promise<OwnerPaymentTransactionRow[]> {
+  const conditions = [
+    eq(paymentTransactions.associationId, params.associationId),
+    eq(paymentTransactions.personId, params.personId),
+  ];
+  if (params.statuses && params.statuses.length > 0) {
+    conditions.push(inArray(paymentTransactions.status, [...params.statuses] as any));
+  }
   return db
-    .select()
+    .select({
+      ...getTableColumns(paymentTransactions),
+      bankName: savedPaymentMethods.bankName,
+      last4: savedPaymentMethods.last4,
+    })
     .from(paymentTransactions)
-    .where(
-      and(
-        eq(paymentTransactions.associationId, params.associationId),
-        eq(paymentTransactions.personId, params.personId),
-      ),
-    )
+    .leftJoin(savedPaymentMethods, eq(paymentTransactions.paymentMethodId, savedPaymentMethods.id))
+    .where(and(...conditions))
     .orderBy(desc(paymentTransactions.createdAt))
     .limit(params.limit ?? 50);
 }
@@ -471,7 +515,7 @@ export async function getOwnerBalanceSummary(params: {
       and(
         eq(paymentTransactions.associationId, params.associationId),
         eq(paymentTransactions.personId, params.personId),
-        inArray(paymentTransactions.status, ["initiated", "pending"]),
+        inArray(paymentTransactions.status, [...PROCESSING_PAYMENT_STATUSES]),
       ),
     );
 
@@ -480,17 +524,41 @@ export async function getOwnerBalanceSummary(params: {
   return { totalBalance, totalCharges, totalPayments, pendingPaymentCents, openCharges };
 }
 
+/**
+ * `PaymentTransaction` plus the manager-facing display context a flat
+ * association-scoped list can't otherwise show: which owner/unit this
+ * belongs to, and (when resolvable) the bank hint — so a manager looking at
+ * "processing" rows can answer "did the owner pay?" without cross-referencing
+ * another screen. All additive/optional — never used for money logic.
+ */
+export interface AdminPaymentTransactionRow extends PaymentTransaction {
+  unitNumber: string | null;
+  building: string | null;
+  ownerFirstName: string | null;
+  ownerLastName: string | null;
+  bankName: string | null;
+  last4: string | null;
+}
+
 export async function getAdminPaymentTransactions(params: {
   associationId?: string;
   status?: string;
+  /**
+   * Restrict to specific `payment_transactions.status` values (e.g.
+   * `PROCESSING_PAYMENT_STATUSES`). Takes precedence over `status` when both
+   * are supplied. Omitted (and `status` omitted) = all statuses, unchanged.
+   */
+  statuses?: readonly string[];
   limit?: number;
   offset?: number;
-}): Promise<{ transactions: PaymentTransaction[]; total: number }> {
+}): Promise<{ transactions: AdminPaymentTransactionRow[]; total: number }> {
   const conditions = [];
   if (params.associationId) {
     conditions.push(eq(paymentTransactions.associationId, params.associationId));
   }
-  if (params.status) {
+  if (params.statuses && params.statuses.length > 0) {
+    conditions.push(inArray(paymentTransactions.status, [...params.statuses] as any));
+  } else if (params.status) {
     conditions.push(eq(paymentTransactions.status, params.status as any));
   }
 
@@ -498,8 +566,19 @@ export async function getAdminPaymentTransactions(params: {
 
   const [transactions, countResult] = await Promise.all([
     db
-      .select()
+      .select({
+        ...getTableColumns(paymentTransactions),
+        unitNumber: units.unitNumber,
+        building: units.building,
+        ownerFirstName: persons.firstName,
+        ownerLastName: persons.lastName,
+        bankName: savedPaymentMethods.bankName,
+        last4: savedPaymentMethods.last4,
+      })
       .from(paymentTransactions)
+      .leftJoin(units, eq(paymentTransactions.unitId, units.id))
+      .leftJoin(persons, eq(paymentTransactions.personId, persons.id))
+      .leftJoin(savedPaymentMethods, eq(paymentTransactions.paymentMethodId, savedPaymentMethods.id))
       .where(whereClause)
       .orderBy(desc(paymentTransactions.createdAt))
       .limit(params.limit ?? 50)

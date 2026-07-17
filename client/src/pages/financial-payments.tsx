@@ -1859,6 +1859,33 @@ type PaymentTxnAdmin = {
   failureCode: string | null; failureReason: string | null;
   submittedAt: string | null; confirmedAt: string | null; failedAt: string | null;
   createdAt: string; updatedAt: string;
+  // 2026-07-17 (William: pending-payment visibility) — additive display
+  // context from the server's unit/owner/saved-method join. Optional so
+  // this type stays compatible with any older cached response shape.
+  unitNumber?: string | null;
+  building?: string | null;
+  ownerFirstName?: string | null;
+  ownerLastName?: string | null;
+  bankName?: string | null;
+  last4?: string | null;
+};
+
+// A "currently processing" payment is submitted but not yet settled — the
+// same two statuses the owner portal's pending caption uses
+// (PROCESSING_PAYMENT_STATUSES, server/services/payment-service.ts).
+const PROCESSING_STATUSES = new Set(["initiated", "pending"]);
+
+// 2026-07-17 — plain-English status labels for managers/board members who
+// aren't reading the raw enum. Tone (color) logic is unchanged; this only
+// swaps the label text.
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  initiated: "Processing",
+  pending: "Processing",
+  succeeded: "Paid",
+  failed: "Failed",
+  canceled: "Canceled",
+  reversed: "Reversed",
 };
 
 function PaymentTransactionsTab({ associationId }: { associationId: string | null }) {
@@ -1873,6 +1900,8 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
   });
 
   const transactions = data?.transactions ?? [];
+  const processingTxns = transactions.filter((t) => PROCESSING_STATUSES.has(t.status));
+  const processingTotalCents = processingTxns.reduce((sum, t) => sum + t.amountCents, 0);
 
   const statusTones: Record<string, PillTone> = {
     succeeded: "ok",
@@ -1884,8 +1913,22 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
     draft: "muted",
   };
   const statusBadge = (status: string) => (
-    <Pill tone={statusTones[status] ?? "muted"}>{status}</Pill>
+    <Pill tone={statusTones[status] ?? "muted"}>{STATUS_LABEL[status] ?? status}</Pill>
   );
+
+  const ownerLabel = (txn: PaymentTxnAdmin) => {
+    const name = [txn.ownerFirstName, txn.ownerLastName].filter(Boolean).join(" ").trim();
+    return name || "—";
+  };
+  const unitLabel = (txn: PaymentTxnAdmin) => {
+    if (!txn.unitNumber) return "—";
+    return txn.building ? `${txn.building} · ${txn.unitNumber}` : txn.unitNumber;
+  };
+  const methodHint = (txn: PaymentTxnAdmin) => {
+    if (txn.bankName && txn.last4) return `${txn.bankName} ••${txn.last4}`;
+    if (txn.last4) return `Bank account ••${txn.last4}`;
+    return null;
+  };
 
   return (
     <Card>
@@ -1905,37 +1948,68 @@ function PaymentTransactionsTab({ associationId }: { associationId: string | nul
             No payment transactions found.
           </div>
         ) : (
-          <div className="overflow-auto">
-            // Wave 23 a11y: aria-label names this transactions table.
-            <Table aria-label="Payment transactions">
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs">Date</TableHead>
-                  <TableHead className="text-xs">Amount</TableHead>
-                  <TableHead className="text-xs">Status</TableHead>
-                  <TableHead className="text-xs">Receipt</TableHead>
-                  <TableHead className="text-xs">Provider Ref</TableHead>
-                  <TableHead className="text-xs">Failure Reason</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactions.map((txn) => (
-                  <TableRow key={txn.id}>
-                    <TableCell className="text-sm whitespace-nowrap">
-                      {txn.submittedAt
-                        ? new Date(txn.submittedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
-                        : new Date(txn.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                    </TableCell>
-                    <TableCell className="text-sm font-medium tabular-nums">${(txn.amountCents / 100).toFixed(2)}</TableCell>
-                    <TableCell>{statusBadge(txn.status)}</TableCell>
-                    <TableCell className="text-xs font-mono">{txn.receiptReference ?? "—"}</TableCell>
-                    <TableCell className="text-xs font-mono max-w-[140px] truncate">{txn.providerPaymentId ?? txn.providerIntentId ?? "—"}</TableCell>
-                    <TableCell className="text-xs text-red-600 dark:text-red-400 max-w-[200px] truncate">{txn.failureReason ?? "—"}</TableCell>
+          <>
+            {/* 2026-07-17 (William: pending-payment visibility) — "the moment
+                the platform has a submitted payment I would like there to be
+                a pending line item for the account managers ... to see so
+                that they know it is processing." A manager scanning this
+                tab should be able to answer "is anything clearing right
+                now?" at a glance, without counting rows. */}
+            <div
+              className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+              data-testid="payment-transactions-processing-summary"
+            >
+              <RefreshCw className="h-4 w-4 shrink-0" aria-hidden="true" />
+              {processingTxns.length > 0 ? (
+                <span>
+                  <strong>{processingTxns.length}</strong> payment{processingTxns.length === 1 ? "" : "s"} currently
+                  processing — <strong>${(processingTotalCents / 100).toFixed(2)}</strong> total. Bank transfers
+                  (ACH) typically take 3–5 business days to clear.
+                </span>
+              ) : (
+                <span>No payments are currently processing.</span>
+              )}
+            </div>
+            <div className="overflow-auto">
+              {/* Wave 23 a11y: aria-label names this transactions table. */}
+              <Table aria-label="Payment transactions">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-xs">Date</TableHead>
+                    <TableHead className="text-xs">Owner</TableHead>
+                    <TableHead className="text-xs">Unit</TableHead>
+                    <TableHead className="text-xs">Amount</TableHead>
+                    <TableHead className="text-xs">Status</TableHead>
+                    <TableHead className="text-xs">Method</TableHead>
+                    <TableHead className="text-xs">Receipt</TableHead>
+                    <TableHead className="text-xs">Provider Ref</TableHead>
+                    <TableHead className="text-xs">Failure Reason</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {transactions.map((txn) => (
+                    <TableRow key={txn.id} data-testid={`payment-transaction-row-${txn.id}`}>
+                      <TableCell className="text-sm whitespace-nowrap">
+                        {txn.submittedAt
+                          ? new Date(txn.submittedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                          : new Date(txn.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                      </TableCell>
+                      <TableCell className="text-sm max-w-[160px] truncate">{ownerLabel(txn)}</TableCell>
+                      <TableCell className="text-sm whitespace-nowrap">{unitLabel(txn)}</TableCell>
+                      <TableCell className="text-sm font-medium tabular-nums">${(txn.amountCents / 100).toFixed(2)}</TableCell>
+                      <TableCell>{statusBadge(txn.status)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {methodHint(txn) ?? (txn.provider === "stripe" ? "ACH" : txn.provider)}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">{txn.receiptReference ?? "—"}</TableCell>
+                      <TableCell className="text-xs font-mono max-w-[140px] truncate">{txn.providerPaymentId ?? txn.providerIntentId ?? "—"}</TableCell>
+                      <TableCell className="text-xs text-red-600 dark:text-red-400 max-w-[200px] truncate">{txn.failureReason ?? "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </CardContent>
     </Card>
