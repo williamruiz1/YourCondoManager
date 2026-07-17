@@ -461,15 +461,51 @@ app.use((req, res, next) => {
       "rate-limit",
     );
 
+  // Auth-verify key: account (email) + IP, not bare IP.
+  //
+  // founder-os auth-rate-limit rebalance (2026-07-17): auth-verify was
+  // IP-only-keyed, which has two compounding costs on this exact tier:
+  //   1. `/api/portal/verify-login` costs TWO calls for any owner/board
+  //      account with access to more than one association — the first call
+  //      verifies the OTP and returns the association picker, the second
+  //      (re-verifying the same OTP) completes the pick. A single successful
+  //      login for a multi-association account already spends 2 of the
+  //      window's budget before any retry.
+  //   2. IP-only keying means every user behind the same NAT / VPN / shared
+  //      office or building WiFi shares ONE budget — one person's retries
+  //      (or a second owner logging in from the same network) can lock out
+  //      someone else entirely unrelated to them.
+  // Falls back to bare IP when no `email`/`:token` is present on the request
+  // (e.g. the admin-gated, bodyless `/api/platform/email/verify` health
+  // check) — identical to the prior behavior for that route.
+  const authVerifyKey = (req: Request): string => {
+    const ip = req.ip ?? "unknown";
+    const bodyEmail = req.body && typeof (req.body as { email?: unknown }).email === "string"
+      ? (req.body as { email: string }).email.trim().toLowerCase()
+      : "";
+    if (bodyEmail) return `${bodyEmail}:${ip}`;
+    const tokenParam = typeof req.params?.token === "string" ? req.params.token : "";
+    if (tokenParam) return `tok-${tokenParam}:${ip}`;
+    return ip;
+  };
+
   // TIER 1 — AUTH VERIFY (OTP / token verification: the tightest brute-force
   // surface — an attacker guessing a 6-digit OTP or a ballot/verify token).
+  // Brute-force protection does NOT rely on this window alone: the OTP token
+  // itself is capped at 5 guesses (`portalLoginTokens.attempts >= 5` in
+  // routes.ts, IP/account-agnostic) before it's dead and a fresh code must be
+  // requested. This tier's job is bounding request VOLUME per account+IP —
+  // 15/10min comfortably covers a multi-association login (2 calls) plus a
+  // few retries for a legitimate user, while still tightly bounding any one
+  // account+IP pair.
   const authVerifyLimiter = createPgRateLimiter({
     query: rlQuery,
     keyPrefix: "auth-verify",
     windowMs: 10 * 60_000,
-    max: 10,
+    max: 15,
     message: "Too many verification attempts, please try again in a few minutes.",
     onFallback: rlFallbackLog("auth-verify"),
+    keyGenerator: authVerifyKey,
   });
   app.use("/api/portal/verify-login", authVerifyLimiter);
   app.use("/api/vendor-portal/verify-login", authVerifyLimiter);

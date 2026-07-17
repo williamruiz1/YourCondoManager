@@ -16,9 +16,24 @@ export function createRateLimiter(options: {
   windowMs: number;
   max: number;
   message?: string;
+  /**
+   * Optional per-request bucket key. Defaults to the client IP
+   * (`req.ip ?? "unknown"`) — preserves existing behavior for every current
+   * caller. Pass this to key a limiter by account identity (e.g. email) in
+   * addition to IP, so unrelated users sharing an IP (NAT / VPN / shared
+   * office WiFi / a household) don't share one bucket. See YCM founder-os
+   * incident 2026-07-17 (auth rate-limit rebalance) — the fixed-window shape
+   * is unchanged, only WHAT discriminates a bucket is configurable.
+   */
+  keyGenerator?: (req: Request) => string;
 }) {
   const buckets = new Map<string, Bucket>();
-  const { windowMs, max, message = "Too many requests, please try again later." } = options;
+  const {
+    windowMs,
+    max,
+    message = "Too many requests, please try again later.",
+    keyGenerator = (req: Request) => req.ip ?? "unknown",
+  } = options;
 
   // Periodic cleanup to prevent unbounded memory growth.
   // NOTE (founder-os#10741, SCALE-B-003): this is deliberately NOT wrapped in a
@@ -34,7 +49,7 @@ export function createRateLimiter(options: {
   }, windowMs).unref();
 
   return (req: Request, res: Response, next: NextFunction) => {
-    const key = req.ip ?? "unknown";
+    const key = keyGenerator(req) || "unknown";
     const now = Date.now();
     const bucket = buckets.get(key);
 
@@ -115,6 +130,23 @@ export function createPgRateLimiter(options: {
   query: RateLimitQuery;
   /** Optional hook invoked when a DB error forces the in-memory fallback. */
   onFallback?: (err: unknown) => void;
+  /**
+   * Optional per-request discriminator, composed with keyPrefix to form the
+   * bucket key (`${keyPrefix}:${discriminator}`). Defaults to the client IP
+   * (`req.ip ?? "unknown"`) — preserves existing behavior for every current
+   * tier (money-write, invite-gen, auth-request all stay IP-only).
+   *
+   * Auth-verify (2026-07-17 rebalance): key by account (email) + IP instead
+   * of bare IP. A pure-IP bucket means every user behind the same NAT / VPN /
+   * shared WiFi — or one legitimate multi-association owner whose login
+   * protocol costs 2 verify-login calls (OTP verify, then association pick)
+   * — shares one budget and can lock each other out. Keying by account+IP
+   * isolates that: an attacker still can't spray guesses past the per-token
+   * `attempts >= 5` cap in routes.ts (unchanged, IP/account-agnostic — the
+   * real brute-force floor), and a credential-stuffing attempt against ONE
+   * account+IP pair stays tightly bounded.
+   */
+  keyGenerator?: (req: Request) => string;
 }) {
   const {
     windowMs,
@@ -123,14 +155,17 @@ export function createPgRateLimiter(options: {
     message = "Too many requests, please try again later.",
     query,
     onFallback,
+    keyGenerator = (req: Request) => req.ip ?? "unknown",
   } = options;
 
   // The degraded-mode limiter (per-machine) used only when Postgres is down.
-  const fallback = createRateLimiter({ windowMs, max, message });
+  // Shares the same keyGenerator so a DB blip doesn't silently widen the
+  // bucket back to IP-only for the duration of the outage.
+  const fallback = createRateLimiter({ windowMs, max, message, keyGenerator });
 
   return async (req: Request, res: Response, next: NextFunction) => {
-    const clientIp = req.ip ?? "unknown";
-    const key = `${keyPrefix}:${clientIp}`;
+    const discriminator = keyGenerator(req) || "unknown";
+    const key = `${keyPrefix}:${discriminator}`;
     const now = Date.now();
     const windowStart = new Date(Math.floor(now / windowMs) * windowMs);
 
