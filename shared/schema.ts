@@ -2268,6 +2268,54 @@ export const roadmapTaskAttachments = pgTable("admin_roadmap_task_attachments", 
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+/**
+ * founder_feedback — William-only contextual feedback capture (2026-07-17).
+ *
+ * A lightweight, surface-agnostic feedback ledger for William's own two
+ * accounts (chcmgmt18@gmail.com board/admin, yourcondomanagement@gmail.com
+ * owner/platform). Distinct from `admin_roadmap_tasks` (which is the
+ * heavier admin-only "inspect an element -> create a roadmap ticket" flow):
+ * this table is the durable sink for the simple "click Feedback, type a
+ * note, submit" affordance available on every surface William visits
+ * (admin app, owner portal, and public pages when he's authenticated).
+ * Every row is also mirrored to a GitHub issue (label `william-feedback`)
+ * when a GITHUB_TOKEN/GH_TOKEN is configured server-side; `githubIssueUrl`
+ * / `githubIssueNumber` stay null when no token is configured, and the row
+ * remains the durable record either way (DB-only fallback).
+ *
+ * Eligibility is resolved and re-checked SERVER-SIDE on every write (see
+ * server/founder-feedback.ts + the /api/feedback/eligible and /api/feedback
+ * routes) — this table intentionally carries no foreign key to admin_users
+ * or portal_access because the identity may be resolved via an admin
+ * session, a portal session, or a general authenticated session.
+ */
+export const founderFeedback = pgTable("founder_feedback", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  surface: text("surface").notNull(), // "admin" | "portal" | "session"
+  identityId: text("identity_id"),
+  note: text("note").notNull(),
+  severity: text("severity"), // "bug" | "idea" | "looks-wrong"
+  route: text("route").notNull(),
+  pageTitle: text("page_title"),
+  viewportWidth: integer("viewport_width"),
+  viewportHeight: integer("viewport_height"),
+  appVersion: text("app_version"),
+  userAgent: text("user_agent"),
+  githubIssueUrl: text("github_issue_url"),
+  githubIssueNumber: integer("github_issue_number"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertFounderFeedbackSchema = createInsertSchema(founderFeedback).omit({
+  id: true,
+  createdAt: true,
+  githubIssueUrl: true,
+  githubIssueNumber: true,
+});
+export type FounderFeedback = typeof founderFeedback.$inferSelect;
+export type InsertFounderFeedback = z.infer<typeof insertFounderFeedbackSchema>;
+
 export const executiveUpdateStatusEnum = pgEnum("executive_update_status", ["draft", "published"]);
 export const executiveSourceTypeEnum = pgEnum("executive_source_type", ["manual", "roadmap-task", "roadmap-project"]);
 export const executiveEvidenceTypeEnum = pgEnum("executive_evidence_type", ["release-note", "metric", "screenshot", "link", "note"]);
