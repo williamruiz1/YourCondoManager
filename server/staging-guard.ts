@@ -32,11 +32,24 @@ let warned = false;
  * Any one of the three signals trips it (defence in depth against a single
  * mis-set env var).
  */
+// Any Fly app whose name marks it a review/clone environment. FLY_APP_NAME is
+// set AUTOMATICALLY by Fly to the app name, independent of which fly.*.toml
+// deployed it — so this is a FAIL-SAFE against the founder-os#10193 recurrence
+// where `yourcondomanager-staging` was deployed with the PROD `fly.toml` (no
+// kill-switch env), silently re-arming real email/SMS/Stripe on cloned real
+// data. Keying off the app NAME means a review app can never be un-armed by a
+// wrong deploy config. Prod is exactly "yourcondomanager" → never matches.
+function isReviewFlyApp(): boolean {
+  const app = process.env.FLY_APP_NAME || "";
+  return /(^|-)(staging|preview|review|clone)(-|$)/i.test(app);
+}
+
 export function outboundSideEffectsDisabled(): boolean {
   const disabled =
     process.env.OUTBOUND_SIDE_EFFECTS_DISABLED === "1" ||
     process.env.APP_ENV === "staging" ||
-    process.env.YCM_STAGING === "1";
+    process.env.YCM_STAGING === "1" ||
+    isReviewFlyApp();
   if (disabled && !warned) {
     warned = true;
     // eslint-disable-next-line no-console
