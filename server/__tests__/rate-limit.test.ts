@@ -152,6 +152,30 @@ describe("createRateLimiter", () => {
     expect(ctx.statusCode).toBe(429);
     expect(next).not.toHaveBeenCalled();
   });
+
+  it("uses a custom keyGenerator instead of req.ip when provided", () => {
+    const limiter = createRateLimiter({
+      windowMs: 60_000,
+      max: 1,
+      keyGenerator: (req) => `acct:${(req as unknown as { acctId?: string }).acctId ?? "none"}`,
+    });
+    const reqA = { ...makeReq({ ip: "10.0.0.1" }), acctId: "alice" } as Request;
+    const reqB = { ...makeReq({ ip: "10.0.0.1" }), acctId: "bob" } as Request;
+
+    limiter(reqA, makeRes().res, vi.fn()); // consume alice's quota
+
+    // Same IP, different account key → bob is unaffected.
+    const nextB = vi.fn();
+    limiter(reqB, makeRes().res, nextB);
+    expect(nextB).toHaveBeenCalledOnce();
+
+    // Alice, same account key, is still blocked.
+    const nextA = vi.fn();
+    const ctxA = makeRes();
+    limiter(reqA, ctxA.res, nextA);
+    expect(ctxA.statusCode).toBe(429);
+    expect(nextA).not.toHaveBeenCalled();
+  });
 });
 
 // ── Tests: onWriteOnly ────────────────────────────────────────────────────────
@@ -387,6 +411,130 @@ describe("createPgRateLimiter", () => {
     // Keys are namespaced by tier + ip.
     expect(calls[0][0]).toBe("money-write:10.0.0.9");
     expect(calls[1][0]).toBe("auth-verify:10.0.0.9");
+  });
+
+  // ── keyGenerator (2026-07-17 auth rate-limit rebalance) ──────────────────
+  //
+  // These lock in the shared-IP fix: `/api/portal/verify-login` previously
+  // keyed auth-verify by bare IP, so any two unrelated accounts behind the
+  // same NAT/VPN/shared WiFi shared one budget. See docs/rate-limiting.md
+  // §"auth-verify account+IP keying".
+
+  function authVerifyKeyFixture(req: Request): string {
+    const ip = req.ip ?? "unknown";
+    const body = (req as unknown as { body?: { email?: unknown } }).body;
+    const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (email) return `${email}:${ip}`;
+    const token = (req as unknown as { params?: { token?: string } }).params?.token;
+    if (typeof token === "string" && token) return `tok-${token}:${ip}`;
+    return ip;
+  }
+
+  it("keys by account+IP, not bare IP — two accounts on the same IP do not share a budget", async () => {
+    const { query, calls } = makeStubQuery();
+    const limiter = createPgRateLimiter({
+      query,
+      keyPrefix: "auth-verify",
+      windowMs: 10 * 60_000,
+      max: 1,
+      keyGenerator: authVerifyKeyFixture,
+    });
+    const sameIp = "10.0.0.42";
+    const reqAlice = { ...makeReq({ ip: sameIp }), body: { email: "alice@example.com" } } as unknown as Request;
+    const reqBob = { ...makeReq({ ip: sameIp }), body: { email: "bob@example.com" } } as unknown as Request;
+
+    // Alice exhausts her own budget.
+    await limiter(reqAlice, makeRes().res, vi.fn());
+    const aliceBlocked = makeRes();
+    const aliceNext = vi.fn();
+    await limiter(reqAlice, aliceBlocked.res, aliceNext);
+    expect(aliceBlocked.statusCode).toBe(429);
+    expect(aliceNext).not.toHaveBeenCalled();
+
+    // Bob, same IP, different account — unaffected (the shared-IP fix).
+    const bobNext = vi.fn();
+    await limiter(reqBob, makeRes().res, bobNext);
+    expect(bobNext).toHaveBeenCalledOnce();
+
+    expect(calls[0][0]).toBe("auth-verify:alice@example.com:10.0.0.42");
+    expect(calls[2][0]).toBe("auth-verify:bob@example.com:10.0.0.42");
+  });
+
+  it("covers the two-call portal picker flow (verify + pick) within the raised ceiling", async () => {
+    // Mirrors client/src/components/owner-portal-login-container.tsx: a
+    // multi-association account calls verify-login once with just the OTP,
+    // then again with the chosen associationId — same email, same endpoint.
+    const { query } = makeStubQuery();
+    const limiter = createPgRateLimiter({
+      query,
+      keyPrefix: "auth-verify",
+      windowMs: 10 * 60_000,
+      max: 15, // the live server/index.ts ceiling for auth-verify
+      keyGenerator: authVerifyKeyFixture,
+    });
+    const req = { ...makeReq({ ip: "203.0.113.5" }), body: { email: "owner@example.com" } } as unknown as Request;
+
+    // A login attempt that trips over a wrong-code retry, then succeeds and
+    // completes the two-call picker flow — 3 calls total, comfortably under
+    // the new ceiling where the OLD ceiling (5, pre-Postgres-migration) would
+    // have already been at 3/5 after just this one login.
+    for (let i = 0; i < 3; i++) {
+      const next = vi.fn();
+      await limiter(req, makeRes().res, next);
+      expect(next).toHaveBeenCalledOnce();
+    }
+  });
+
+  it("falls back to bare IP when the request has no email or token (e.g. a bodyless health-check route)", async () => {
+    const { query, calls } = makeStubQuery();
+    const limiter = createPgRateLimiter({
+      query,
+      keyPrefix: "auth-verify",
+      windowMs: 60_000,
+      max: 5,
+      keyGenerator: authVerifyKeyFixture,
+    });
+    const req = makeReq({ ip: "198.51.100.9" }); // no body at all
+
+    await limiter(req, makeRes().res, vi.fn());
+    expect(calls[0][0]).toBe("auth-verify:198.51.100.9");
+  });
+
+  it("keys election-ballot-style requests by token+IP via the :token param fallback", async () => {
+    const { query, calls } = makeStubQuery();
+    const limiter = createPgRateLimiter({
+      query,
+      keyPrefix: "auth-verify",
+      windowMs: 60_000,
+      max: 5,
+      keyGenerator: authVerifyKeyFixture,
+    });
+    const req = { ...makeReq({ ip: "198.51.100.9" }), params: { token: "ballot-abc123" } } as unknown as Request;
+
+    await limiter(req, makeRes().res, vi.fn());
+    expect(calls[0][0]).toBe("auth-verify:tok-ballot-abc123:198.51.100.9");
+  });
+
+  it("the fail-open in-memory fallback preserves the same keyGenerator (no silent widen-to-IP-only during a DB outage)", async () => {
+    const failing: RateLimitQuery = async () => {
+      throw new Error("connection terminated");
+    };
+    const limiter = createPgRateLimiter({
+      query: failing,
+      keyPrefix: "auth-verify",
+      windowMs: 60_000,
+      max: 1,
+      keyGenerator: authVerifyKeyFixture,
+    });
+    const sameIp = "10.0.0.42";
+    const reqAlice = { ...makeReq({ ip: sameIp }), body: { email: "alice@example.com" } } as unknown as Request;
+    const reqBob = { ...makeReq({ ip: sameIp }), body: { email: "bob@example.com" } } as unknown as Request;
+
+    await limiter(reqAlice, makeRes().res, vi.fn()); // consume alice's fallback quota
+
+    const bobNext = vi.fn();
+    await limiter(reqBob, makeRes().res, bobNext);
+    expect(bobNext).toHaveBeenCalledOnce(); // bob unaffected even in fail-open mode
   });
 
   it("FAILS OPEN to the in-memory limiter when Postgres errors", async () => {
