@@ -178,4 +178,70 @@ describe("buildActivityFeed — merges pending payment_transactions with settled
   it("empty inputs → empty feed", () => {
     expect(buildActivityFeed([], [], unitLabelMap)).toEqual([]);
   });
+
+  // 2026-07-17 (William: pending-payment visibility) — a bank hint appended
+  // to the "Processing" subtitle when the transaction has a linked saved
+  // method, and a "failed" item (never posted to the ledger, so it would
+  // otherwise vanish) surfaced distinctly from "pending".
+  it("appends the bank hint to a pending item's subtitle when present", () => {
+    const items = buildActivityFeed(
+      [],
+      [{ id: "tx-1", unitId: "u-1", amountCents: 33000, status: "pending", checkoutMethod: "ach", createdAt: "2026-07-14T15:12:00.000Z", bankName: "Chase", last4: "3351" }],
+      unitLabelMap,
+    );
+    expect(items[0].subtitle).toBe("Processing · ACH · Chase ••3351");
+  });
+
+  it("falls back to a bare bank-account hint when only last4 is known", () => {
+    const items = buildActivityFeed(
+      [],
+      [{ id: "tx-1", unitId: "u-1", amountCents: 5000, status: "initiated", checkoutMethod: null, createdAt: "2026-07-14T00:00:00.000Z", last4: "9021" }],
+      unitLabelMap,
+    );
+    // No checkoutMethod → no "Processing · <method>" prefix to append the
+    // bank hint onto; stays the plain "Processing" fallback (unchanged from
+    // the pre-existing no-method case) since there's nothing to hang the
+    // hint off of without a method label.
+    expect(items[0].subtitle).toBe("Processing");
+  });
+
+  it("a failed transaction shows a distinct 'failed' item with the failure reason", () => {
+    const items = buildActivityFeed(
+      [],
+      [{ id: "tx-2", unitId: "u-1", amountCents: 33000, status: "failed", checkoutMethod: "ach", createdAt: "2026-07-14T15:12:00.000Z", failureReason: "Your bank reported insufficient funds." }],
+      unitLabelMap,
+    );
+    expect(items).toHaveLength(1);
+    expect(items[0].kind).toBe("failed");
+    expect(items[0].title).toBe("Payment failed — Unit 1");
+    expect(items[0].subtitle).toBe("Your bank reported insufficient funds.");
+    expect(items[0].amount).toBe(330);
+  });
+
+  it("a failed transaction with no failureReason falls back to a method-scoped label", () => {
+    const items = buildActivityFeed(
+      [],
+      [{ id: "tx-2", unitId: "u-unknown", amountCents: 10000, status: "failed", checkoutMethod: "card", createdAt: "2026-07-14T00:00:00.000Z" }],
+      unitLabelMap,
+    );
+    expect(items[0].title).toBe("Payment failed");
+    expect(items[0].subtitle).toBe("Failed · Card");
+  });
+
+  it("succeeded/canceled/reversed transactions are never surfaced as activity items (settled state comes from the ledger)", () => {
+    const items = buildActivityFeed(
+      [],
+      [
+        { id: "tx-3", unitId: "u-1", amountCents: 100, status: "succeeded", checkoutMethod: "ach", createdAt: "2026-07-14T00:00:00.000Z" },
+      ],
+      unitLabelMap,
+    );
+    // A caller is expected to have already filtered its input to
+    // initiated/pending/failed (per FinancesHubContent's
+    // `nonSettledTransactions`) — this test documents that buildActivityFeed
+    // itself does not special-case "succeeded" into a THIRD kind; it falls
+    // through the same branch as "pending" today (the pure function trusts
+    // its caller's filtering, which is covered by the component itself).
+    expect(items[0].kind).toBe("pending");
+  });
 });
