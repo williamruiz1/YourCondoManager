@@ -44,6 +44,14 @@ function safeInvalidateAlertCache(): void {
     console.error("[alerts][invalidate] cache flush failed (ignored):", err);
   }
 }
+import {
+  isFounderFeedbackEmail,
+  resolveAppVersion,
+  fileFounderFeedbackGithubIssue,
+  buildFounderFeedbackIssueTitle,
+  buildFounderFeedbackIssueBody,
+} from "./founder-feedback";
+import { founderFeedback } from "@shared/schema";
 import { createAuthRestoreToken, getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import { revokePortalAccess as revokePortalAccessForOwnership } from "./de-provisioning";
 import { sendDemoRequestConfirmation } from "./demo-request-confirmation";
@@ -17643,6 +17651,135 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       }
     },
   );
+
+  /**
+   * William-only contextual feedback (2026-07-17).
+   *
+   * Resolves the calling identity's email from whichever session exists —
+   * admin session (cookie), portal session (x-portal-access-id header), or
+   * a general authenticated session — and checks it against the
+   * server-side allowlist in ./founder-feedback. Never trusts a
+   * client-supplied email. No auth middleware requirement on this route
+   * itself (it must work across all three surfaces); ineligible/anonymous
+   * callers simply get `{ eligible: false }`.
+   */
+  async function resolveFounderFeedbackIdentity(
+    req: AdminRequest & PortalRequest,
+  ): Promise<{ email: string; surface: "admin" | "portal" | "session"; identityId: string | null } | null> {
+    if (await tryHydrateAdminFromSession(req)) {
+      if (req.adminUserEmail) {
+        return { email: req.adminUserEmail, surface: "admin", identityId: req.adminUserId || null };
+      }
+    }
+
+    const portalAccessId = req.header("x-portal-access-id") || "";
+    if (portalAccessId) {
+      const resolved = await storage.resolvePortalAccessContext(portalAccessId);
+      if (resolved?.access?.email) {
+        return { email: resolved.access.email, surface: "portal", identityId: resolved.access.id };
+      }
+    }
+
+    const sessionUser = (req as unknown as { user?: { id?: string; email?: string } }).user;
+    if (req.isAuthenticated?.() && sessionUser?.email) {
+      return { email: sessionUser.email, surface: "session", identityId: sessionUser.id || null };
+    }
+
+    return null;
+  }
+
+  app.get("/api/founder-feedback/eligible", async (req: AdminRequest & PortalRequest, res) => {
+    try {
+      const identity = await resolveFounderFeedbackIdentity(req);
+      const eligible = isFounderFeedbackEmail(identity?.email);
+      res.json({
+        eligible,
+        identity: eligible && identity ? { email: identity.email, surface: identity.surface } : null,
+      });
+    } catch (error: any) {
+      // Fail closed — an error resolving identity means "not eligible", not
+      // a 500 that could leak stack traces into a public-page-mounted widget.
+      console.error("[founder-feedback][eligible] error", error?.message);
+      res.json({ eligible: false, identity: null });
+    }
+  });
+
+  const founderFeedbackSubmitSchema = z.object({
+    note: z.string().trim().min(1).max(4000),
+    severity: z.enum(["bug", "idea", "looks-wrong"]).optional(),
+    route: z.string().trim().min(1).max(500),
+    pageTitle: z.string().trim().max(300).optional(),
+    viewportWidth: z.number().int().positive().optional(),
+    viewportHeight: z.number().int().positive().optional(),
+  });
+
+  app.post("/api/founder-feedback", async (req: AdminRequest & PortalRequest, res) => {
+    try {
+      const identity = await resolveFounderFeedbackIdentity(req);
+      if (!identity || !isFounderFeedbackEmail(identity.email)) {
+        return res.status(403).json({ message: "Not eligible to submit feedback" });
+      }
+
+      const parsed = founderFeedbackSubmitSchema.parse(req.body);
+      const appVersion = resolveAppVersion();
+      const userAgent = req.header("user-agent") || null;
+      const createdAt = new Date();
+
+      const [row] = await db
+        .insert(founderFeedback)
+        .values({
+          email: identity.email,
+          surface: identity.surface,
+          identityId: identity.identityId,
+          note: parsed.note,
+          severity: parsed.severity || null,
+          route: parsed.route,
+          pageTitle: parsed.pageTitle || null,
+          viewportWidth: parsed.viewportWidth ?? null,
+          viewportHeight: parsed.viewportHeight ?? null,
+          appVersion,
+          userAgent,
+        })
+        .returning();
+
+      const githubResult = await fileFounderFeedbackGithubIssue({
+        title: buildFounderFeedbackIssueTitle(parsed.note),
+        body: buildFounderFeedbackIssueBody({
+          note: parsed.note,
+          severity: parsed.severity || null,
+          email: identity.email,
+          surface: identity.surface,
+          route: parsed.route,
+          pageTitle: parsed.pageTitle || null,
+          viewportWidth: parsed.viewportWidth ?? null,
+          viewportHeight: parsed.viewportHeight ?? null,
+          appVersion,
+          userAgent,
+          createdAt,
+        }),
+      });
+
+      if (githubResult) {
+        await db
+          .update(founderFeedback)
+          .set({ githubIssueUrl: githubResult.url, githubIssueNumber: githubResult.number })
+          .where(eq(founderFeedback.id, row.id));
+      }
+
+      res.status(201).json({
+        ok: true,
+        id: row.id,
+        githubIssueUrl: githubResult?.url || null,
+        dbOnly: !githubResult,
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid feedback payload", issues: error.issues });
+      }
+      console.error("[founder-feedback][submit] error", error?.message);
+      res.status(500).json({ message: error?.message || "Failed to submit feedback" });
+    }
+  });
 
   app.get("/api/admin/roadmap", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {

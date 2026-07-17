@@ -768,6 +768,24 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
         taskId = createdTask.task.id;
         taskTitle = createdTask.task.title;
         targetWorkstreamTitle = createdTask.targetWorkstream.title;
+
+        // William-only contextual feedback (2026-07-17) — best-effort, does
+        // not block or fail the roadmap-ticket flow above. Mirrors every
+        // admin-surface submission into the surface-agnostic founder_feedback
+        // ledger + a GitHub issue, same as the portal/public-page widget.
+        void apiRequest("POST", "/api/founder-feedback", {
+          note: [`${form.type === "bug" ? "Bug" : "Enhancement"}: ${form.title.trim()}`, form.description.trim()]
+            .filter(Boolean)
+            .join("\n\n"),
+          severity: form.type === "bug" ? "bug" : "idea",
+          route: selectedSnapshot.route,
+          pageTitle: document.title,
+          viewportWidth: selectedSnapshot.viewportWidth,
+          viewportHeight: selectedSnapshot.viewportHeight,
+        }).catch(() => {
+          // Best-effort only — the roadmap ticket above is already created;
+          // never surface this as a submission failure.
+        });
       }
 
       const marker: StoredMarker = {

@@ -32,6 +32,7 @@ import { MobileTabBar } from "@/components/mobile-tab-bar";
 import { CookieConsentBanner } from "@/components/cookie-consent-banner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useUserSettings, applyTheme, setAdminIdForSettings, formatSettingsDate } from "@/hooks/use-user-settings";
+import { useFounderFeedbackEligibility } from "@/hooks/use-founder-feedback-eligibility";
 import { TrialBanner } from "@/components/trial-banner";
 import { SubscriptionLockScreen } from "@/components/subscription-lock-screen";
 import { ErrorBoundary } from "@/components/error-boundary";
@@ -139,6 +140,7 @@ const GovernanceHubPage = lazyWithReload(() => import("@/pages/hubs/governance-h
 const CommunicationsHubPage = lazyWithReload(() => import("@/pages/hubs/communications-hub"), "@/pages/hubs/communications-hub");
 const NotFound = lazyWithReload(() => import("@/pages/not-found"), "@/pages/not-found");
 const AdminContextualFeedbackWidget = lazyWithReload(() => import("@/components/admin-contextual-feedback-widget").then((module) => ({ default: module.AdminContextualFeedbackWidget })), "@/components/admin-contextual-feedback-widget");
+const FounderFeedbackWidget = lazyWithReload(() => import("@/components/founder-feedback-widget").then((module) => ({ default: module.FounderFeedbackWidget })), "@/components/founder-feedback-widget");
 
 type AuthSession = {
   authenticated: boolean;
@@ -1449,6 +1451,11 @@ function AuthAwareApp() {
     }
   }
 
+  // William-only contextual feedback (2026-07-17) — server-resolved eligibility,
+  // shared by AdminContextualFeedbackWidget (admin surface) and
+  // FounderFeedbackWidget (portal + public surfaces) below.
+  const { data: founderFeedbackEligibility } = useFounderFeedbackEligibility();
+
   // ── User settings: sync admin id + apply theme on mount/change/navigation ──
   const userSettings = useUserSettings();
   useEffect(() => {
@@ -1523,7 +1530,7 @@ function AuthAwareApp() {
           onLogout={logoutGoogleSession}
         />
       )}
-      {authSession?.admin && (authSession.admin.role === "platform-admin" || authSession.admin.role === "manager") ? (
+      {authSession?.admin && founderFeedbackEligibility?.eligible ? (
         <Suspense fallback={null}>
           <AdminContextualFeedbackWidget
             admin={{
@@ -1531,6 +1538,11 @@ function AuthAwareApp() {
               email: authSession.admin.email,
             }}
           />
+        </Suspense>
+      ) : null}
+      {!authSession?.admin && founderFeedbackEligibility?.eligible ? (
+        <Suspense fallback={null}>
+          <FounderFeedbackWidget />
         </Suspense>
       ) : null}
     </>
