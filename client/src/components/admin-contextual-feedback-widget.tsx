@@ -773,7 +773,7 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
         // not block or fail the roadmap-ticket flow above. Mirrors every
         // admin-surface submission into the surface-agnostic founder_feedback
         // ledger + a GitHub issue, same as the portal/public-page widget.
-        void apiRequest("POST", "/api/feedback", {
+        void apiRequest("POST", "/api/founder-feedback", {
           note: [`${form.type === "bug" ? "Bug" : "Enhancement"}: ${form.title.trim()}`, form.description.trim()]
             .filter(Boolean)
             .join("\n\n"),

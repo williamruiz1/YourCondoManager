@@ -29,10 +29,10 @@ function getPortalAccessId(): string {
  */
 export function useFounderFeedbackEligibility() {
   return useQuery<FounderFeedbackEligibility>({
-    queryKey: ["/api/feedback/eligible", "founder-feedback"],
+    queryKey: ["/api/founder-feedback/eligible", "founder-feedback"],
     queryFn: async () => {
       const portalAccessId = getPortalAccessId();
-      const res = await fetch("/api/feedback/eligible", {
+      const res = await fetch("/api/founder-feedback/eligible", {
         credentials: "include",
         headers: portalAccessId ? { "x-portal-access-id": portalAccessId } : undefined,
       });

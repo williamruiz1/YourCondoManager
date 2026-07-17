@@ -72,7 +72,7 @@ const PUBLIC_BY_DESIGN: Array<{ prefix: string; why: string }> = [
   { prefix: "/api/health", why: "infra healthcheck" },
   { prefix: "/api/system/bootstrap-status", why: "infra bootstrap probe" },
   { prefix: "/api/uploads/", why: "authorization enforced internally in server/uploads-access.ts (validateUploadFilename + auth-before-exists + empty-scope-fail-closed)" },
-  { prefix: "/api/feedback", why: "William-only contextual feedback (2026-07-17) — deliberately surface-agnostic (admin session, portal header, or general session, whichever exists); identity is resolved and checked against the server-side allowlist in server/founder-feedback.ts (isFounderFeedbackEmail) on EVERY call, not via a single requireAdmin/requirePortal guard, so it works across all three surfaces William visits. Ineligible/anonymous callers get eligible:false or a 403, never data." },
+  { prefix: "/api/founder-feedback", why: "William-only contextual feedback (2026-07-17) — deliberately surface-agnostic (admin session, portal header, or general session, whichever exists); identity is resolved and checked against the server-side allowlist in server/founder-feedback.ts (isFounderFeedbackEmail) on EVERY call, not via a single requireAdmin/requirePortal guard, so it works across all three surfaces William visits. Ineligible/anonymous callers get eligible:false or a 403, never data. Deliberately NOT /api/feedback — that prefix is already owned by the unrelated admin resident-feedback feature (GET/POST/PATCH, requireAdmin-gated)." },
 ];
 
 function isPublicByDesign(path: string): boolean {

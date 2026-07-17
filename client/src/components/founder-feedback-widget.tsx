@@ -64,7 +64,7 @@ export function FounderFeedbackWidget() {
     setIsSubmitting(true);
     try {
       const portalAccessId = getPortalAccessId();
-      const res = await fetch("/api/feedback", {
+      const res = await fetch("/api/founder-feedback", {
         method: "POST",
         credentials: "include",
         headers: {

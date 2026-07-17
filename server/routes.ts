@@ -17688,7 +17688,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     return null;
   }
 
-  app.get("/api/feedback/eligible", async (req: AdminRequest & PortalRequest, res) => {
+  app.get("/api/founder-feedback/eligible", async (req: AdminRequest & PortalRequest, res) => {
     try {
       const identity = await resolveFounderFeedbackIdentity(req);
       const eligible = isFounderFeedbackEmail(identity?.email);
@@ -17713,7 +17713,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     viewportHeight: z.number().int().positive().optional(),
   });
 
-  app.post("/api/feedback", async (req: AdminRequest & PortalRequest, res) => {
+  app.post("/api/founder-feedback", async (req: AdminRequest & PortalRequest, res) => {
     try {
       const identity = await resolveFounderFeedbackIdentity(req);
       if (!identity || !isFounderFeedbackEmail(identity.email)) {

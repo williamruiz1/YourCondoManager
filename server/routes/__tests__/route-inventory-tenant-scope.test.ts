@@ -62,7 +62,7 @@ const ALLOWLIST_ROUTES = new Set<string>([
   "/api/vendor-portal/verify-login", // vendor login — pre-auth
   "/api/portal/payments/link/:token/checkout-session", // magic-link token auth (token in URL)
   "/api/elections/ballot/:token/cast", // single-use ballot token auth (token in URL)
-  "/api/feedback", // William-only contextual feedback (2026-07-17) — identity resolved + allowlist-checked internally (server/founder-feedback.ts isFounderFeedbackEmail) across admin/portal/session surfaces; see the matching entry + rationale in tests/auth-surface-parity.test.ts
+  "/api/founder-feedback", // William-only contextual feedback (2026-07-17) — identity resolved + allowlist-checked internally (server/founder-feedback.ts isFounderFeedbackEmail) across admin/portal/session surfaces; see the matching entry + rationale in tests/auth-surface-parity.test.ts
 ]);
 
 type RouteReg = { verb: string; path: string; line: number; head: string };
