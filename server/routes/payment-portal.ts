@@ -4,6 +4,7 @@
  * Portal routes (owner-facing):
  *   GET  /api/portal/balance-summary            — balance, open charges, pending payments
  *   GET  /api/portal/payment-transactions        — owner payment history
+ *                                                   (?processing=1 → only submitted-not-yet-settled rows)
  *   GET  /api/portal/payment-transactions/:id    — single transaction detail / receipt
  *   POST /api/portal/pay                         — initiate payment via Stripe Checkout (ACH by
  *                                                   default; `paymentMethod: "card"` when the
@@ -13,6 +14,7 @@
  *
  * Admin routes:
  *   GET  /api/admin/payment-transactions         — all transactions with filters
+ *                                                   (?processing=1 → only submitted-not-yet-settled rows)
  */
 
 import type { Express, NextFunction, Request, Response } from "express";
