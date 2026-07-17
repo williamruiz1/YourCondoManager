@@ -22,6 +22,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PortalShell, usePortalContext } from "./portal-shell";
+import "@/styles/portal-redesign.css";
 
 const CATEGORIES = ["general", "plumbing", "electrical", "hvac", "common-area", "security", "other"];
 const PRIORITIES = ["low", "medium", "high", "urgent"];
@@ -93,19 +94,20 @@ function RequestsHubContent() {
   const closed = requests.filter((r) => ["resolved", "closed", "rejected"].includes(r.status));
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-requests">
-      <div>
-        <h1 className="font-headline text-3xl md:text-4xl" data-testid="portal-requests-heading">
+    <div className="pfx-scope mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-requests">
+      <div className="pfx-pagehead">
+        <p className="pfx-eyebrow">Maintenance &amp; community</p>
+        <h1 data-testid="portal-requests-heading">
           My Requests
         </h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
+        <p className="pfx-lede">
           Submit a new maintenance or community request and track the status of everything you've sent.
         </p>
       </div>
 
-      <Card>
+      <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
         <CardContent className="space-y-3 py-5" data-testid="portal-requests-form">
-          <h2 className="font-headline text-lg">Submit a request</h2>
+          <h2>Submit a request</h2>
           <div className="grid gap-3 md:grid-cols-2">
             <Input
               placeholder="Title"
@@ -164,7 +166,7 @@ function RequestsHubContent() {
       </Card>
 
       <section data-testid="portal-requests-open">
-        <h2 className="mb-3 font-headline text-lg">Open ({open.length})</h2>
+        <h2 className="mb-3 font-headline text-lg" style={{ color: "var(--ds-teal, #014d4a)" }}>Open ({open.length})</h2>
         {requestsError ? (
           <ErrorState
             title="Couldn't load your requests"
@@ -191,7 +193,7 @@ function RequestsHubContent() {
 
       {closed.length > 0 ? (
         <section data-testid="portal-requests-closed">
-          <h2 className="mb-3 font-headline text-lg">Closed ({closed.length})</h2>
+          <h2 className="mb-3 font-headline text-lg" style={{ color: "var(--ds-teal, #014d4a)" }}>Closed ({closed.length})</h2>
           <div className="space-y-2">
             {closed.slice(0, 10).map((r) => (
               <RequestRow key={r.id} request={r} />
@@ -207,12 +209,18 @@ function RequestRow({ request }: { request: MaintenanceRequest }) {
   return (
     <Link
       href={`/portal/requests/${request.id}`}
-      className="flex items-center justify-between gap-3 rounded-xl border border-outline-variant/10 bg-surface p-4 hover:border-primary/30"
+      className="flex items-center justify-between gap-3 p-4 transition-colors"
+      style={{
+        borderRadius: "var(--ds-radius, 12px)",
+        border: "1px solid var(--ds-gray, #e5e7eb)",
+        background: "#fff",
+        boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))",
+      }}
       data-testid={`portal-requests-row-${request.id}`}
     >
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-semibold">{request.title}</p>
-        <p className="mt-0.5 text-xs text-on-surface-variant">
+        <p className="truncate text-sm font-semibold" style={{ color: "#1a3634" }}>{request.title}</p>
+        <p className="mt-0.5 text-xs capitalize" style={{ color: "var(--ds-sub, #4a6b68)" }}>
           {request.category} · {new Date(request.createdAt).toLocaleDateString()}
           {request.locationText ? ` · ${request.locationText}` : ""}
         </p>
@@ -256,7 +264,7 @@ function RequestDetailContent({ requestId }: { requestId: string }) {
   }
 
   return (
-    <div className="mx-auto flex max-w-2xl flex-col gap-4" data-testid="portal-requests-detail">
+    <div className="pfx-scope mx-auto flex max-w-2xl flex-col gap-4" data-testid="portal-requests-detail">
       <Link href="/portal/requests" className="text-xs font-semibold text-primary hover:underline">
         ← Back to My Requests
       </Link>

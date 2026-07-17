@@ -15,6 +15,13 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { PortalShell, usePortalContext, type PortalAssociationChoice } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
+// Owner-portal faithful redesign — see portal-finances.tsx for the full
+// rationale; the Home hero panel below translates the shape of
+// artifacts/ycm/ycm-owner-portal-wireframe.html's hero onto the CURRENT
+// brand-v2 deep-teal tokens (that wireframe predates the v1→v2 brand
+// migration and used the retired slate/cream/navy palette — colors only,
+// not layout, are re-derived here).
+import "@/styles/portal-redesign.css";
 
 // 2026-07-14 (P0 payment-confirmation-ux, founder-os incident 2026-07-14) —
 // Stripe Checkout redirects here with ?payment=success&txn=<id> (or
@@ -153,14 +160,58 @@ function PortalHomeContent() {
     : t("portal.home.greetingFallback");
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-8" data-testid="portal-home">
-      <section>
-        {associationName ? (
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{associationName}</p>
-        ) : null}
-        <h1 className="mt-1 font-headline text-3xl md:text-4xl" data-testid="portal-home-heading">
+    <div className="pfx-scope mx-auto flex max-w-6xl flex-col gap-8" data-testid="portal-home">
+      <section className="pfx-hero">
+        <span className="pfx-hero-eyebrow">
+          <span className="pfx-dot" aria-hidden="true" />
+          {associationName ?? "Your Condo Manager"}
+        </span>
+        <h1 className="pfx-heading-plain" data-testid="portal-home-heading">
           {greeting}
         </h1>
+        <p className="pfx-lede">
+          {myUnits.length > 0
+            ? `${myUnits.length} unit${myUnits.length === 1 ? "" : "s"} to keep tabs on. ${
+                paidInFull ? "You're all caught up on payments." : `A balance of $${Math.abs(balance).toFixed(2)} is due.`
+              }`
+            : "Your account overview, in one place."}
+        </p>
+        <div className="pfx-hero-grid">
+          <div className="pfx-hero-stat pfx-is-balance">
+            <span className="pfx-k">{t("portal.home.cards.balance")}</span>
+            <span className="pfx-v tabular-nums" data-testid="portal-home-hero-balance">
+              {paidInFull ? "Paid in full" : `$${Math.abs(balance).toFixed(2)}`}
+            </span>
+            <span className="pfx-foot">
+              {paidInFull
+                ? lastPaymentDate
+                  ? `Last payment ${new Date(lastPaymentDate).toLocaleDateString()}`
+                  : "No balance due"
+                : "See what's due"}
+            </span>
+            <Link className="pfx-cta" href="/portal/finances">
+              Review and pay →
+            </Link>
+          </div>
+          <div className="pfx-hero-stat">
+            <span className="pfx-k">{t("portal.home.cards.yourUnits")}</span>
+            <span className="pfx-v tabular-nums" data-testid="portal-home-hero-units">{myUnits.length}</span>
+            <span className="pfx-foot">
+              {myUnits.length === 1
+                ? [myUnits[0].building && `Bldg ${myUnits[0].building}`, myUnits[0].unitNumber && `Unit ${myUnits[0].unitNumber}`]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "Across your account"}
+            </span>
+          </div>
+          <div className="pfx-hero-stat">
+            <span className="pfx-k">{t("portal.home.cards.openRequests")}</span>
+            <span className="pfx-v tabular-nums" data-testid="portal-home-hero-requests">{openRequests.length}</span>
+            <Link className="pfx-cta" href="/portal/requests">
+              {t("portal.home.cards.submitOrTrack")} →
+            </Link>
+          </div>
+        </div>
       </section>
 
       {paymentParam === "cancelled" ? (
@@ -239,13 +290,18 @@ function PortalHomeContent() {
         </section>
       ) : null}
 
+      {/* 2026-07-17 (owner-portal faithful rebuild) — the hero above now
+          leads with balance/units/requests, so this row is kept (its
+          testid is asserted by tests/e2e/playwright/owner-portal-navigation.spec.ts)
+          but demoted to a compact secondary recap rather than a second
+          headline row. */}
       <section className="grid gap-4 md:grid-cols-3" data-testid="portal-home-summary-cards">
-        <Card>
-          <CardContent className="py-5">
+        <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
+          <CardContent className="py-4">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               {t("portal.home.cards.yourUnits")}
             </p>
-            <p className="mt-1 font-headline text-3xl" data-testid="portal-home-units-count">
+            <p className="mt-1 font-headline text-2xl" style={{ color: "var(--ds-teal, #014d4a)" }} data-testid="portal-home-units-count">
               {myUnits.length}
             </p>
             {myUnits.length === 1 ? (
@@ -257,8 +313,8 @@ function PortalHomeContent() {
             ) : null}
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="py-5">
+        <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
+          <CardContent className="py-4">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               {t("portal.home.cards.balance")}
             </p>
@@ -302,12 +358,12 @@ function PortalHomeContent() {
             </Link>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="py-5">
+        <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
+          <CardContent className="py-4">
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               {t("portal.home.cards.openRequests")}
             </p>
-            <p className="mt-1 font-headline text-3xl" data-testid="portal-home-open-requests">
+            <p className="mt-1 font-headline text-2xl" style={{ color: "var(--ds-teal, #014d4a)" }} data-testid="portal-home-open-requests">
               {openRequests.length}
             </p>
             <Link
@@ -322,13 +378,13 @@ function PortalHomeContent() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2" data-testid="portal-home-latest">
-        <Card>
+        <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
           <CardContent className="space-y-3 py-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-headline text-lg">{t("portal.home.notices.title")}</h2>
+            <div className="pfx-section-head">
+              <h2>{t("portal.home.notices.title")}</h2>
               <Link
                 href="/portal/notices"
-                className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="pfx-view-all"
                 data-testid="portal-home-notices-link"
               >
                 {t("common.viewAll")}
@@ -337,15 +393,16 @@ function PortalHomeContent() {
             {notices.length === 0 ? (
               <p className="text-sm text-on-surface-variant" role="status">{t("portal.home.notices.empty")}</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="pfx-row-list -mt-1">
                 {notices.slice(0, 3).map((notice) => (
                   <li
                     key={notice.id}
-                    className="rounded-lg border border-outline-variant/10 p-3"
+                    className="pfx-row"
+                    style={{ display: "block" }}
                     data-testid={`portal-home-notice-${notice.id}`}
                   >
-                    <p className="text-sm font-medium">{notice.subject}</p>
-                    <p className="mt-1 text-xs text-on-surface-variant line-clamp-2">
+                    <p className="pfx-row-title">{notice.subject}</p>
+                    <p className="pfx-row-sub line-clamp-2">
                       {notice.bodySnippet || notice.bodyText}
                     </p>
                   </li>
@@ -354,13 +411,13 @@ function PortalHomeContent() {
             )}
           </CardContent>
         </Card>
-        <Card>
+        <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
           <CardContent className="space-y-3 py-5">
-            <div className="flex items-center justify-between">
-              <h2 className="font-headline text-lg">{t("portal.home.activity.title")}</h2>
+            <div className="pfx-section-head">
+              <h2>{t("portal.home.activity.title")}</h2>
               <Link
                 href="/portal/requests"
-                className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                className="pfx-view-all"
                 data-testid="portal-home-activity-link"
               >
                 {t("common.seeAll")}
@@ -369,12 +426,12 @@ function PortalHomeContent() {
             {requests.length === 0 ? (
               <p className="text-sm text-on-surface-variant" role="status">{t("portal.home.activity.empty")}</p>
             ) : (
-              <ul className="space-y-2">
+              <ul className="pfx-row-list -mt-1">
                 {requests.slice(0, 3).map((req) => (
-                  <li key={req.id} className="flex items-center justify-between gap-2 rounded-lg border border-outline-variant/10 p-3">
+                  <li key={req.id} className="pfx-row">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium">{req.title}</p>
-                      <p className="text-xs text-on-surface-variant">{new Date(req.createdAt).toLocaleDateString()}</p>
+                      <p className="pfx-row-title truncate">{req.title}</p>
+                      <p className="pfx-row-sub">{new Date(req.createdAt).toLocaleDateString()}</p>
                     </div>
                     <Badge variant={["resolved", "closed"].includes(req.status) ? "secondary" : "default"} className="capitalize">
                       {req.status.replace(/-/g, " ")}
@@ -390,46 +447,46 @@ function PortalHomeContent() {
       <section className="grid gap-4 md:grid-cols-3" data-testid="portal-home-shortcuts" aria-label="Portal shortcuts">
         <Link
           href="/portal/community"
-          className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="pfx-shortcut focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           data-testid="portal-home-shortcut-community"
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{t("portal.home.shortcuts.communityEyebrow")}</p>
-          <p className="mt-2 font-headline text-lg">{t("portal.home.shortcuts.communityTitle")}</p>
-          <p className="mt-1 text-xs text-on-surface-variant">
+          <p className="pfx-eyebrow">{t("portal.home.shortcuts.communityEyebrow")}</p>
+          <h3>{t("portal.home.shortcuts.communityTitle")}</h3>
+          <p>
             {t("portal.home.shortcuts.communityBody")}
           </p>
         </Link>
         {amenitiesSettings?.amenitiesEnabled ? (
           <Link
             href="/portal/amenities"
-            className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="pfx-shortcut focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             data-testid="portal-home-shortcut-amenities"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{t("portal.home.shortcuts.amenitiesEyebrow")}</p>
-            <p className="mt-2 font-headline text-lg">{t("portal.home.shortcuts.amenitiesTitle")}</p>
-            <p className="mt-1 text-xs text-on-surface-variant">
+            <p className="pfx-eyebrow">{t("portal.home.shortcuts.amenitiesEyebrow")}</p>
+            <h3>{t("portal.home.shortcuts.amenitiesTitle")}</h3>
+            <p>
               {t("portal.home.shortcuts.amenitiesBody")}
             </p>
           </Link>
         ) : (
           <Link
             href="/portal/documents"
-            className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="pfx-shortcut focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             data-testid="portal-home-shortcut-documents"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{t("portal.home.shortcuts.documentsEyebrow")}</p>
-            <p className="mt-2 font-headline text-lg">{t("portal.home.shortcuts.documentsTitle")}</p>
-            <p className="mt-1 text-xs text-on-surface-variant">{t("portal.home.shortcuts.documentsBody")}</p>
+            <p className="pfx-eyebrow">{t("portal.home.shortcuts.documentsEyebrow")}</p>
+            <h3>{t("portal.home.shortcuts.documentsTitle")}</h3>
+            <p>{t("portal.home.shortcuts.documentsBody")}</p>
           </Link>
         )}
         <Link
           href="/portal/finances/payment-methods"
-          className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          className="pfx-shortcut focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
           data-testid="portal-home-shortcut-payment-methods"
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">{t("portal.home.shortcuts.paymentsEyebrow")}</p>
-          <p className="mt-2 font-headline text-lg">{t("portal.home.shortcuts.paymentsTitle")}</p>
-          <p className="mt-1 text-xs text-on-surface-variant">{t("portal.home.shortcuts.paymentsBody")}</p>
+          <p className="pfx-eyebrow">{t("portal.home.shortcuts.paymentsEyebrow")}</p>
+          <h3>{t("portal.home.shortcuts.paymentsTitle")}</h3>
+          <p>{t("portal.home.shortcuts.paymentsBody")}</p>
         </Link>
       </section>
     </div>

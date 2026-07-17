@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import NotFound from "@/pages/not-found";
 import { PortalShell, usePortalContext } from "./portal-shell";
+import "@/styles/portal-redesign.css";
 
 function WeekGrid({
   busyWindows,
@@ -201,7 +202,7 @@ function AmenityCard({ amenity, onBookingSuccess }: { amenity: Amenity; onBookin
   });
 
   return (
-    <Card data-testid={`portal-amenities-card-${amenity.id}`}>
+    <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }} data-testid={`portal-amenities-card-${amenity.id}`}>
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div>
@@ -347,26 +348,27 @@ function AmenitiesGatedContent() {
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-6" data-testid="portal-amenities">
-      <div>
-        <h1 className="font-headline text-3xl md:text-4xl" data-testid="portal-amenities-heading">
+    <div className="pfx-scope mx-auto flex max-w-3xl flex-col gap-6" data-testid="portal-amenities">
+      <div className="pfx-pagehead">
+        <p className="pfx-eyebrow">My Community</p>
+        <h1 data-testid="portal-amenities-heading">
           Amenities
         </h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
+        <p className="pfx-lede">
           Reserve a common space or review your upcoming reservations.
         </p>
       </div>
       <Tabs defaultValue="amenities">
-        <TabsList>
-          <TabsTrigger value="amenities">Amenities</TabsTrigger>
-          <TabsTrigger value="my-reservations">
-            My reservations {myReservations.length > 0 ? `(${myReservations.length})` : ""}
+        <TabsList className="pfx-tabstrip">
+          <TabsTrigger className="pfx-tab" value="amenities">Amenities</TabsTrigger>
+          <TabsTrigger className="pfx-tab" value="my-reservations">
+            My reservations {myReservations.length > 0 ? <span className="pfx-tab-count">{myReservations.length}</span> : ""}
           </TabsTrigger>
         </TabsList>
         <TabsContent value="amenities" className="mt-4">
           {isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
           {!isLoading && amenityList.length === 0 ? (
-            <Card>
+            <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
               <CardContent className="py-8 text-center text-sm text-muted-foreground">
                 No amenities available for booking at this time.
               </CardContent>
@@ -386,7 +388,7 @@ function AmenitiesGatedContent() {
         </TabsContent>
         <TabsContent value="my-reservations" className="mt-4">
           {myReservations.length === 0 ? (
-            <Card>
+            <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
               <CardContent className="py-8 text-center text-sm text-muted-foreground">
                 No upcoming reservations.
               </CardContent>
@@ -396,7 +398,7 @@ function AmenitiesGatedContent() {
               {myReservations.map((r) => {
                 const amenity = amenityList.find((a) => a.id === r.amenityId);
                 return (
-                  <Card key={r.id}>
+                  <Card key={r.id} style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
                     <CardContent className="flex items-start justify-between gap-3 py-3">
                       <div>
                         <p className="text-sm font-medium">{amenity?.name ?? r.amenityId}</p>

@@ -24,6 +24,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { PortalShell, usePortalContext } from "./portal-shell";
+import "@/styles/portal-redesign.css";
 
 type NoticeEntry = {
   id: string;
@@ -88,15 +89,19 @@ function NoticesSection({
               setExpandedId(isExpanded ? null : notice.id);
               markAsRead(notice.id);
             }}
-            className={`w-full rounded-xl border p-4 text-left transition-colors ${
-              isRead ? "border-outline-variant/10 bg-surface" : "border-primary/30 bg-primary/5"
-            }`}
+            className="w-full p-4 text-left transition-colors"
+            style={{
+              borderRadius: "var(--ds-radius, 12px)",
+              border: isRead ? "1px solid var(--ds-gray, #e5e7eb)" : "1px solid var(--ds-accent, #15a39c)",
+              background: isRead ? "#fff" : "var(--ds-infosoft, #bfe8e4)",
+              boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))",
+            }}
             data-testid={`portal-notice-${notice.id}`}
           >
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  {!isRead ? <span className="h-2 w-2 rounded-full bg-primary" aria-hidden="true" /> : null}
+                  {!isRead ? <span className="h-2 w-2 rounded-full" style={{ background: "var(--ds-teal, #014d4a)" }} aria-hidden="true" /> : null}
                   <p className="truncate text-sm font-semibold">{notice.subject}</p>
                 </div>
                 <p className="mt-1 text-xs text-on-surface-variant">
@@ -157,7 +162,7 @@ function ElectionsSection({
           {active.map((entry) => {
             const token = tokenByElectionId[entry.election.id];
             return (
-              <Card key={entry.election.id}>
+              <Card key={entry.election.id} style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
                 <CardContent className="flex items-center justify-between gap-3 py-4">
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{entry.election.title}</p>
@@ -170,7 +175,8 @@ function ElectionsSection({
                   {token ? (
                     <a
                       href={`/vote/${token}`}
-                      className="shrink-0 rounded-lg bg-primary px-4 py-2 text-xs font-bold uppercase tracking-wider text-on-primary hover:bg-primary/90"
+                      className="shrink-0 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider text-white"
+                      style={{ background: "var(--ds-teal, #014d4a)" }}
                     >
                       Vote now
                     </a>
@@ -188,7 +194,7 @@ function ElectionsSection({
         <div className="space-y-2">
           <h3 className="text-xs font-semibold uppercase tracking-widest text-on-surface-variant">History</h3>
           {history.slice(0, 10).map((entry) => (
-            <Card key={entry.election.id}>
+            <Card key={entry.election.id} style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
               <CardContent className="flex items-center justify-between gap-3 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{entry.election.title}</p>
@@ -226,7 +232,7 @@ function MessagesSection({ messages }: { messages: CommunicationHistory[] }) {
   return (
     <div className="space-y-2" data-testid="portal-notices-messages">
       {messages.map((msg) => (
-        <Card key={msg.id}>
+        <Card key={msg.id} style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
           <CardContent className="py-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -321,27 +327,28 @@ function NoticesContent() {
   ).length;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-notices">
-      <div>
-        <Link href="/portal/community" className="text-xs font-semibold text-primary hover:underline">
+    <div className="pfx-scope mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-notices">
+      <div className="pfx-pagehead">
+        <Link href="/portal/community" className="text-xs font-semibold" style={{ color: "var(--ds-accent, #15a39c)" }}>
           ← Back to My Community
         </Link>
-        <h1 className="mt-2 font-headline text-3xl md:text-4xl" data-testid="portal-notices-heading">
-          Notices & votes
+        <p className="pfx-eyebrow mt-3">My Community</p>
+        <h1 data-testid="portal-notices-heading">
+          Notices &amp; votes
         </h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
+        <p className="pfx-lede">
           Announcements from your manager, open ballots, and messages sent to you.
         </p>
       </div>
       <Tabs defaultValue="notices">
-        <TabsList>
-          <TabsTrigger value="notices">
-            Notices {unreadCount > 0 ? `(${unreadCount})` : ""}
+        <TabsList className="pfx-tabstrip">
+          <TabsTrigger className="pfx-tab" value="notices">
+            Notices {unreadCount > 0 ? <span className="pfx-tab-count">{unreadCount}</span> : ""}
           </TabsTrigger>
-          <TabsTrigger value="ballots">
-            Ballots {activeBallotCount > 0 ? `(${activeBallotCount})` : ""}
+          <TabsTrigger className="pfx-tab" value="ballots">
+            Ballots {activeBallotCount > 0 ? <span className="pfx-tab-count">{activeBallotCount}</span> : ""}
           </TabsTrigger>
-          <TabsTrigger value="messages">Messages</TabsTrigger>
+          <TabsTrigger className="pfx-tab" value="messages">Messages</TabsTrigger>
         </TabsList>
         <TabsContent value="notices" className="mt-4">
           {noticesError ? (
