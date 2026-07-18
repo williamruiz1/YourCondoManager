@@ -320,6 +320,7 @@ import { registerArcRoutes } from "./routes/arc";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
 import { registerViolationsManagementRoutes } from "./routes/violations-management";
 import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
+import { registerReconSuggestionRoutes } from "./routes/recon-suggestion";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import { registerStatutoryRecordsRoutes } from "./routes/statutory-records";
@@ -1666,6 +1667,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // `suggest.meeting_prep` (L1) action onto the W1 queue for human review.
   // NEVER distributes — distribution is a separate, never-auto-filed L2 action.
   registerMeetingPrepRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    assertAssociationScope,
+  });
+
+  // Bank-reconciliation suggestion agent ability (founder-os#9480, W2). Layers
+  // on the EXISTING auto-matcher: consumes its needs-manual-review output
+  // (scored candidates it declined to auto-commit), proposes the best
+  // commit-eligible pairing per bank credit with a confidence band + reasoning,
+  // and files each as a `financial.reconcile_bank_match` (L3) action onto the
+  // W1 queue. A pairing commits ONLY via the execute leg, which the W1 gate
+  // refuses without a recorded human approval — no auto-commit, ever.
+  registerReconSuggestionRoutes(app, {
     requireAdmin,
     requireAdminRole,
     assertAssociationScope,
