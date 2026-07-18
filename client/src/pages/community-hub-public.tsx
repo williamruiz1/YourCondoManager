@@ -8,11 +8,18 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
-import { Bell, ExternalLink, Info, ChevronRight, Building2, Phone, MapPin, Calendar, FileText, Download, Mail, KeyRound, Loader2, CheckCircle2, Home } from "lucide-react";
+import { Bell, ExternalLink, Info, ChevronRight, Building2, Phone, MapPin, Calendar, FileText, Download, Mail, KeyRound, Loader2, CheckCircle2, Home, ShieldCheck } from "lucide-react";
 import CommunityMapView from "@/components/community-map-view";
+import { Pill, Tile, type PillTone } from "@/components/redesign";
+// The Pill/Tile primitives pull in the canonical @ycm/design-system stylesheet
+// (client/src/styles/redesign-kit.css, F1 — founder-os#10187). Every class it
+// defines is prefixed `.ds-` and is documented zero-collision with the
+// shadcn/Tailwind app shell, so importing it here is safe additive reuse of
+// the SAME primitives the Manager app + Owner portal + Owner app render —
+// not a re-implementation of them.
+import "@/styles/redesign-kit.css";
 
 type PublicBuilding = {
   id: string;
@@ -94,14 +101,11 @@ const CATEGORY_ICONS: Record<string, typeof Info> = {
 // --- Brand-aligned aesthetic tokens ------------------------------------------
 // Headings use Inter Tight — the canonical @ycm/design-system (F1,
 // founder-os#10187) heading typeface, already loaded in client/index.html.
-// Previously this page used a one-off Source Serif 4 treatment that predated
-// F1 and didn't match the rest of the brand system; aligned here so the
-// public community page reads as the same product as the Manager/Owner apps.
 const BRAND_FONT = '"Inter Tight", Inter, system-ui, sans-serif';
-// Palette lifted from the canonical design-system tokens
-// (client/src/styles/redesign-kit.css --ds-*): teal / teal-700 / accent are
-// exact matches; ink/muted/line/pageBg are the same near-neutrals used there.
-// themeColor still drives the live accent so a community can override it.
+// Palette is the exact @ycm/design-system token set (client/src/styles/
+// redesign-kit.css --ds-*) — same hex values, kept as local constants so the
+// per-community `themeColor` override composes cleanly with the fixed
+// neutrals (ink/muted/line/pageBg) that never change per-community.
 const V4 = {
   teal: "#014d4a",
   teal700: "#0a6a63",
@@ -131,10 +135,22 @@ function SectionHeading({ icon: Icon, title, themeColor }: { icon: typeof Info; 
   );
 }
 
-// Shared card chrome — softer corners, generous padding, subtle teal-tinted
-// border + gentle shadow. Applied via className so no card logic changes.
-const CARD_V4 = "rounded-2xl border shadow-sm transition-shadow hover:shadow-md";
+// Shared card chrome — DS-exact radius (12px) + DS-exact shadow token, with a
+// slightly deeper hover shadow for interactivity. Applied via className so no
+// card logic changes.
+const CARD_V4 = "rounded-xl border shadow-[0_1px_3px_rgba(1,77,74,0.04)] transition-shadow hover:shadow-md";
 const cardBorder = { borderColor: V4.line } as const;
+
+// A branded pill button — same shape/weight/radius language as the shared
+// @ycm/design-system `.ds-btn`, expressed with plain Tailwind + inline color
+// overrides so it never fights the DS stylesheet's own `:hover` cascade.
+const BTN_V4 = "inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-[13px] font-bold text-white transition-colors";
+
+const PRIORITY_TONE: Record<string, PillTone> = {
+  urgent: "bad",
+  important: "warn",
+  normal: "muted",
+};
 
 export default function CommunityHubPublicPage() {
   useDocumentTitle(t("communityHubPublic.title"));
@@ -192,6 +208,20 @@ export default function CommunityHubPublicPage() {
   const sectionOrder = config.sectionOrder || ["notices", "quick-actions", "info-blocks", "map", "contacts"];
   const publicBuildings = buildingsData?.buildings || [];
 
+  // "At a glance" strip — real DS Tile primitives, only shown when there's
+  // something meaningful to show (never a hollow "0 buildings" row).
+  const totalUnits = publicBuildings.reduce((sum, b) => sum + (b.unitCount || 0), 0);
+  const glanceStats: Array<{ key: string; icon: JSX.Element; title: string; subtitle: string }> = [];
+  if (publicBuildings.length > 0) {
+    glanceStats.push({ key: "buildings", icon: <Building2 className="h-5 w-5" style={{ color: themeColor }} aria-hidden="true" />, title: String(publicBuildings.length), subtitle: publicBuildings.length === 1 ? "Building" : "Buildings" });
+  }
+  if (totalUnits > 0) {
+    glanceStats.push({ key: "units", icon: <Home className="h-5 w-5" style={{ color: themeColor }} aria-hidden="true" />, title: String(totalUnits), subtitle: totalUnits === 1 ? "Unit" : "Units" });
+  }
+  if (notices.length > 0) {
+    glanceStats.push({ key: "notices", icon: <Bell className="h-5 w-5" style={{ color: themeColor }} aria-hidden="true" />, title: String(notices.length), subtitle: notices.length === 1 ? "Notice" : "Notices" });
+  }
+
   // Section rendering engine — renders sections in configurable order
   const sectionRenderers: Record<string, () => React.ReactNode> = {
     notices: () => <NoticesSection notices={notices} themeColor={themeColor} activeCategory={noticeCategory} onCategoryChange={setNoticeCategory} />,
@@ -210,7 +240,7 @@ export default function CommunityHubPublicPage() {
                     <p className="font-medium text-sm" style={{ color: V4.ink }}>{m.title}</p>
                     <p className="text-xs text-muted-foreground mt-0.5">{m.meetingType}{m.location ? ` — ${m.location}` : ""}</p>
                   </div>
-                  <Badge variant="outline" className="text-xs shrink-0 rounded-full" style={{ borderColor: `${themeColor}33`, color: themeColor }}>{new Date(m.scheduledAt).toLocaleDateString()}</Badge>
+                  <Pill tone="muted">{new Date(m.scheduledAt).toLocaleDateString()}</Pill>
                 </div>
               </CardContent>
             </Card>
@@ -231,7 +261,7 @@ export default function CommunityHubPublicPage() {
                     <p className="text-xs text-muted-foreground mt-0.5">{doc.documentType}</p>
                   </div>
                   <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
-                    <Button variant="ghost" size="sm" className="rounded-xl" style={{ color: themeColor }}><Download className="h-4 w-4" /></Button>
+                    <Button variant="ghost" size="sm" className="rounded-lg" style={{ color: themeColor }}><Download className="h-4 w-4" /></Button>
                   </a>
                 </div>
               </CardContent>
@@ -259,28 +289,31 @@ export default function CommunityHubPublicPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: V4.pageBg }}>
-      {/* Brand nav — the YCM mark + community name are always visible up top,
-          not just buried in the footer, and give owners a persistent way
-          back to the sign-in / portal section. */}
-      <nav
-        className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur-sm"
-        style={{ borderColor: V4.line }}
-      >
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <BrandMark className="h-5 w-5 shrink-0" />
-            <span
-              className="font-semibold text-sm truncate"
-              style={{ fontFamily: BRAND_FONT, color: V4.ink }}
-            >
-              {association?.name || "Community Hub"}
-            </span>
+      {/* Brand nav — a slim top accent rule (the same teal→accent gradient
+          used across every DS surface), the real BrandMark + the
+          YourCondoManager wordmark spelled out (not just an icon), and the
+          community name — so the page is unmistakably a YourCondoManager
+          product from the first pixel, not a footer-only brand touch. */}
+      <nav className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm" style={{ borderBottom: `1px solid ${V4.line}` }}>
+        <div className="h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${V4.teal}, ${V4.accent})` }} aria-hidden="true" />
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <BrandMark className="h-7 w-7 shrink-0" />
+            <div className="min-w-0 leading-tight">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.09em] truncate" style={{ color: V4.accent }}>
+                YourCondoManager
+              </p>
+              <p className="font-semibold text-sm truncate" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>
+                {association?.name || "Community Hub"}
+              </p>
+            </div>
           </div>
           <a
             href="#owner-signin"
-            className="inline-flex items-center gap-1.5 rounded-full px-4 py-1.5 text-xs sm:text-sm font-semibold text-white shrink-0 transition-colors hover:bg-[var(--nav-cta-hover)]"
+            className={`${BTN_V4} shrink-0 hover:bg-[var(--nav-cta-hover)]`}
             style={{ backgroundColor: themeColor, ["--nav-cta-hover" as any]: V4.teal700 }}
           >
+            <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
             Owner Portal
           </a>
         </div>
@@ -301,7 +334,11 @@ export default function CommunityHubPublicPage() {
           className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full blur-3xl opacity-30"
           style={{ background: "#15A39C" }}
         />
-        <div className="relative max-w-4xl mx-auto px-4 py-12 sm:py-20">
+        <div className="relative max-w-5xl mx-auto px-4 pt-10 sm:pt-16 pb-16 sm:pb-24">
+          <p className="text-white/70 text-[11px] font-bold uppercase tracking-[0.14em] mb-3 flex items-center gap-1.5">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Community Hub
+          </p>
           <div className="flex items-center gap-4 mb-5">
             {config.logoUrl && (
               <img
@@ -335,7 +372,22 @@ export default function CommunityHubPublicPage() {
         <div className="h-1 w-full" style={{ background: "#15A39C" }} aria-hidden="true" />
       </header>
 
-      <main id="main-content" tabIndex={-1} className="max-w-4xl mx-auto px-4 py-6 sm:py-8 space-y-6 sm:space-y-8">
+      {/* "At a glance" strip — overlaps the hero's bottom edge, the classic
+          modern-marketing-page motif that makes a redesign instantly legible
+          as a redesign, not just a palette tweak. Real DS Tile primitives. */}
+      {glanceStats.length > 0 && (
+        <div className="max-w-5xl mx-auto px-4 -mt-8 sm:-mt-12 relative z-10">
+          <div className="grid gap-3 sm:gap-4" style={{ gridTemplateColumns: `repeat(${glanceStats.length}, minmax(0, 1fr))` }}>
+            {glanceStats.map((stat) => (
+              <div key={stat.key} className="rounded-xl" style={{ boxShadow: "0 4px 14px rgba(1,77,74,0.10)" }}>
+                <Tile icon={stat.icon} title={stat.title} subtitle={stat.subtitle} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <main id="main-content" tabIndex={-1} className={`max-w-4xl mx-auto px-4 pb-6 sm:pb-8 space-y-6 sm:space-y-8 ${glanceStats.length > 0 ? "pt-6 sm:pt-8" : "pt-6 sm:pt-8"}`}>
         {/* Welcome Mode */}
         {config.welcomeModeEnabled === 1 && config.welcomeHeadline && (
           <Card className={`${CARD_V4} border`} style={{ borderColor: `${themeColor}33`, background: `linear-gradient(180deg, ${themeColor}0a, transparent)` }}>
@@ -393,11 +445,22 @@ export default function CommunityHubPublicPage() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t bg-white py-7 mt-10" style={{ borderColor: V4.line }}>
-        <div className="max-w-4xl mx-auto px-4 flex items-center justify-center gap-2 text-sm" style={{ color: V4.muted }}>
-          <BrandMark decorative className="h-6 w-6" />
-          <p>Powered by YourCondoManager</p>
+      {/* Footer — full brand lockup + legal links, so the page reads as a
+          real product surface end-to-end, not a one-line "powered by". */}
+      <footer className="border-t bg-white py-8 mt-10" style={{ borderColor: V4.line }}>
+        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <BrandMark decorative className="h-7 w-7" />
+            <div className="leading-tight">
+              <p className="font-semibold text-sm" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>YourCondoManager</p>
+              <p className="text-xs" style={{ color: V4.muted }}>Community management, handled in one place.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 text-xs" style={{ color: V4.muted }}>
+            <a href="/privacy" className="hover:underline" style={{ color: V4.muted }}>Privacy</a>
+            <a href="/terms" className="hover:underline" style={{ color: V4.muted }}>Terms</a>
+            <span>© {new Date().getFullYear()} YourCondoManager</span>
+          </div>
         </div>
       </footer>
     </div>
@@ -423,12 +486,6 @@ function NoticesSection({
   const filteredNotices = activeCategory === "all"
     ? notices
     : notices.filter((n) => n.noticeCategory === activeCategory || (!n.noticeCategory && activeCategory === "general"));
-
-  const priorityColors: Record<string, string> = {
-    urgent: "bg-red-100 text-red-800 border-red-200",
-    important: "bg-amber-100 text-amber-800 border-amber-200",
-    normal: "bg-gray-100 text-gray-800 border-gray-200",
-  };
 
   return (
     <section>
@@ -464,14 +521,10 @@ function NoticesSection({
             <CardContent className="pt-5 pb-4 px-5">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                  {notice.isPinned === 1 && (
-                    <Badge variant="secondary" className="text-xs rounded-full" style={{ backgroundColor: `${themeColor}14`, color: themeColor }}>Pinned</Badge>
-                  )}
-                  <Badge className={`text-xs rounded-full ${priorityColors[notice.priority] || priorityColors.normal}`}>
-                    {notice.priority}
-                  </Badge>
+                  {notice.isPinned === 1 && <Pill tone="info">Pinned</Pill>}
+                  <Pill tone={PRIORITY_TONE[notice.priority] || "muted"}>{notice.priority}</Pill>
                   {notice.noticeCategory && notice.noticeCategory !== "general" && (
-                    <Badge variant="outline" className="text-xs capitalize rounded-full" style={{ borderColor: V4.line }}>{notice.noticeCategory}</Badge>
+                    <Pill tone="muted">{notice.noticeCategory}</Pill>
                   )}
                 </div>
                 <h3 className="font-semibold text-[15px]" style={{ color: V4.ink }}>{notice.title}</h3>
@@ -705,10 +758,10 @@ function HubAuthSection({ themeColor }: { themeColor: string }) {
         <p className="text-muted-foreground text-sm mb-4">
           Are you a resident? Sign in for full access to documents, requests, and more.
         </p>
-        <Button className="rounded-xl shadow-sm hover:shadow-md transition-shadow" style={{ backgroundColor: themeColor }} onClick={() => setStep("email")}>
-          <Mail className="h-4 w-4 mr-2" />
+        <button type="button" className={`${BTN_V4} shadow-sm hover:shadow-md`} style={{ backgroundColor: themeColor }} onClick={() => setStep("email")}>
+          <Mail className="h-4 w-4" aria-hidden="true" />
           Sign In with Email
-        </Button>
+        </button>
       </section>
     );
   }
@@ -742,9 +795,9 @@ function HubAuthSection({ themeColor }: { themeColor: string }) {
                 autoFocus
               />
               {error && <p className="text-xs text-destructive">{error}</p>}
-              <Button type="submit" className="w-full rounded-xl" style={{ backgroundColor: themeColor }} disabled={loading}>
+              <button type="submit" className={`${BTN_V4} w-full`} style={{ backgroundColor: themeColor }} disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Code"}
-              </Button>
+              </button>
               <button type="button" className="w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => setStep("idle")}>
                 Cancel
               </button>
@@ -772,9 +825,9 @@ function HubAuthSection({ themeColor }: { themeColor: string }) {
                 autoFocus
               />
               {error && <p className="text-xs text-destructive">{error}</p>}
-              <Button type="submit" className="w-full rounded-xl" style={{ backgroundColor: themeColor }} disabled={loading}>
+              <button type="submit" className={`${BTN_V4} w-full`} style={{ backgroundColor: themeColor }} disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify & Sign In"}
-              </Button>
+              </button>
               <button type="button" className="w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => { setStep("email"); setPin(""); setError(""); }}>
                 Use a different email
               </button>
