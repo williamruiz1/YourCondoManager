@@ -11,6 +11,14 @@ import {
   insertAmenityReservationSchema,
 } from "@shared/schema";
 import type { AdminRole } from "@shared/schema";
+// A-AUTHZ-003/004: shared, fail-closed tenant-isolation guards. Every admin route
+// below now enforces association scope (was: role-only, cross-tenant IDOR on
+// list + every by-id amenity/reservation/block handler).
+import {
+  assertAssociationScope,
+  assertAssociationInputScope,
+  getAssociationIdQuery,
+} from "../lib/tenant-scope";
 import {
   captureAmenityBookingMoney,
   resolveAmenityDeposit,
@@ -46,6 +54,51 @@ function p(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/** True iff the admin's scope includes `associationId` (platform-admin always).
+ * A false result → the caller responds 404 (no cross-tenant existence oracle). */
+function inScope(req: AdminRequest, associationId: string | null | undefined): boolean {
+  try {
+    assertAssociationScope(req, associationId ?? "");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** True when an error is a tenant-scope denial (→ 403) vs a real server error. */
+function isScopeError(e: unknown): boolean {
+  const m = e instanceof Error ? e.message : "";
+  return /outside admin scope|association is outside|associationId is required|No association scopes/i.test(m);
+}
+
+/** Resolve the owning associationId of an amenity by id (null if not found). */
+async function amenityAssociationId(id: string): Promise<string | null> {
+  if (!id) return null;
+  const [row] = await db.select({ associationId: amenities.associationId }).from(amenities).where(eq(amenities.id, id));
+  return row?.associationId ?? null;
+}
+
+/** Resolve the owning associationId of a reservation by id (null if not found). */
+async function reservationAssociationId(id: string): Promise<string | null> {
+  if (!id) return null;
+  const [row] = await db
+    .select({ associationId: amenityReservations.associationId })
+    .from(amenityReservations)
+    .where(eq(amenityReservations.id, id));
+  return row?.associationId ?? null;
+}
+
+/** Resolve the owning associationId of a block by id, via its amenity. */
+async function blockAssociationId(id: string): Promise<string | null> {
+  if (!id) return null;
+  const [row] = await db
+    .select({ associationId: amenities.associationId })
+    .from(amenityBlocks)
+    .innerJoin(amenities, eq(amenities.id, amenityBlocks.amenityId))
+    .where(eq(amenityBlocks.id, id));
+  return row?.associationId ?? null;
+}
+
 // 4.2 Q3 addendum (3a): per-association amenities toggle. When the
 // association's `amenities_enabled` column is 0, portal amenity routes must
 // return a structured 404 so the owner portal treats the feature as absent.
@@ -75,7 +128,15 @@ export function registerAmenityRoutes(
 
   app.get("/api/amenities", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
     try {
-      const associationId = p(req.query.associationId as string | string[] | undefined);
+      // A-AUTHZ-003: validate the requested associationId against the admin's scope
+      // (was: raw client value → any admin could list any tenant's amenities).
+      let associationId: string | undefined;
+      try {
+        associationId = getAssociationIdQuery(req);
+      } catch (e) {
+        if (isScopeError(e)) return res.status(403).json({ message: "Association is outside your scope" });
+        throw e;
+      }
       if (!associationId) return res.status(400).json({ message: "associationId required" });
       const rows = await db.select().from(amenities)
         .where(eq(amenities.associationId, associationId))
@@ -90,6 +151,13 @@ export function registerAmenityRoutes(
     try {
       const parsed = insertAmenitySchema.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.flatten() });
+      // A-AUTHZ-003: reject a client-supplied cross-tenant associationId on create.
+      try {
+        assertAssociationInputScope(req, parsed.data.associationId);
+      } catch (e) {
+        if (isScopeError(e)) return res.status(403).json({ message: "Association is outside your scope" });
+        throw e;
+      }
       const [created] = await db.insert(amenities).values(parsed.data).returning();
       res.status(201).json(created);
     } catch (err: any) {
@@ -100,8 +168,12 @@ export function registerAmenityRoutes(
   app.patch("/api/amenities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
+      // A-AUTHZ-003: assert the amenity belongs to the admin's scope before mutating.
+      if (!inScope(req, await amenityAssociationId(id))) return res.status(404).json({ message: "Amenity not found" });
+      const body = { ...(req.body ?? {}) };
+      delete body.associationId; // never allow re-homing into another tenant
       const [updated] = await db.update(amenities)
-        .set({ ...req.body, updatedAt: new Date() })
+        .set({ ...body, updatedAt: new Date() })
         .where(eq(amenities.id, id))
         .returning();
       if (!updated) return res.status(404).json({ message: "Amenity not found" });
@@ -114,6 +186,8 @@ export function registerAmenityRoutes(
   app.delete("/api/amenities/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
+      // A-AUTHZ-003: assert the amenity belongs to the admin's scope before deleting.
+      if (!inScope(req, await amenityAssociationId(id))) return res.status(404).json({ message: "Amenity not found" });
       const [updated] = await db.update(amenities)
         .set({ isActive: 0, updatedAt: new Date() })
         .where(eq(amenities.id, id))
@@ -130,6 +204,8 @@ export function registerAmenityRoutes(
   app.get("/api/amenities/:id/reservations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
+      // A-AUTHZ-003: the amenity (and thus its reservations) must be in the admin's scope.
+      if (!inScope(req, await amenityAssociationId(id))) return res.status(404).json({ message: "Amenity not found" });
       const from = p(req.query.from as string | string[] | undefined);
       const to = p(req.query.to as string | string[] | undefined);
       const conditions = [eq(amenityReservations.amenityId, id)];
@@ -147,6 +223,8 @@ export function registerAmenityRoutes(
   app.patch("/api/amenity-reservations/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
+      // A-AUTHZ-003: reservation (references units/owners + deposit MONEY) must be in scope.
+      if (!inScope(req, await reservationAssociationId(id))) return res.status(404).json({ message: "Reservation not found" });
       const { status, notes, depositResolution, refundCents, forfeitCents } = req.body as {
         status?: string;
         notes?: string;
@@ -219,6 +297,8 @@ export function registerAmenityRoutes(
   app.get("/api/amenities/:id/blocks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
+      // A-AUTHZ-003: the amenity (and its blocks) must be in the admin's scope.
+      if (!inScope(req, await amenityAssociationId(id))) return res.status(404).json({ message: "Amenity not found" });
       const rows = await db.select().from(amenityBlocks)
         .where(eq(amenityBlocks.amenityId, id))
         .orderBy(amenityBlocks.startAt);
@@ -231,6 +311,8 @@ export function registerAmenityRoutes(
   app.post("/api/amenities/:id/blocks", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
+      // A-AUTHZ-003: the amenity being blocked must be in the admin's scope.
+      if (!inScope(req, await amenityAssociationId(id))) return res.status(404).json({ message: "Amenity not found" });
       const parsed = insertAmenityBlockSchema.safeParse({ ...req.body, amenityId: id });
       if (!parsed.success) return res.status(400).json({ message: "Validation error", errors: parsed.error.flatten() });
       const [created] = await db.insert(amenityBlocks).values(parsed.data).returning();
@@ -243,6 +325,8 @@ export function registerAmenityRoutes(
   app.delete("/api/amenity-blocks/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res: Response) => {
     try {
       const id = p(req.params.id);
+      // A-AUTHZ-003: the block's amenity must be in the admin's scope.
+      if (!inScope(req, await blockAssociationId(id))) return res.status(404).json({ message: "Block not found" });
       const [deleted] = await db.delete(amenityBlocks)
         .where(eq(amenityBlocks.id, id))
         .returning();

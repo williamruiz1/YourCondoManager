@@ -279,6 +279,16 @@ import {
   planCatalog,
 } from "@shared/schema";
 import type { AdminRole, PlanCatalog } from "@shared/schema";
+// Tenant-isolation primitives — the single shared, fail-closed authz layer
+// (A-AUTHZ-001/004). Extracted from this file so per-feature route modules can
+// import the SAME guards instead of hand-rolling (or omitting) scope checks.
+import {
+  getAssociationIdQuery,
+  assertAssociationScope,
+  assertAssociationInputScope,
+  assertResourceScope,
+  setResourceAssociationResolver,
+} from "./lib/tenant-scope";
 import { resolveSelfManagedPlan } from "./services/pricing-service";
 import { reportInitialUsageForAssociation, reconcileAllSubscriptionUsage } from "./services/usage-reconcile";
 import type { MeterPoster } from "./services/stripe-meter-reporting";
@@ -873,32 +883,9 @@ async function resolveInviteUrl(req: Request, token: string): Promise<string> {
   return `${baseUrl}/onboarding/${encodeURIComponent(token)}`;
 }
 
-function getAssociationIdQuery(req: Request): string | undefined {
-  const requested = typeof req.query.associationId === "string" ? req.query.associationId : undefined;
-  const adminReq = req as AdminRequest;
-
-  // platform-admin has unrestricted access; skip scope enforcement
-  if (!adminReq.adminRole || adminReq.adminRole === "platform-admin") {
-    return requested;
-  }
-
-  const scopedAssociationIds = adminReq.adminScopedAssociationIds ?? [];
-  if (requested) {
-    if (!scopedAssociationIds.includes(requested)) {
-      throw new Error("Requested association is outside admin scope");
-    }
-    return requested;
-  }
-
-  if (scopedAssociationIds.length === 0) {
-    throw new Error("No association scopes assigned to this admin");
-  }
-  if (scopedAssociationIds.length === 1) {
-    return scopedAssociationIds[0];
-  }
-
-  throw new Error("associationId is required for multi-association scoped admins");
-}
+// getAssociationIdQuery / assertAssociationScope / assertAssociationInputScope /
+// assertResourceScope now live in ./lib/tenant-scope (imported above) so every
+// route module shares the SAME fail-closed guard (A-AUTHZ-004).
 
 function getIncludeArchivedQuery(req: Request): boolean {
   if (typeof req.query.includeArchived !== "string") return false;
@@ -1276,32 +1263,6 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
  * request that reaches this helper without an `adminRole` set has
  * already failed earlier middleware, but if it does, we deny.
  */
-function assertAssociationScope(req: AdminRequest, associationId: string) {
-  if (req.adminRole === "platform-admin") return;
-  if (!associationId) {
-    throw new Error("associationId is required");
-  }
-  // Defense-in-depth: a request with no role should never reach here,
-  // but if it does, deny.
-  if (!req.adminRole) {
-    throw new Error("Association is outside admin scope");
-  }
-  const scopedAssociationIds = req.adminScopedAssociationIds ?? [];
-  // Fail-closed: empty scope for a non-platform-admin role is a denial.
-  // Previously this branch short-circuited to "allowed".
-  if (scopedAssociationIds.length === 0 || !scopedAssociationIds.includes(associationId)) {
-    throw new Error("Association is outside admin scope");
-  }
-}
-
-function assertAssociationInputScope(req: AdminRequest, associationId: string | null | undefined) {
-  if (req.adminRole === "platform-admin") return;
-  if (!associationId) {
-    throw new Error("associationId is required");
-  }
-  assertAssociationScope(req, associationId);
-}
-
 /**
  * 4.3 Q6/Q8 — Resolve the `assessment_rules_write` PM toggle for an
  * association via the canonical `server/pm-toggles.ts` resolver.
@@ -1317,12 +1278,9 @@ async function readAssessmentRulesWriteToggle(
   return canAssessmentRulesWrite("assisted-board", associationId);
 }
 
-async function assertResourceScope(req: AdminRequest, resourceType: string, id: string) {
-  if (req.adminRole === "platform-admin") return;
-  const associationId = await storage.getAssociationIdForScopedResource(resourceType, id);
-  if (!associationId) return;
-  assertAssociationScope(req, associationId);
-}
+// assertResourceScope now lives in ./lib/tenant-scope (imported above), hardened
+// to FAIL CLOSED on an unresolved association (A-AUTHZ-001). Its resource→association
+// resolver is wired to storage once at registerRoutes time (see below).
 
 function requireAdminRole(roles: AdminRole[]) {
   return (req: AdminRequest, res: Response, next: NextFunction) => {
@@ -1503,6 +1461,13 @@ async function getOwnedPortalUnitsForAssociation(input: {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // Wire the shared tenant-isolation guard's resource→association resolver to
+  // storage ONCE (A-AUTHZ-001/004). Done here (not at import) so ./lib/tenant-scope
+  // stays storage-free + unit-testable; every assertResourceScope call uses this.
+  setResourceAssociationResolver((resourceType, id) =>
+    storage.getAssociationIdForScopedResource(resourceType, id),
+  );
+
   registerAuthRoutes(app);
 
   // Observability smoke-test (Issue founder-os#1030). Admin-gated;
@@ -9293,7 +9258,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/governance/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
-      await assertResourceScope(req, "governance-template", getParam(req.params.id));
+      await assertResourceScope(req, "governance-template", getParam(req.params.id), { write: true });
       const parsed = insertGovernanceComplianceTemplateSchema.partial().parse(req.body);
       if ((parsed.scope === "state-library" || parsed.scope === "ct-baseline") && req.adminRole !== "platform-admin") {
         throw new Error("Only platform admins can manage state library templates");
@@ -9334,7 +9299,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
-      await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId));
+      await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId), { write: true });
       const parsed = insertGovernanceTemplateItemSchema.parse({
         ...req.body,
         templateId: getParam(req.params.templateId),
@@ -9427,7 +9392,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const templateId = getParam(req.params.templateId);
       const [existing] = await db.select().from(governanceComplianceTemplates).where(eq(governanceComplianceTemplates.id, templateId)).limit(1);
       if (!existing) return res.status(404).json({ message: "Template not found" });
-      await assertResourceScope(req, "governance-template", templateId);
+      await assertResourceScope(req, "governance-template", templateId, { write: true });
 
       const [newVersion] = await db.insert(governanceComplianceTemplates).values({
         associationId: existing.associationId,
