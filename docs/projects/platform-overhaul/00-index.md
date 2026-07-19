@@ -2,7 +2,7 @@
 **Initiative:** Spec-First Platform Overhaul
 **Owner:** YCM Command Center
 **Process skill:** [`docs/skills/spec-first-overhaul-process-skill.md`](../../skills/spec-first-overhaul-process-skill.md)
-**Last updated:** 2026-04-26 (Wave 45: Layer 5 row 5.11 added — Cross-browser Playwright Firefox + WebKit projects, ship-and-lock.)
+**Last updated:** 2026-07-19 (truth reconciliation against merged main; Phase 12 Financials is complete; Phase 13 Operations is the next unfinished platform-overhaul phase.)
 
 ---
 
@@ -59,11 +59,11 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 
 | ID | Name | Status | Decision Doc | Handoff | PPM Task Card |
 |---|---|---|---|---|---|
-| 3.1 | Sidebar redesign | **SPEC LOCKED · IN BUILD** (Phase 11 — Wave 48 atomic bundle with 3.2 + zone hubs) | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) | [`handoffs/3.1-sidebar-redesign-handoff.md`](handoffs/3.1-sidebar-redesign-handoff.md) | [`ppm/3.1-sidebar-redesign-task.md`](ppm/3.1-sidebar-redesign-task.md) · `bb5baae3-7daf-4503-8767-1ee182b4b4e0` (in_progress, high) |
-| 3.2 | Route restructure | **SPEC LOCKED · IN BUILD** (Phase 11 — Wave 48 atomic bundle with 3.1 + zone hubs; amended 2026-04-21) | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) | [`handoffs/3.2-route-restructure-handoff.md`](handoffs/3.2-route-restructure-handoff.md) | [`ppm/3.2-route-restructure-task.md`](ppm/3.2-route-restructure-task.md) · `b38ac77c-dc83-4076-9bb8-a62d8ff9e5fb` (in_progress, high) |
-| 3.3 | Role-gating corrections | **SPEC LOCKED · IN BUILD** (Phase 12 — Wave 50 Zone 1 Financials landing in flight; Phases 13–16 sequential per Q5 stop-the-line) | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) | [`handoffs/3.3-role-gating-corrections-handoff.md`](handoffs/3.3-role-gating-corrections-handoff.md) | [`ppm/3.3-role-gating-corrections-task.md`](ppm/3.3-role-gating-corrections-task.md) · `7b23d9c6-b087-4063-9c70-ec3e731c7963` (in_progress, high) |
+| 3.1 | Sidebar redesign | **COMPLETE** (Phase 11 merged via PR #89 / `fac69a5` — sidebar redesign + route restructure + four zone hubs) | [`decisions/3.1-sidebar-redesign.md`](decisions/3.1-sidebar-redesign.md) | [`handoffs/3.1-sidebar-redesign-handoff.md`](handoffs/3.1-sidebar-redesign-handoff.md) | [`ppm/3.1-sidebar-redesign-task.md`](ppm/3.1-sidebar-redesign-task.md) · `bb5baae3-7daf-4503-8767-1ee182b4b4e0` (review, high) |
+| 3.2 | Route restructure | **COMPLETE** (Phase 11 merged via PR #89 / `fac69a5` — canonical route restructure shipped) | [`decisions/3.2-route-restructure.md`](decisions/3.2-route-restructure.md) | [`handoffs/3.2-route-restructure-handoff.md`](handoffs/3.2-route-restructure-handoff.md) | [`ppm/3.2-route-restructure-task.md`](ppm/3.2-route-restructure-task.md) · `b38ac77c-dc83-4076-9bb8-a62d8ff9e5fb` (review, high) |
+| 3.3 | Role-gating corrections | **SPEC LOCKED · IN BUILD** (Phase 12 Financials merged via PR #93 / `34cb782`; Phase 13 Operations is next; Phases 14–16 remain) | [`decisions/3.3-role-gating-corrections.md`](decisions/3.3-role-gating-corrections.md) | [`handoffs/3.3-role-gating-corrections-handoff.md`](handoffs/3.3-role-gating-corrections-handoff.md) | [`ppm/3.3-role-gating-corrections-task.md`](ppm/3.3-role-gating-corrections-task.md) · `7b23d9c6-b087-4063-9c70-ec3e731c7963` (in_progress, high) |
 | 3.4 | Breadcrumb implementation | **SPEC LOCKED** | [`decisions/3.4-breadcrumb-implementation.md`](decisions/3.4-breadcrumb-implementation.md) | [`handoffs/3.4-breadcrumb-implementation-handoff.md`](handoffs/3.4-breadcrumb-implementation-handoff.md) | [`ppm/3.4-breadcrumb-implementation-task.md`](ppm/3.4-breadcrumb-implementation-task.md) · `c23a5d54-f784-476b-8f8f-3dcc78024c17` (queued, medium) |
-| 3.5 | Owner Portal restructure | **SPEC LOCKED** (Session 3.5 2026-04-24) | [`decisions/3.5-owner-portal-restructure.md`](decisions/3.5-owner-portal-restructure.md) | [`handoffs/3.5-owner-portal-restructure-handoff.md`](handoffs/3.5-owner-portal-restructure-handoff.md) | [`ppm/3.5-owner-portal-restructure-task.md`](ppm/3.5-owner-portal-restructure-task.md) · skeleton: `65ae5d6b-9eee-407d-ac7e-c3fdd64aa67c`; build: `ca6972a3-6b9e-4620-9358-c1cc6c9f42e3` (queued, medium) |
+| 3.5 | Owner Portal restructure | **COMPLETE** (merged via PR #40 / `55e45ac` — PortalShell + zone files + sub-page routes + legacy URL compatibility; `owner-portal.tsx` deleted) | [`decisions/3.5-owner-portal-restructure.md`](decisions/3.5-owner-portal-restructure.md) | [`handoffs/3.5-owner-portal-restructure-handoff.md`](handoffs/3.5-owner-portal-restructure-handoff.md) | [`ppm/3.5-owner-portal-restructure-task.md`](ppm/3.5-owner-portal-restructure-task.md) · skeleton: `65ae5d6b-9eee-407d-ac7e-c3fdd64aa67c` (review); build: `ca6972a3-6b9e-4620-9358-c1cc6c9f42e3` (superseded) |
 
 ---
 
@@ -74,7 +74,7 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 | 4.1 | Cross-association alert engine | **SPEC LOCKED · SHIPPED** (Session A 2026-04-24); v1 via Waves 11–19; real-time invalidation via Wave 19 (PR #45); **Tier 3 push + email via Wave 32 (PR #63)** | [`decisions/4.1-cross-association-alert-engine.md`](decisions/4.1-cross-association-alert-engine.md) · Tier 3: [`decisions/4.1-tier-3-notifications.md`](decisions/4.1-tier-3-notifications.md) | [`handoffs/4.1-cross-association-alert-engine-handoff.md`](handoffs/4.1-cross-association-alert-engine-handoff.md) | [`ppm/4.1-cross-association-alert-engine-task.md`](ppm/4.1-cross-association-alert-engine-task.md) · ~~_active task pending_~~ shipped via Waves 11–19 + 32; no active card |
 | 4.2 | Owner portal gaps | **SPEC LOCKED** (Session B 2026-04-24); Q3/Q4/Q5/3a SHIPPED, Q1 absorbed into 3.5, Q2 deferred | [`decisions/4.2-owner-portal-gaps.md`](decisions/4.2-owner-portal-gaps.md) | [`handoffs/4.2-owner-portal-gaps-handoff.md`](handoffs/4.2-owner-portal-gaps-handoff.md) | [`ppm/4.2-owner-portal-gaps-task.md`](ppm/4.2-owner-portal-gaps-task.md) · ~~_active task pending_~~ shipped/absorbed; no active card |
 | 4.3 | Recurring assessment rules engine | **SPEC LOCKED** (Session C 2026-04-24); SHIPPED Q3/Q5/Q6/Q7/Q8/Q9 across Waves 7–19 | [`decisions/4.3-recurring-assessment-rules-engine.md`](decisions/4.3-recurring-assessment-rules-engine.md) | [`handoffs/4.3-recurring-assessment-rules-engine-handoff.md`](handoffs/4.3-recurring-assessment-rules-engine-handoff.md) | [`ppm/4.3-recurring-assessment-rules-engine-task.md`](ppm/4.3-recurring-assessment-rules-engine-task.md) · related: `bc8aa43f-bcbf-4632-9661-6ff156b8c175` (hoaFeeSchedules retirement, Q1 follow-up) |
-| 4.4 | Signup and checkout flow | IN SPEC (Q1/Q3 resolved; Q7 P1 + Q2 banner shipped; Q5/Q6 PENDING; Q4 Phase 0 deferred) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) | [`handoffs/4.4-signup-and-checkout-flow-handoff.md`](handoffs/4.4-signup-and-checkout-flow-handoff.md) | [`ppm/4.4-signup-and-checkout-flow-task.md`](ppm/4.4-signup-and-checkout-flow-task.md) · `5d8a1a0a-2d1b-4c02-aa11-81b010436e91` (review, high — shipped tracks) |
+| 4.4 | Signup and checkout flow | **SPEC LOCKED · PARTIALLY SHIPPED** (Q1/Q3/Q5/Q6/Q7 shipped; Q2 onboarding-wizard scope pending; Q4 Phase 0 remains deferred) | [`decisions/4.4-signup-and-checkout-flow.md`](decisions/4.4-signup-and-checkout-flow.md) | [`handoffs/4.4-signup-and-checkout-flow-handoff.md`](handoffs/4.4-signup-and-checkout-flow-handoff.md) | [`ppm/4.4-signup-and-checkout-flow-task.md`](ppm/4.4-signup-and-checkout-flow-task.md) · `5d8a1a0a-2d1b-4c02-aa11-81b010436e91` (review, high — shipped tracks) |
 
 ---
 
@@ -84,14 +84,14 @@ No module may enter build until its governing spec is SPEC LOCKED and a PPM task
 |---|---|---|---|
 | 5.1 | Empty states | **SPEC LOCKED · IN BUILD** (Wave 14 MVP slice; Wave 18 broadened adoption + per-zone ErrorBoundary, PR #50; full sweep across remaining ~40 surfaces deferred) | [`decisions/5.1-empty-states.md`](decisions/5.1-empty-states.md) |
 | 5.2 | Error states | **SPEC LOCKED · IN BUILD** (Wave 14 MVP slice; Wave 18 broadened adoption, PR #50) | [`decisions/5.2-error-states.md`](decisions/5.2-error-states.md) |
-| 5.3 | Mobile audit | **SPEC LOCKED · IN BUILD** (Wave 14 MVP; Wave 18 broadening PR #50; Wave 28 form-dialog density audit across 14 dialogs / 10 files PR #60; Wave 31 remaining dialog mobile fixes PR #64; full retrofit deferred) | [`decisions/5.3-mobile-audit.md`](decisions/5.3-mobile-audit.md) |
+| 5.3 | Mobile audit | **SPEC LOCKED · IN BUILD** (Wave 14 MVP; Wave 18 broadening PR #50; Wave 28 form-dialog density audit across 14 dialogs / 10 files PR #60; Wave 31 remaining dialog mobile fixes PR #64; Wave 43 closed the Wave 31 form-dialog deferral list via PR #75; full retrofit deferred) | [`decisions/5.3-mobile-audit.md`](decisions/5.3-mobile-audit.md) |
 | 5.4 | Performance audit | **SPEC LOCKED · IN BUILD** (Wave 14 baseline; Wave 16b F1 batch fan-out + F6 lazy recharts + F7 virtualized ledger PR #46; Wave 19 F2 composite index + F4 image opt + F5 autocannon harness PR #49; Wave 22 hand-rolled SVG charts PR #54; Wave 33 F3 background rule runs + bundle trim PR #65) | [`decisions/5.4-performance-audit.md`](decisions/5.4-performance-audit.md) |
 | 5.5 | Accessibility audit | **SPEC LOCKED · IN BUILD** (Wave 21 top 10 PR #53; Wave 23 round 2 / next 15 + sidebar nav label PR #57; Wave 27 round 3 / next 8 PR #61; Wave 31 round 4 PR #64) | [`decisions/5.5-accessibility-audit.md`](decisions/5.5-accessibility-audit.md) |
 | 5.6 | i18n scaffolding | **SPEC LOCKED · IN BUILD** (Wave 21 top 10 PR #53; Wave 24 round 2 / 15 surfaces PR #58; Wave 27 round 3 / 8 surfaces PR #61; Wave 31 round 4 PR #64) | [`decisions/5.6-i18n-scaffolding.md`](decisions/5.6-i18n-scaffolding.md) |
 | 5.7 | Automated quality gates | **SPEC LOCKED · SHIPPED** (Wave 25 axe-core + visual regression in Playwright, PR #56) | [`decisions/5.7-automated-quality-gates.md`](decisions/5.7-automated-quality-gates.md) |
 | 5.8 | `prefers-reduced-motion` audit | **SPEC LOCKED · SHIPPED** (Wave 29, 2026-04-25 — ship-and-lock, PR #62) | [`decisions/5.8-motion-reduce-audit.md`](decisions/5.8-motion-reduce-audit.md) |
 | 5.9 | CI pipeline scaffold | **SPEC LOCKED · SHIPPED** (Wave 30 GitHub Actions: tsc + lint + vitest + build + Playwright + axe + visual, PR #59) | [`decisions/5.9-ci-pipeline.md`](decisions/5.9-ci-pipeline.md) |
-| 5.10 | Storybook for shared component library | **SPEC LOCKED · IN BUILD** (Wave 37, 2026-04-26 — Storybook 10.3 + react-vite + addon-a11y; 10 story files / 30 stories covering EmptyState, ErrorState, ErrorBoundary, HubAlertWidget, HomeAlertsPanel, BreadcrumbNav, two election charts, SignupOnboardingChecklist, TrialBanner) | [`decisions/5.10-component-library-docs.md`](decisions/5.10-component-library-docs.md) |
+| 5.10 | Storybook for shared component library | **SHIPPED** (Wave 37 merged via PR #69 / `ac92ea5` — Storybook 10.3, addon-a11y, 10 story files / 30 stories) | [`decisions/5.10-component-library-docs.md`](decisions/5.10-component-library-docs.md) |
 | 5.11 | Cross-browser Playwright (Firefox + WebKit) | **SPEC LOCKED · SHIPPED** (Wave 45, 2026-04-26 — ship-and-lock; Firefox + WebKit projects added to `playwright.config.ts`; visual-regression stays chromium-only via `testIgnore`; CI installs all three browsers via `--with-deps`) | [`decisions/5.11-cross-browser-e2e.md`](decisions/5.11-cross-browser-e2e.md) |
 
 ---
@@ -102,7 +102,7 @@ Cross-cutting architectural decisions that span multiple modules are captured as
 
 | ID | Title | Status | Doc |
 |---|---|---|---|
-| 0b | RouteGuard + persona-access contract | **PROPOSED** · pending William signoff | [`adrs/0b-routeguard-personaaccess-contract.md`](adrs/0b-routeguard-personaaccess-contract.md) |
+| 0b | RouteGuard + persona-access contract | **ACCEPTED** · William signed off; contract implemented | [`adrs/0b-routeguard-personaaccess-contract.md`](adrs/0b-routeguard-personaaccess-contract.md) |
 
 ---
 
@@ -110,6 +110,7 @@ Cross-cutting architectural decisions that span multiple modules are captured as
 
 | Date | Author | Change |
 |---|---|---|
+| 2026-07-19 | YCM GM | Truth reconciliation: Phase 11 and Phase 12 merge state recorded; 3.5 Owner Portal restructure, 4.4 Q5/Q6/Q7, 5.10 Storybook, and ADR 0b corrected; Phase 13 Operations recorded as the current platform-overhaul frontier. |
 | 2026-04-14 | Claude documentation agent | Initial publication. Module 0.1 at SPEC LOCKED; all other modules at QUEUED. |
 | 2026-04-14 | Claude documentation agent | PPM task card created for module 0.1 (`a304717b-b18b-4163-9928-5a9ea235d3a7`, queued). Task card file: `ppm/0.1-dashboard-resolution-task.md`. |
 | 2026-04-14 | Claude documentation agent | Handoff doc published for module 0.1: `handoffs/0.1-dashboard-resolution-handoff.md`. Build gate cleared; Computer may begin on operator activation. |
