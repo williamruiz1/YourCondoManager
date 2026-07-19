@@ -19740,11 +19740,41 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const associationId = config.associationId;
 
       // Get association name
-      const [association] = await db.select({ name: associations.name, city: associations.city, state: associations.state })
+      const [association] = await db.select({
+        name: associations.name,
+        address: associations.address,
+        city: associations.city,
+        state: associations.state,
+      })
         .from(associations).where(eq(associations.id, associationId));
 
-      // Get public notices (published, not expired, public visibility)
       const now = new Date();
+
+      // Public board directory: names and elected/appointed roles only.
+      // Person email and phone fields are private and are never returned by
+      // this unauthenticated endpoint.
+      const boardRoleRows = await db.select({
+        id: boardRoles.id,
+        role: boardRoles.role,
+        firstName: persons.firstName,
+        lastName: persons.lastName,
+      }).from(boardRoles)
+        .innerJoin(persons, eq(persons.id, boardRoles.personId))
+        .where(and(
+          eq(boardRoles.associationId, associationId),
+          or(isNull(boardRoles.endDate), gte(boardRoles.endDate, now)),
+        ))
+        .orderBy(boardRoles.role, persons.lastName, persons.firstName);
+      const publicBoardContacts = Array.from(
+        new Map(
+          boardRoleRows.map((row) => [
+            `${row.role.toLowerCase()}|${row.firstName.toLowerCase()}|${row.lastName.toLowerCase()}`,
+            row,
+          ]),
+        ).values(),
+      );
+
+      // Get public notices (published, not expired, public visibility)
       const publicNotices = await db.select().from(communityAnnouncements)
         .where(and(
           eq(communityAnnouncements.associationId, associationId),
@@ -19812,6 +19842,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           welcomeHighlights: config.welcomeHighlights,
         },
         association: association || null,
+        boardContacts: publicBoardContacts,
         notices: publicNotices,
         infoBlocks: publicInfoBlocks,
         actionLinks: publicActionLinks,
