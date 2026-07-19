@@ -33,11 +33,12 @@
 // trail) that fails loudly when only the shell renders.
 
 import fs from "node:fs";
+import { createHmac, randomUUID } from "node:crypto";
 import { gotoStable } from "./helpers/nav-helper";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect, type Page } from "@playwright/test";
-import { loginAsOwner } from "./helpers/auth-helper";
+import { loginAsOwner, realPortalLogin } from "./helpers/auth-helper";
 import { runAxeAudit } from "./helpers/a11y-check";
 import {
   createRealBackend,
@@ -48,6 +49,8 @@ import {
 
 const REAL_BACKEND = process.env.PLAYWRIGHT_REAL_BACKEND === "1";
 const ASSOCIATION_ID = "assoc-e2e-1";
+const STRIPE_CONNECT_WEBHOOK_SECRET =
+  process.env.PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET ?? "whsec_playwright_owner_money_loop";
 const HANDOFF_PATH = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -357,5 +360,140 @@ test.describe("Wave 16a/26 — owner portal navigation", () => {
     await page.goto("/portal?tab=financials");
     await page.waitForURL(/\/portal\/finances($|\?|#)/, { timeout: 10_000 });
     expect(new URL(page.url()).pathname).toBe("/portal/finances");
+  });
+
+  test("owner ownership record auto-provisions portal access through the real OTP flow", async ({ page }) => {
+    const email = `owner-registration-${Date.now()}@e2e.test`;
+    const owner = await backend.seedUnitWithOwner({
+      associationId: ASSOCIATION_ID,
+      email,
+      firstName: "Avery",
+      lastName: "Owner",
+      unitNumber: "204",
+    });
+
+    const before = await backend.pool.query(
+      `SELECT id FROM portal_access
+       WHERE association_id = $1 AND person_id = $2 AND unit_id = $3`,
+      [ASSOCIATION_ID, owner.personId, owner.unitId],
+    );
+    expect(before.rowCount).toBe(0);
+
+    await realPortalLogin(page, email);
+
+    const after = await backend.pool.query<{
+      id: string;
+      status: string;
+      role: string;
+      last_login_at: Date | null;
+    }>(
+      `SELECT id, status, role, last_login_at
+       FROM portal_access
+       WHERE association_id = $1 AND person_id = $2 AND unit_id = $3`,
+      [ASSOCIATION_ID, owner.personId, owner.unitId],
+    );
+    expect(after.rows).toHaveLength(1);
+    expect(after.rows[0]).toMatchObject({ status: "active", role: "owner" });
+    expect(after.rows[0].last_login_at).not.toBeNull();
+
+    await gotoStable(page, "/portal");
+    await expect(page.getByTestId("portal-home-heading")).toHaveText("Welcome, Avery");
+    await expect(page.getByTestId("portal-home-units-count")).toHaveText("1");
+  });
+
+  test("succeeded owner payment posts one ledger credit and renders confirmation after webhook replay", async ({ page }) => {
+    const session = await backend.installOwnerSession(page, {
+      associationId: ASSOCIATION_ID,
+      email: `owner-payment-${Date.now()}@e2e.test`,
+      firstName: "Morgan",
+      lastName: "Owner",
+    });
+    const transactionId = randomUUID();
+    const paymentIntentId = `pi_e2e_${randomUUID().replaceAll("-", "")}`;
+    const chargeId = `ch_e2e_${randomUUID().replaceAll("-", "")}`;
+    const amountCents = 12_345;
+
+    await backend.pool.query(
+      `INSERT INTO payment_transactions
+         (id, association_id, unit_id, person_id, amount_cents, status, provider,
+          provider_payment_id, provider_intent_id, receipt_reference, checkout_method,
+          submitted_at)
+       VALUES ($1, $2, $3, $4, $5, 'pending', 'stripe', $6, $7, $8, 'ach', NOW())`,
+      [
+        transactionId,
+        ASSOCIATION_ID,
+        session.unitId,
+        session.personId,
+        amountCents,
+        `cs_e2e_${transactionId}`,
+        paymentIntentId,
+        `PAY-E2E-${transactionId}`,
+      ],
+    );
+
+    const event = {
+      id: `evt_e2e_${randomUUID().replaceAll("-", "")}`,
+      type: "charge.succeeded",
+      data: {
+        object: {
+          id: chargeId,
+          amount: amountCents,
+          payment_intent: paymentIntentId,
+          metadata: {
+            associationId: ASSOCIATION_ID,
+            unitId: session.unitId,
+            personId: session.personId,
+            transactionId,
+          },
+        },
+      },
+    };
+    const rawBody = JSON.stringify(event);
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = createHmac("sha256", STRIPE_CONNECT_WEBHOOK_SECRET)
+      .update(`${timestamp}.${rawBody}`)
+      .digest("hex");
+    const stripeSignature = `t=${timestamp},v1=${signature}`;
+
+    for (let delivery = 0; delivery < 2; delivery += 1) {
+      const response = await page.request.post("/api/webhooks/stripe-connect/events", {
+        data: rawBody,
+        headers: {
+          "Content-Type": "application/json",
+          "Stripe-Signature": stripeSignature,
+        },
+      });
+      expect(response.status(), await response.text()).toBe(200);
+    }
+
+    const transaction = await backend.pool.query<{
+      status: string;
+      confirmed_at: Date | null;
+    }>(
+      `SELECT status, confirmed_at FROM payment_transactions WHERE id = $1`,
+      [transactionId],
+    );
+    expect(transaction.rows).toHaveLength(1);
+    expect(transaction.rows[0].status).toBe("succeeded");
+    expect(transaction.rows[0].confirmed_at).not.toBeNull();
+
+    const ledger = await backend.pool.query<{
+      amount: number;
+      payment_identity_key: string;
+    }>(
+      `SELECT amount, payment_identity_key
+       FROM owner_ledger_entries
+       WHERE association_id = $1 AND entry_type = 'payment' AND payment_identity_key = $2`,
+      [ASSOCIATION_ID, paymentIntentId],
+    );
+    expect(ledger.rows).toHaveLength(1);
+    expect(Number(ledger.rows[0].amount)).toBe(-123.45);
+    expect(ledger.rows[0].payment_identity_key).toBe(paymentIntentId);
+
+    await gotoStable(page, `/portal?payment=success&txn=${transactionId}`);
+    const confirmation = page.getByTestId("portal-home-payment-confirmation");
+    await expect(confirmation).toBeVisible();
+    await expect(confirmation).toContainText("Payment confirmed");
+    await expect(confirmation).toContainText("$123.45");
   });
 });
