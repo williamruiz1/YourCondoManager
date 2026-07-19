@@ -42,6 +42,11 @@ import { PortalShell, usePortalContext } from "./portal-shell";
 import { t } from "@/i18n/use-strings";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+// Owner-portal faithful redesign — ports the William-approved My Finances
+// wireframe (artifacts/owner-my-finances-redesign-wireframe-2026-07-14.html,
+// PR #515 signoff) onto the real data-bound markup below. See the file
+// header for the full port rationale.
+import "@/styles/portal-redesign.css";
 
 // ── CT convenience-fee preview (founder-os
 // wiki/research/chc-processing-fee-legality-2026-07-14.md §6) ─────────────
@@ -631,7 +636,7 @@ function PerUnitTransposedTable({
 
   return (
     <div className="space-y-2">
-      <Card>
+      <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
         {/* Horizontal scroll on narrow screens so many unit columns never burst
             the layout — the table scrolls inside its own container. */}
         <CardContent className="p-0 overflow-x-auto">
@@ -691,70 +696,80 @@ function PerUnitTransposedTable({
 function AssessmentPlanCard({
   plan,
   assessmentInstallmentDue,
+  unitLabel,
 }: {
   plan: AssessmentPlanProgress;
   assessmentInstallmentDue: number;
+  // 2026-07-17 (owner-portal faithful rebuild) — the William-approved
+  // wireframe shows one compact card PER UNIT in a 3-up grid, with the
+  // unit name as the card's eyebrow (e.g. "Unit 3 — Driveway
+  // Replacement"). Purely a display label — no logic change; the caller
+  // already has `unit.unitLabel` from the existing `assessmentPlansByUnit`
+  // grouping.
+  unitLabel?: string | null;
 }) {
   const view = deriveAssessmentPlanView(plan);
   return (
     <Card
       className={view.isPastDue ? "border-destructive/40" : "border-outline-variant/15"}
+      style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}
       data-testid={`portal-finances-assessment-plan-${plan.assessmentId}`}
     >
       <CardContent className="py-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
-              Payment plan
+              {unitLabel ? `${unitLabel} · Payment plan` : "Payment plan"}
             </p>
-            <h2 className="font-headline text-lg text-on-surface">{plan.assessmentName}</h2>
+            <h2 className="font-headline text-lg" style={{ color: "var(--ds-teal, #014d4a)" }}>{plan.assessmentName}</h2>
           </div>
           {view.isPaidOff ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-              <span className="h-1.5 w-1.5 rounded-full bg-primary" aria-hidden="true" />
+            <span className="pfx-chip pfx-ok">
+              <span className="pfx-dot" aria-hidden="true" />
               Paid off
             </span>
           ) : view.isPastDue ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive">
-              <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
+            <span className="pfx-chip pfx-bad">
+              <span className="pfx-dot" aria-hidden="true" />
               Past due
             </span>
           ) : (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" aria-hidden="true" />
+            <span className="pfx-chip pfx-ok">
+              <span className="pfx-dot" aria-hidden="true" />
               On track
             </span>
           )}
         </div>
 
-        <p className="mt-3 inline-flex items-center gap-2 rounded-lg bg-primary/[0.06] px-3 py-1.5 text-xs font-medium text-primary">
+        <p className="pfx-callout mt-3" style={{ display: "inline-block" }}>
           Paid over time in installments — not due all at once
         </p>
 
         {/* stat tiles: total · paid · remaining (over time) */}
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+          <div className="rounded-xl px-4 py-3" style={{ background: "var(--ds-off, #f5f7f9)" }}>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               Assessment total
             </p>
-            <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">
+            <p className="mt-1 font-headline text-xl tabular-nums" style={{ color: "var(--ds-teal, #014d4a)" }}>
               ${formatCurrency(plan.total)}
             </p>
           </div>
-          <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+          <div className="rounded-xl px-4 py-3" style={{ background: "var(--ds-off, #f5f7f9)" }}>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               Paid so far
             </p>
-            <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">
+            <p className="mt-1 font-headline text-xl tabular-nums" style={{ color: "var(--ds-teal, #014d4a)" }}>
               ${formatCurrency(plan.paidToDate)}
             </p>
           </div>
-          <div className="rounded-xl bg-surface-container/60 px-4 py-3">
+          <div className="rounded-xl px-4 py-3" style={{ background: "var(--ds-infosoft, #bfe8e4)" }}>
             <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
               Remaining (over time)
             </p>
             <p
-              className="mt-1 font-headline text-xl tabular-nums text-primary"
+              className="mt-1 font-headline text-xl tabular-nums"
+              style={{ color: "var(--ds-teal, #014d4a)" }}
               data-testid={`portal-finances-assessment-plan-${plan.assessmentId}-remaining`}
             >
               ${formatCurrency(plan.remaining)}
@@ -765,7 +780,7 @@ function AssessmentPlanCard({
         {/* progress bar */}
         <div className="mt-4">
           <div className="mb-2 flex items-baseline justify-between text-sm">
-            <span className="font-semibold text-primary">{view.pctPaid}% paid</span>
+            <span className="font-semibold" style={{ color: "var(--ds-teal-700, #0a6a63)" }}>{view.pctPaid}% paid</span>
             <span className="text-on-surface-variant">
               {/* 2026-07-12 — a legacy assessment with no real installment
                   schedule (`hasSchedule: false`) has no trustworthy
@@ -776,11 +791,12 @@ function AssessmentPlanCard({
             </span>
           </div>
           <div
-            className="h-2.5 w-full overflow-hidden rounded-full bg-surface-container"
+            className="h-2.5 w-full overflow-hidden rounded-full"
+            style={{ background: "var(--ds-gray, #e5e7eb)" }}
             role="img"
             aria-label={`${view.pctPaid}% of ${plan.assessmentName} paid`}
           >
-            <div className="h-full rounded-full bg-primary" style={{ width: `${view.pctPaid}%` }} />
+            <div className="h-full rounded-full" style={{ width: `${view.pctPaid}%`, background: "var(--ds-accent, #15a39c)" }} />
           </div>
         </div>
 
@@ -1066,12 +1082,13 @@ function FinancesHubContent() {
   );
 
   return (
-    <div className="mx-auto flex max-w-5xl flex-col gap-6" data-testid="portal-finances">
-      <div>
-        <h1 className="font-headline text-3xl md:text-4xl" data-testid="portal-finances-heading">
+    <div className="pfx-scope mx-auto flex max-w-5xl flex-col gap-6" data-testid="portal-finances">
+      <div className="pfx-pagehead">
+        <p className="pfx-eyebrow">Your account</p>
+        <h1 data-testid="portal-finances-heading">
           {t("portal.finances.title")}
         </h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
+        <p className="pfx-lede">
           {t("portal.finances.subtitle")}
         </p>
       </div>
@@ -1080,50 +1097,47 @@ function FinancesHubContent() {
           William: pin "paid this year" + "total remaining" at the top so
           they're always visible regardless of which tab is open (per the
           PR #515 wireframe — these sit ABOVE the tab strip). */}
-      <section className="grid gap-4 md:grid-cols-2" data-testid="portal-finances-pinned">
-        <Card className="border-outline-variant/15 bg-surface">
-          <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Paid this year</p>
-            <p className="mt-1 font-headline text-2xl tabular-nums text-on-surface" data-testid="portal-finances-pinned-paid-ytd">
-              ${formatCurrency(dashboard?.totalPayments ?? 0)}
-            </p>
-            <Link
-              href="/portal/finances/ledger"
-              className="mt-2 inline-flex items-center rounded text-xs font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-              data-testid="portal-finances-hero-ledger-link"
-            >
-              <Receipt className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
-              View your full ledger
-            </Link>
-          </CardContent>
-        </Card>
-        <Card className="border-outline-variant/15 bg-surface" data-testid="portal-finances-pinned-remaining">
-          <CardContent className="py-5">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Total remaining</p>
-            <p
-              className={`mt-1 font-headline text-2xl tabular-nums ${totalRemaining > 0 ? "text-destructive" : "text-on-surface"}`}
-              data-testid="portal-finances-pinned-remaining-amount"
-            >
-              ${formatCurrency(totalRemaining)}
-            </p>
-            <p className="mt-2 text-xs text-on-surface-variant">
-              Across all open assessments &amp; dues — see the Breakdown tab.
-            </p>
-          </CardContent>
-        </Card>
+      <section className="pfx-pinned" data-testid="portal-finances-pinned">
+        <div className="pfx-pin-card">
+          <p className="pfx-k">Paid this year</p>
+          <p className="pfx-v" data-testid="portal-finances-pinned-paid-ytd">
+            ${formatCurrency(dashboard?.totalPayments ?? 0)}
+          </p>
+          <Link
+            href="/portal/finances/ledger"
+            className="mt-2 inline-flex items-center rounded text-xs font-semibold underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            style={{ color: "var(--ds-teal-700, #0a6a63)" }}
+            data-testid="portal-finances-hero-ledger-link"
+          >
+            <Receipt className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+            View your full ledger
+          </Link>
+        </div>
+        <div className="pfx-pin-card" data-testid="portal-finances-pinned-remaining">
+          <p className="pfx-k">Total remaining</p>
+          <p
+            className={`pfx-v ${totalRemaining > 0 ? "pfx-bad" : ""}`}
+            data-testid="portal-finances-pinned-remaining-amount"
+          >
+            ${formatCurrency(totalRemaining)}
+          </p>
+          <p className="pfx-sub">
+            Across all open assessments &amp; dues — see the Breakdown tab.
+          </p>
+        </div>
       </section>
 
       <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview" data-testid="portal-finances-tab-overview">Overview</TabsTrigger>
-          <TabsTrigger value="assessments" data-testid="portal-finances-tab-assessments">
+        <TabsList className="pfx-tabstrip">
+          <TabsTrigger className="pfx-tab" value="overview" data-testid="portal-finances-tab-overview">Overview</TabsTrigger>
+          <TabsTrigger className="pfx-tab" value="assessments" data-testid="portal-finances-tab-assessments">
             Assessments
             {assessmentPlansByUnit.length > 0 ? (
-              <Badge variant="outline" className="ml-1.5">{assessmentPlansByUnit.length}</Badge>
+              <span className="pfx-tab-count">{assessmentPlansByUnit.length}</span>
             ) : null}
           </TabsTrigger>
-          <TabsTrigger value="dues" data-testid="portal-finances-tab-dues">Dues</TabsTrigger>
-          <TabsTrigger value="breakdown" data-testid="portal-finances-tab-breakdown">Breakdown</TabsTrigger>
+          <TabsTrigger className="pfx-tab" value="dues" data-testid="portal-finances-tab-dues">Dues</TabsTrigger>
+          <TabsTrigger className="pfx-tab" value="breakdown" data-testid="portal-finances-tab-breakdown">Breakdown</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-4 flex flex-col gap-6" data-testid="portal-finances-tabpanel-overview">
@@ -1167,34 +1181,23 @@ function FinancesHubContent() {
         </section>
       ) : (
         <section data-testid="portal-finances-pay-this-period">
-          <Card
-            className={`overflow-hidden ${
-              isOverdue ? "border-destructive/40 bg-destructive/[0.04]" : "border-primary/25 bg-primary/[0.04]"
-            }`}
-          >
-            <CardContent className="py-6">
+          <div className={`pfx-status-banner ${isOverdue ? "" : "pfx-is-ok"}`}>
               {/* status row — reassuring by default; red only when overdue */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                 {isOverdue ? (
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-xs font-semibold text-destructive"
-                    data-testid="portal-finances-status-chip"
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden="true" />
+                  <span className="pfx-chip pfx-bad" data-testid="portal-finances-status-chip">
+                    <span className="pfx-dot" aria-hidden="true" />
                     {overdueFromPriorPeriods
                       ? `${overdueFromPriorPeriods.installmentsOverdue} payment${overdueFromPriorPeriods.installmentsOverdue === 1 ? "" : "s"} past due`
                       : "Past due — please pay"}
                   </span>
                 ) : (
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800"
-                    data-testid="portal-finances-status-chip"
-                  >
+                  <span className="pfx-chip pfx-ok" data-testid="portal-finances-status-chip">
                     <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
                     You&rsquo;re on track
                   </span>
                 )}
-                <span className="text-sm text-on-surface-variant">
+                <span className="text-sm" style={{ color: "var(--ds-sub, #4a6b68)" }}>
                   {/* 2026-07-14 (banner overdue-logic fix) — honest, distinct
                       framing of "due this period" vs "overdue from prior
                       periods". Never conflates a new installment with an
@@ -1207,32 +1210,36 @@ function FinancesHubContent() {
                 </span>
               </div>
 
-              <p className="mt-4 text-[11px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              <p className="mt-4 text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--ds-sub, #4a6b68)" }}>
                 Pay this period · {thisPeriodLabel}
               </p>
               <p
-                className={`mt-1 font-headline text-4xl md:text-5xl tabular-nums ${
-                  isOverdue ? "text-destructive" : "text-primary"
-                }`}
+                className="mt-0 tabular-nums font-headline"
+                style={{
+                  fontSize: "clamp(30px, 5vw, 42px)",
+                  fontWeight: 800,
+                  letterSpacing: "-0.015em",
+                  color: isOverdue ? "var(--ds-bad, #c0392b)" : "var(--ds-teal, #014d4a)",
+                }}
                 data-testid="portal-finances-due-now-total"
               >
                 ${formatCurrency(totalDueNow)}
               </p>
 
               {/* breakdown: this month's dues + this month's installment */}
-              <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm text-on-surface-variant">
+              <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm" style={{ color: "var(--ds-sub, #4a6b68)" }}>
                 <span className="inline-flex items-center gap-2">
-                  <span className="inline-block h-2.5 w-2.5 rounded-sm bg-primary" aria-hidden="true" />
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "var(--ds-teal, #014d4a)" }} aria-hidden="true" />
                   Monthly dues{" "}
-                  <b className="tabular-nums text-on-surface" data-testid="portal-finances-due-now-dues">
+                  <b className="tabular-nums" style={{ color: "#1a3634" }} data-testid="portal-finances-due-now-dues">
                     ${formatCurrency(duesDue)}
                   </b>
                 </span>
                 {assessmentInstallmentDue > 0 ? (
                   <span className="inline-flex items-center gap-2">
-                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-primary/50" aria-hidden="true" />
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "var(--ds-accent, #15a39c)" }} aria-hidden="true" />
                     Assessment installment{" "}
-                    <b className="tabular-nums text-on-surface" data-testid="portal-finances-due-now-assessment">
+                    <b className="tabular-nums" style={{ color: "#1a3634" }} data-testid="portal-finances-due-now-assessment">
                       ${formatCurrency(assessmentInstallmentDue)}
                     </b>
                   </span>
@@ -1267,23 +1274,20 @@ function FinancesHubContent() {
                   past-due signal, which has no reliable dollar amount — see
                   shared/payment-period.ts computeArrears). */}
               {overdueAmount > 0 ? (
-                <div
-                  className="mt-4 grid grid-cols-1 gap-3 border-t border-outline-variant/15 pt-4 sm:grid-cols-3"
-                  data-testid="portal-finances-catchup-breakout"
-                >
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Due now</p>
-                    <p className="mt-1 font-headline text-xl tabular-nums text-on-surface">${formatCurrency(totalDueNow)}</p>
+                <div className="pfx-breakout" data-testid="portal-finances-catchup-breakout">
+                  <div className="pfx-breakout-item">
+                    <p className="pfx-k">Due now</p>
+                    <p className="pfx-v">${formatCurrency(totalDueNow)}</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Overdue (prior periods)</p>
-                    <p className="mt-1 font-headline text-xl tabular-nums text-destructive" data-testid="portal-finances-overdue-amount">
+                  <div className="pfx-breakout-item">
+                    <p className="pfx-k">Overdue (prior periods)</p>
+                    <p className="pfx-v pfx-bad" data-testid="portal-finances-overdue-amount">
                       ${formatCurrency(overdueAmount)}
                     </p>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Total to catch up</p>
-                    <p className="mt-1 font-headline text-xl tabular-nums text-on-surface" data-testid="portal-finances-catchup-total">
+                  <div className="pfx-breakout-item">
+                    <p className="pfx-k">Total to catch up</p>
+                    <p className="pfx-v" data-testid="portal-finances-catchup-total">
                       ${formatCurrency(totalToCatchUp)}
                     </p>
                   </div>
@@ -1380,8 +1384,7 @@ function FinancesHubContent() {
                   {payError}
                 </p>
               ) : null}
-            </CardContent>
-          </Card>
+          </div>
         </section>
       )}
 
@@ -1554,11 +1557,11 @@ function FinancesHubContent() {
           chronologically — see `buildActivityFeed`. Reflects (does not
           re-implement) the PR #514 confirmation-visibility fix. */}
       <section data-testid="portal-finances-recent-ledger" aria-labelledby="portal-finances-recent-heading">
-        <div className="mb-1 flex items-center justify-between">
-          <h2 id="portal-finances-recent-heading" className="font-headline text-lg">{t("portal.finances.recentLedger.title")}</h2>
+        <div className="pfx-section-head">
+          <h2 id="portal-finances-recent-heading">{t("portal.finances.recentLedger.title")}</h2>
           <Link
             href="/portal/finances/ledger"
-            className="rounded text-xs font-semibold text-primary hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            className="pfx-view-all"
           >
             {t("portal.finances.recentLedger.viewFull")}
           </Link>
@@ -1576,25 +1579,26 @@ function FinancesHubContent() {
             <CardContent className="py-6 text-sm text-on-surface-variant" role="status">{t("portal.finances.recentLedger.empty")}</CardContent>
           </Card>
         ) : (
-          <Card>
-            <CardContent className="divide-y divide-outline-variant/15 py-0">
+          <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
+            <CardContent className="pfx-row-list py-1 px-5">
               {activityItems.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between gap-3 py-3"
+                  className="pfx-row"
                   data-testid={`portal-finances-activity-${item.id}`}
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold">{item.title}</p>
-                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-on-surface-variant">
+                    <p className="pfx-row-title truncate">{item.title}</p>
+                    <p className="pfx-row-sub flex flex-wrap items-center gap-1.5">
                       {item.kind === "pending" ? (
-                        <Badge
-                          variant="outline"
-                          className="border-amber-300 bg-amber-50 text-amber-800"
+                        <span
+                          className="pfx-chip pfx-pending"
+                          style={{ padding: "1px 8px", fontSize: "10px" }}
                           data-testid={`portal-finances-activity-${item.id}-processing`}
                         >
+                          <span className="pfx-dot" aria-hidden="true" />
                           Processing
-                        </Badge>
+                        </span>
                       ) : null}
                       {item.kind === "failed" ? (
                         <Badge
@@ -1609,7 +1613,7 @@ function FinancesHubContent() {
                       {item.subtitle ? <span>· {item.subtitle}</span> : null}
                     </p>
                   </div>
-                  <p className="shrink-0 text-right text-sm font-semibold tabular-nums">
+                  <p className="pfx-row-amt shrink-0 tabular-nums">
                     ${formatCurrency(item.amount)}
                   </p>
                 </div>
@@ -1636,20 +1640,37 @@ function FinancesHubContent() {
               description="You don't currently have any special-assessment payment plans."
             />
           ) : (
-            assessmentPlansByUnit.map((unit) => (
-              <section key={unit.unitId} data-testid={`portal-finances-assessments-unit-${unit.unitId}`}>
-                <h2 className="mb-3 font-headline text-lg">{unit.unitLabel ?? "Unit"}</h2>
-                <div className="grid gap-4">
-                  {unit.plans.map((plan) => (
-                    <AssessmentPlanCard
-                      key={plan.assessmentId}
-                      plan={plan}
-                      assessmentInstallmentDue={assessmentInstallmentDue}
-                    />
-                  ))}
-                </div>
-              </section>
-            ))
+            <section data-testid="portal-finances-assessments-grid">
+              <div className="pfx-section-head">
+                <h2>Assessments — by unit</h2>
+                <span className="text-xs" style={{ color: "var(--ds-sub, #4a6b68)" }}>
+                  {assessmentPlansByUnit.length} unit{assessmentPlansByUnit.length === 1 ? "" : "s"} · each unit's plan tracked and paid separately
+                </span>
+              </div>
+              {/* 2026-07-17 (owner-portal faithful rebuild) — flattened into
+                  ONE 3-up grid (per the approved wireframe's `.unit-grid`),
+                  each card tagged with its unit label, instead of a
+                  vertically-stacked section per unit. Same underlying
+                  `assessmentPlansByUnit` data; only the layout changed. */}
+              <div className="pfx-unit-grid">
+                {assessmentPlansByUnit.map((unit) => (
+                  <div
+                    key={unit.unitId}
+                    className="contents"
+                    data-testid={`portal-finances-assessments-unit-${unit.unitId}`}
+                  >
+                    {unit.plans.map((plan) => (
+                      <AssessmentPlanCard
+                        key={plan.assessmentId}
+                        plan={plan}
+                        assessmentInstallmentDue={assessmentInstallmentDue}
+                        unitLabel={unit.unitLabel}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
         </TabsContent>
 
@@ -1665,27 +1686,33 @@ function FinancesHubContent() {
               description="Your association hasn't set up a recurring dues schedule yet."
             />
           ) : (
-            <Card>
-              <CardContent className="divide-y divide-outline-variant/15 py-0">
-                {feeSchedules.map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex items-center justify-between gap-3 py-3"
-                    data-testid={`portal-finances-dues-row-${s.id}`}
-                  >
-                    <div>
-                      <p className="text-sm font-semibold">
-                        {s.unitLabel ? `${s.unitLabel} — ${s.name}` : s.name}
+            <>
+              <div className="pfx-section-head">
+                <h2>Recurring dues</h2>
+                <span className="text-xs" style={{ color: "var(--ds-sub, #4a6b68)" }}>HOA dues only — separate from assessments</span>
+              </div>
+              <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
+                <CardContent className="pfx-row-list py-1 px-5">
+                  {feeSchedules.map((s) => (
+                    <div
+                      key={s.id}
+                      className="pfx-row"
+                      data-testid={`portal-finances-dues-row-${s.id}`}
+                    >
+                      <div>
+                        <p className="pfx-row-title">
+                          {s.unitLabel ? `${s.unitLabel} — ${s.name}` : s.name}
+                        </p>
+                        <p className="pfx-row-sub capitalize">{s.frequency}</p>
+                      </div>
+                      <p className="pfx-row-amt shrink-0 tabular-nums">
+                        ${formatCurrency(s.amount)} / {s.frequency === "monthly" ? "mo" : s.frequency === "quarterly" ? "qtr" : "yr"}
                       </p>
-                      <p className="text-xs capitalize text-on-surface-variant">{s.frequency}</p>
                     </div>
-                    <p className="shrink-0 text-right text-sm font-semibold tabular-nums">
-                      ${formatCurrency(s.amount)} / {s.frequency === "monthly" ? "mo" : s.frequency === "quarterly" ? "qtr" : "yr"}
-                    </p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+                  ))}
+                </CardContent>
+              </Card>
+            </>
           )}
         </TabsContent>
 
@@ -1703,17 +1730,18 @@ function FinancesHubContent() {
             >
               <div className="mb-3 flex items-end justify-between gap-4">
                 <div>
-                  <h2 id="portal-finances-by-unit-heading" className="font-headline text-lg">
+                  <h2 id="portal-finances-by-unit-heading" className="font-headline text-lg" style={{ color: "var(--ds-teal, #014d4a)" }}>
                     By unit
                   </h2>
-                  <p className="text-xs text-on-surface-variant">
+                  <p className="text-xs" style={{ color: "var(--ds-sub, #4a6b68)" }}>
                     {perUnit.length > 1
                       ? `What each of your ${perUnit.length} units owes — HOA dues and special assessments shown separately.`
                       : "HOA dues and special assessments for your unit, shown separately."}
                   </p>
                 </div>
                 <p
-                  className="font-headline text-xl text-on-surface tabular-nums"
+                  className="font-headline text-xl tabular-nums"
+                  style={{ color: "var(--ds-teal, #014d4a)" }}
                   data-testid="portal-finances-by-unit-grand-total"
                 >
                   ${formatCurrency(dashboard?.grandTotal ?? balance)}

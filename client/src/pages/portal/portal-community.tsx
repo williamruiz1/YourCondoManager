@@ -12,6 +12,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { Card, CardContent } from "@/components/ui/card";
 import { PortalShell, usePortalContext } from "./portal-shell";
+import "@/styles/portal-redesign.css";
 
 function CommunityHubContent() {
   const { associationId, associationName, portalFetch, session } = usePortalContext();
@@ -26,24 +27,25 @@ function CommunityHubContent() {
   });
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-community">
-      <div>
-        <h1 className="font-headline text-3xl md:text-4xl" data-testid="portal-community-heading">
+    <div className="pfx-scope mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-community">
+      <div className="pfx-pagehead">
+        <p className="pfx-eyebrow">Association</p>
+        <h1 data-testid="portal-community-heading">
           My Community
         </h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
+        <p className="pfx-lede">
           Shortcuts to your community hub, notices, amenities, and shared documents.
         </p>
       </div>
 
-      <Card>
+      <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
         <CardContent className="flex flex-col gap-4 py-5 md:flex-row md:items-center md:justify-between" data-testid="portal-community-hub-link">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Public community hub</p>
+            <p className="pfx-eyebrow">Public community hub</p>
             <p className="mt-1 font-headline text-xl">
               {associationName ? `${associationName}'s community hub` : "Open your community hub"}
             </p>
-            <p className="mt-1 text-xs text-on-surface-variant">
+            <p className="mt-1 text-xs" style={{ color: "var(--ds-sub, #4a6b68)" }}>
               Event calendars, announcements, and public resources live on your community's public page. Clicking
               through opens a new tab — your portal session stays signed in here.
             </p>
@@ -53,14 +55,15 @@ function CommunityHubContent() {
               href={`/community/${associationId}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-bold text-on-primary hover:bg-primary/90"
+              className="inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold text-white"
+              style={{ background: "var(--ds-teal, #014d4a)" }}
               data-testid="portal-community-hub-button"
             >
               Open hub
               <span className="material-symbols-outlined text-base">open_in_new</span>
             </a>
           ) : (
-            <p className="text-xs text-on-surface-variant">Your association is not configured for a public hub yet.</p>
+            <p className="text-xs" style={{ color: "var(--ds-sub, #4a6b68)" }}>Your association is not configured for a public hub yet.</p>
           )}
         </CardContent>
       </Card>
@@ -68,31 +71,31 @@ function CommunityHubContent() {
       <section className="grid gap-4 md:grid-cols-3" data-testid="portal-community-shortcuts">
         <Link
           href="/portal/notices"
-          className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5"
+          className="pfx-shortcut"
           data-testid="portal-community-shortcut-notices"
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Inbox</p>
-          <p className="mt-2 font-headline text-lg">Notices & votes</p>
-          <p className="mt-1 text-xs text-on-surface-variant">
+          <p className="pfx-eyebrow">Inbox</p>
+          <h3>Notices &amp; votes</h3>
+          <p>
             Announcements, property notices, and any open ballots or elections.
           </p>
         </Link>
         {amenitiesSettings?.amenitiesEnabled ? (
           <Link
             href="/portal/amenities"
-            className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5"
+            className="pfx-shortcut"
             data-testid="portal-community-shortcut-amenities"
           >
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Amenities</p>
-            <p className="mt-2 font-headline text-lg">Reserve a space</p>
-            <p className="mt-1 text-xs text-on-surface-variant">Book amenities and manage your upcoming reservations.</p>
+            <p className="pfx-eyebrow">Amenities</p>
+            <h3>Reserve a space</h3>
+            <p>Book amenities and manage your upcoming reservations.</p>
           </Link>
         ) : (
-          <Card>
+          <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
             <CardContent className="py-5" data-testid="portal-community-shortcut-amenities-disabled">
               <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">Amenities</p>
               <p className="mt-2 font-headline text-lg">Not enabled</p>
-              <p className="mt-1 text-xs text-on-surface-variant">
+              <p className="mt-1 text-xs" style={{ color: "var(--ds-sub, #4a6b68)" }}>
                 Your association has not enabled amenity booking. Contact your manager if you have questions.
               </p>
             </CardContent>
@@ -100,12 +103,12 @@ function CommunityHubContent() {
         )}
         <Link
           href="/portal/documents"
-          className="rounded-2xl border border-outline-variant/10 bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-primary/5"
+          className="pfx-shortcut"
           data-testid="portal-community-shortcut-documents"
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Documents</p>
-          <p className="mt-2 font-headline text-lg">Association documents</p>
-          <p className="mt-1 text-xs text-on-surface-variant">CC&Rs, bylaws, meeting minutes, and more.</p>
+          <p className="pfx-eyebrow">Documents</p>
+          <h3>Association documents</h3>
+          <p>CC&amp;Rs, bylaws, meeting minutes, and more.</p>
         </Link>
       </section>
     </div>

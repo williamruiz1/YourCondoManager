@@ -14,6 +14,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PortalShell, usePortalContext } from "./portal-shell";
+import "@/styles/portal-redesign.css";
 
 function DocumentsContent() {
   const { portalFetch, session } = usePortalContext();
@@ -47,21 +48,22 @@ function DocumentsContent() {
   };
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-documents">
-      <div>
-        <Link href="/portal/community" className="text-xs font-semibold text-primary hover:underline">
+    <div className="pfx-scope mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-documents">
+      <div className="pfx-pagehead">
+        <Link href="/portal/community" className="text-xs font-semibold" style={{ color: "var(--ds-teal-700, #0a6a63)" }}>
           ← Back to My Community
         </Link>
-        <h1 className="mt-2 font-headline text-3xl md:text-4xl" data-testid="portal-documents-heading">
+        <p className="pfx-eyebrow mt-3">My Community</p>
+        <h1 data-testid="portal-documents-heading">
           Association documents
         </h1>
-        <p className="mt-1 text-sm text-on-surface-variant">
-          CC&Rs, bylaws, meeting minutes, and other documents shared with owners.
+        <p className="pfx-lede">
+          CC&amp;Rs, bylaws, meeting minutes, and other documents shared with owners.
         </p>
       </div>
 
       {documents.length === 0 ? (
-        <Card>
+        <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
           <CardContent className="py-8 text-center text-sm text-on-surface-variant">
             No documents have been shared yet. When your manager publishes a document to the portal it will appear here.
           </CardContent>
@@ -69,7 +71,7 @@ function DocumentsContent() {
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {documents.map((doc) => (
-            <Card key={doc.id} data-testid={`portal-documents-row-${doc.id}`}>
+            <Card key={doc.id} style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }} data-testid={`portal-documents-row-${doc.id}`}>
               <CardContent className="space-y-3 py-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">

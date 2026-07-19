@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/table";
 import { ShieldCheck } from "lucide-react";
 import { PortalShell, usePortalContext } from "./portal-shell";
+import "@/styles/portal-redesign.css";
 
 type ConsentRow = {
   id: string;
@@ -52,30 +53,30 @@ function PortalMyConsentsContent() {
   const currentVersion = data?.currentPolicyVersion;
 
   return (
-    <div className="mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-my-consents">
-      <section>
-        <p className="text-[10px] font-semibold uppercase tracking-widest text-primary">Privacy</p>
-        <h1 className="mt-1 font-headline text-3xl md:text-4xl" data-testid="portal-my-consents-heading">
+    <div className="pfx-scope mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-my-consents">
+      <section className="pfx-pagehead">
+        <p className="pfx-eyebrow">Privacy</p>
+        <h1 data-testid="portal-my-consents-heading">
           My consent history
         </h1>
-        <p className="mt-2 max-w-2xl text-sm text-on-surface-variant">
+        <p className="pfx-lede">
           A full record of every time you agreed to our Privacy Policy or Terms of Service.
           We keep this so you and your community have an evidence trail. Bumping the policy
           version triggers a fresh agreement on your next sign-in.
         </p>
       </section>
 
-      <Card>
+      <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
         <CardContent className="py-5">
           <div className="flex items-start gap-4">
-            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10">
-              <ShieldCheck className="h-5 w-5 text-primary" aria-hidden="true" />
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl" style={{ background: "var(--ds-infosoft, #bfe8e4)" }}>
+              <ShieldCheck className="h-5 w-5" style={{ color: "var(--ds-teal, #014d4a)" }} aria-hidden="true" />
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">
+              <p className="pfx-eyebrow" style={{ fontSize: "10px" }}>
                 Current policy version
               </p>
-              <p className="mt-1 font-headline text-xl" data-testid="portal-current-policy-version">
+              <p className="mt-1 font-headline text-xl" style={{ color: "var(--ds-teal, #014d4a)" }} data-testid="portal-current-policy-version">
                 {currentVersion ?? "—"}
               </p>
             </div>
@@ -83,7 +84,7 @@ function PortalMyConsentsContent() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card style={{ borderRadius: "var(--ds-radius, 12px)", boxShadow: "var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04))" }}>
         <CardContent className="py-5">
           <h2 className="font-headline text-lg">Your agreements</h2>
           {isLoading ? (

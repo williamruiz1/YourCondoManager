@@ -1,0 +1,195 @@
+/* ──────────────────────────────────────────────────────────────────────────
+ * Owner Portal — faithful redesign layer (founder-os owner-portal rebuild)
+ *
+ * The portal SHELL (sidebar/header/breadcrumb) already runs on the shared
+ * @ycm/design-system tokens (PR #513, client/src/styles/redesign-kit.css).
+ * This file is the equivalent layer for portal PAGE CONTENT — ported
+ * class-for-class from the William-approved wireframes:
+ *   - artifacts/owner-my-finances-redesign-wireframe-2026-07-14.html (PR #515,
+ *     signed off) — pinned reference row, honest status banner, per-unit
+ *     assessment grid, dues rows, breakdown table.
+ *   - artifacts/ycm/ycm-owner-portal-wireframe.html — Home hero panel shape,
+ *     translated from its v1 palette onto the current brand-v2 deep-teal
+ *     tokens (--ds-teal etc., not the retired v1 slate/cream/navy).
+ *
+ * Every rule is scoped under `.pfx-*` (Portal Faithful redesign) so it can
+ * NEVER collide with the global shadcn/Tailwind theme, the Manager app's
+ * `.fin-ds` styles, or the `.ds-*` shell primitives it composes with. Uses
+ * the SAME `--ds-*` custom properties redesign-kit.css already defines, so
+ * every surface (Manager app, Owner portal) stays on one palette.
+ *
+ * LIGHT-FIRST, per the shell's precedent — no dark-mode overrides here.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&display=swap");
+
+.pfx-scope {
+  font-family: var(--ds-font, "Inter Tight", system-ui, -apple-system, sans-serif);
+}
+/* Mirrors `.ds-scope h1,h2,h3,h4{color:var(--ds-teal)}` from redesign-kit.css
+   (the convention every other DS surface — Manager app financial screens,
+   the shell — already follows) so headings read consistently deep-teal
+   across the portal without hand-coloring every <h1>/<h2> individually. */
+.pfx-scope h1:not(.pfx-heading-plain),
+.pfx-scope h2:not(.pfx-heading-plain) {
+  color: var(--ds-teal, #014d4a);
+}
+
+/* ── Page head (eyebrow + h1 + lede), reused by every /portal/* screen ──── */
+.pfx-pagehead { margin-bottom: 4px; }
+.pfx-pagehead .pfx-eyebrow {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--ds-teal-700, #0a6a63);
+}
+.pfx-pagehead h1 {
+  font-family: var(--ds-font, "Inter Tight", sans-serif);
+  color: var(--ds-teal, #014d4a);
+  font-size: 30px; font-weight: 800; letter-spacing: -0.01em; margin-top: 2px;
+}
+.pfx-pagehead .pfx-lede { color: var(--ds-sub, #4a6b68); font-size: 13.5px; margin-top: 4px; max-width: 64ch; }
+
+/* ── Pinned reference row (My Finances — "paid this year" / "total remaining") */
+.pfx-pinned { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 640px) { .pfx-pinned { grid-template-columns: 1fr; } }
+.pfx-pin-card {
+  background: #fff; border: 1px solid var(--ds-gray, #e5e7eb); border-radius: var(--ds-radius, 12px);
+  box-shadow: var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04)); padding: 18px 20px;
+}
+.pfx-pin-card .pfx-k {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ds-sub, #4a6b68);
+}
+.pfx-pin-card .pfx-v { font-size: 26px; font-weight: 800; letter-spacing: -0.01em; color: var(--ds-teal, #014d4a); margin-top: 4px; }
+.pfx-pin-card .pfx-v.pfx-bad { color: var(--ds-bad, #c0392b); }
+.pfx-pin-card .pfx-sub { font-size: 12px; color: var(--ds-sub, #4a6b68); margin-top: 5px; }
+
+/* ── Tab strip (My Finances Overview/Assessments/Dues/Breakdown) ────────── */
+.pfx-tabstrip[role="tablist"] {
+  display: flex; gap: 4px; border-bottom: 1px solid var(--ds-gray, #e5e7eb);
+  background: transparent; height: auto; padding: 0; border-radius: 0;
+}
+.pfx-tab {
+  padding: 10px 16px !important; font-size: 13.5px !important; font-weight: 700 !important;
+  color: var(--ds-sub, #4a6b68) !important; border-bottom: 2.5px solid transparent !important;
+  letter-spacing: 0.01em;
+}
+.pfx-tab[data-state="active"] {
+  color: var(--ds-teal, #014d4a) !important; border-bottom-color: var(--ds-accent, #15a39c) !important;
+}
+.pfx-tab .pfx-tab-count {
+  font-size: 10.5px; font-weight: 800; background: var(--ds-off, #f5f7f9); color: var(--ds-sub, #4a6b68);
+  padding: 1px 7px; border-radius: 999px; margin-left: 6px;
+}
+.pfx-tab[data-state="active"] .pfx-tab-count { background: var(--ds-light, #bfe8e4); color: var(--ds-teal, #014d4a); }
+
+/* ── Status chip (with optional pulsing dot for "processing") ───────────── */
+.pfx-chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700;
+  padding: 4px 11px; border-radius: 999px; letter-spacing: 0.01em;
+}
+.pfx-chip .pfx-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.pfx-chip.pfx-ok { background: var(--ds-goodsoft, #e0f5e9); color: var(--ds-good, #0f7a4c); }
+.pfx-chip.pfx-ok .pfx-dot { background: var(--ds-good, #0f7a4c); }
+.pfx-chip.pfx-bad { background: var(--ds-badsoft, #fbe9e7); color: var(--ds-bad, #c0392b); }
+.pfx-chip.pfx-bad .pfx-dot { background: var(--ds-bad, #c0392b); }
+.pfx-chip.pfx-pending { background: var(--ds-warnsoft, #fff4d6); color: var(--ds-warn, #8a6d00); }
+.pfx-chip.pfx-pending .pfx-dot { background: var(--ds-warn, #8a6d00); animation: pfx-pulse 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .pfx-chip.pfx-pending .pfx-dot { animation: none; } }
+@keyframes pfx-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+
+/* ── Honest status banner (Overview tab — due-now vs overdue) ────────────── */
+.pfx-status-banner {
+  position: relative; overflow: hidden; border-radius: var(--ds-radius, 12px);
+  border: 1px solid var(--ds-badsoft, #fbe9e7); background: linear-gradient(180deg, #fff, #fffdfc);
+  box-shadow: var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04)); padding: 22px 24px;
+}
+.pfx-status-banner::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--ds-bad, #c0392b);
+}
+.pfx-status-banner.pfx-is-ok {
+  border-color: var(--ds-light, #bfe8e4); background: linear-gradient(180deg, #fff, #fbfefd);
+}
+.pfx-status-banner.pfx-is-ok::before { background: var(--ds-accent, #15a39c); }
+.pfx-status-banner .pfx-headline {
+  font-size: 20px; font-weight: 800; letter-spacing: -0.01em; color: var(--ds-bad, #c0392b); margin-top: 10px;
+}
+.pfx-status-banner.pfx-is-ok .pfx-headline { color: var(--ds-good, #0f7a4c); }
+.pfx-status-banner .pfx-detail { font-size: 13px; color: var(--ds-sub, #4a6b68); max-width: 58ch; margin-top: 4px; }
+.pfx-status-banner .pfx-breakout {
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--ds-hairline, #f0f2f2);
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+}
+@media (max-width: 640px) { .pfx-status-banner .pfx-breakout { grid-template-columns: 1fr; } }
+.pfx-breakout-item .pfx-k { font-size: 10.5px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ds-sub, #4a6b68); }
+.pfx-breakout-item .pfx-v { font-size: 21px; font-weight: 800; margin-top: 4px; color: var(--ds-teal, #014d4a); }
+.pfx-breakout-item .pfx-v.pfx-bad { color: var(--ds-bad, #c0392b); }
+
+/* ── Unit grid (Assessments tab — one compact card per plan) ─────────────── */
+/* auto-fit/minmax rather than a fixed column count: each AssessmentPlanCard
+   carries its own internal 3-stat-tile row, so cards need >=~300px to avoid
+   cramping — auto-fit gives 3-up on a full-width desktop hub, 2-up on
+   tablet, 1-up on phone, without depending on the viewport alone. */
+.pfx-unit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+
+/* ── Dues rows (Dues tab) + Activity rows (Overview "Recent activity") ──── */
+.pfx-row-list > .pfx-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 0; border-top: 1px solid var(--ds-hairline, #f0f2f2); }
+.pfx-row-list > .pfx-row:first-child { border-top: none; }
+.pfx-row .pfx-row-title { font-size: 13.5px; font-weight: 700; color: #1a3634; }
+.pfx-row .pfx-row-sub { font-size: 11.5px; color: var(--ds-sub, #4a6b68); margin-top: 2px; }
+.pfx-row .pfx-row-amt { font-size: 13.5px; font-weight: 700; color: var(--ds-teal, #014d4a); flex-shrink: 0; }
+
+/* ── Hero panel (Home) — deep-teal gradient with stat tiles ───────────────── */
+.pfx-hero {
+  position: relative; overflow: hidden; border-radius: 22px; padding: 32px 34px 30px;
+  color: #eafaf8;
+  background:
+    radial-gradient(120% 90% at 100% 0%, rgba(21,163,156,.28), transparent 60%),
+    radial-gradient(80% 60% at 0% 100%, rgba(191,232,228,.14), transparent 60%),
+    linear-gradient(135deg, #0a3330 0%, #014d4a 55%, #06615c 100%);
+  box-shadow: 0 1px 2px rgba(1,77,74,.10), 0 16px 36px -14px rgba(1,77,74,.35);
+}
+.pfx-hero .pfx-hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.14em; text-transform: uppercase; color: rgba(234,250,248,.8);
+}
+.pfx-hero .pfx-hero-eyebrow .pfx-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ds-accent, #15a39c); box-shadow: 0 0 0 4px rgba(21,163,156,.22); }
+.pfx-hero h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.02em; margin: 10px 0 6px; color: #fff; }
+.pfx-hero p.pfx-lede { margin: 0; font-size: 14px; max-width: 56ch; color: rgba(234,250,248,.82); line-height: 1.55; }
+.pfx-hero-grid { margin-top: 22px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+@media (max-width: 760px) { .pfx-hero-grid { grid-template-columns: 1fr; } }
+.pfx-hero-stat {
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.14); border-radius: 16px;
+  padding: 15px 17px; display: flex; flex-direction: column; gap: 4px;
+}
+.pfx-hero-stat.pfx-is-balance { background: rgba(21,163,156,.16); border-color: rgba(21,163,156,.34); }
+.pfx-hero-stat .pfx-k { font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(234,250,248,.65); }
+.pfx-hero-stat .pfx-v { font-size: 25px; font-weight: 800; letter-spacing: -0.015em; color: #fff; }
+.pfx-hero-stat .pfx-foot { font-size: 11.5px; color: rgba(234,250,248,.6); }
+.pfx-hero-stat .pfx-cta { margin-top: 2px; display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; color: var(--ds-light, #bfe8e4); text-decoration: none; }
+.pfx-hero-stat .pfx-cta:hover { color: #fff; }
+
+/* ── Shortcut tile (Home + My Community shortcut cards) ──────────────────── */
+.pfx-shortcut {
+  display: block; background: #fff; border: 1px solid var(--ds-gray, #e5e7eb); border-radius: 18px;
+  padding: 20px 20px 22px; text-decoration: none; color: inherit;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+  box-shadow: var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04));
+}
+.pfx-shortcut:hover { border-color: var(--ds-accent, #15a39c); transform: translateY(-1px); box-shadow: 0 8px 20px -10px rgba(1,77,74,.25); }
+.pfx-shortcut .pfx-eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ds-teal-700, #0a6a63); }
+.pfx-shortcut h3 { font-size: 16.5px; font-weight: 800; color: var(--ds-teal, #014d4a); margin: 7px 0 4px; }
+.pfx-shortcut p { font-size: 12.5px; color: var(--ds-sub, #4a6b68); line-height: 1.5; margin: 0; }
+
+/* ── Section head (used above list sections everywhere) ─────────────────── */
+.pfx-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.pfx-section-head h2 { font-size: 15px; font-weight: 800; color: var(--ds-teal, #014d4a); margin: 0; }
+.pfx-section-head .pfx-view-all { font-size: 12px; font-weight: 700; color: var(--ds-teal-700, #0a6a63); text-decoration: none; }
+.pfx-section-head .pfx-view-all:hover { text-decoration: underline; }
+
+/* ── Callout ──────────────────────────────────────────────────────────────── */
+.pfx-callout {
+  margin-top: 14px; padding: 12px 15px; border-radius: 10px;
+  background: var(--ds-infosoft, #bfe8e4); border: 1px solid rgba(1,77,74,.18);
+  font-size: 12.5px; color: #0f2e2c;
+}
+.pfx-callout b { color: var(--ds-teal, #014d4a); }
