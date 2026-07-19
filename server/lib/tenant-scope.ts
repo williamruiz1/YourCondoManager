@@ -37,9 +37,16 @@ export interface ScopeAdminRequest {
 export function getAssociationIdQuery(req: Request & ScopeAdminRequest): string | undefined {
   const requested = typeof req.query.associationId === "string" ? req.query.associationId : undefined;
 
-  // platform-admin (or no role context) has unrestricted access.
-  if (!req.adminRole || req.adminRole === "platform-admin") {
+  // Only an explicitly authenticated platform admin is unrestricted. A request
+  // that reaches this guard without role context must fail closed; treating a
+  // missing role as platform-wide access would recreate the isolation bypass
+  // this module exists to prevent.
+  if (req.adminRole === "platform-admin") {
     return requested;
+  }
+
+  if (!req.adminRole) {
+    throw new Error("Association is outside admin scope");
   }
 
   const scopedAssociationIds = req.adminScopedAssociationIds ?? [];

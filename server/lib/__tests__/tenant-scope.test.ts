@@ -63,6 +63,10 @@ describe("assertAssociationInputScope", () => {
 });
 
 describe("getAssociationIdQuery / resolveScopedAssociationId — never all-tenants for non-platform", () => {
+  it("missing role fails closed even when scoped ids or a requested association are present", () => {
+    expect(() => getAssociationIdQuery(req({ adminScopedAssociationIds: ["a1"] }))).toThrow(/outside admin scope/);
+    expect(() => getAssociationIdQuery(req({ adminScopedAssociationIds: ["a1"], query: { associationId: "a1" } }))).toThrow(/outside admin scope/);
+  });
   it("non-platform requesting an out-of-scope association → throws", () => {
     expect(() => getAssociationIdQuery(req({ adminRole: "manager", adminScopedAssociationIds: ["a1"], query: { associationId: "a2" } }))).toThrow(/outside admin scope/);
   });
