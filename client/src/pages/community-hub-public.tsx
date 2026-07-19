@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { Bell, ExternalLink, Info, ChevronRight, Building2, Phone, MapPin, Calendar, FileText, Download, Mail, KeyRound, Loader2, CheckCircle2, Home, ShieldCheck } from "lucide-react";
 import CommunityMapView from "@/components/community-map-view";
-import { Pill, Tile, type PillTone } from "@/components/redesign";
+import { Pill, type PillTone } from "@/components/redesign";
 // The Pill/Tile primitives pull in the canonical @ycm/design-system stylesheet
 // (client/src/styles/redesign-kit.css, F1 — founder-os#10187). Every class it
 // defines is prefixed `.ds-` and is documented zero-collision with the
@@ -207,20 +207,18 @@ export default function CommunityHubPublicPage() {
   const enabledSections = config.enabledSections || [];
   const sectionOrder = config.sectionOrder || ["notices", "quick-actions", "info-blocks", "map", "contacts"];
   const publicBuildings = buildingsData?.buildings || [];
+  const sectionSpan: Record<string, string> = {
+    notices: "lg:col-span-12",
+    "quick-actions": "lg:col-span-12",
+    "info-blocks": "lg:col-span-12",
+    events: "lg:col-span-7",
+    documents: "lg:col-span-5",
+    map: "lg:col-span-12",
+    buildings: "lg:col-span-12",
+    contacts: "lg:col-span-12",
+  };
 
-  // "At a glance" strip — real DS Tile primitives, only shown when there's
-  // something meaningful to show (never a hollow "0 buildings" row).
   const totalUnits = publicBuildings.reduce((sum, b) => sum + (b.unitCount || 0), 0);
-  const glanceStats: Array<{ key: string; icon: JSX.Element; title: string; subtitle: string }> = [];
-  if (publicBuildings.length > 0) {
-    glanceStats.push({ key: "buildings", icon: <Building2 className="h-5 w-5" style={{ color: themeColor }} aria-hidden="true" />, title: String(publicBuildings.length), subtitle: publicBuildings.length === 1 ? "Building" : "Buildings" });
-  }
-  if (totalUnits > 0) {
-    glanceStats.push({ key: "units", icon: <Home className="h-5 w-5" style={{ color: themeColor }} aria-hidden="true" />, title: String(totalUnits), subtitle: totalUnits === 1 ? "Unit" : "Units" });
-  }
-  if (notices.length > 0) {
-    glanceStats.push({ key: "notices", icon: <Bell className="h-5 w-5" style={{ color: themeColor }} aria-hidden="true" />, title: String(notices.length), subtitle: notices.length === 1 ? "Notice" : "Notices" });
-  }
 
   // Section rendering engine — renders sections in configurable order
   const sectionRenderers: Record<string, () => React.ReactNode> = {
@@ -334,60 +332,87 @@ export default function CommunityHubPublicPage() {
           className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full blur-3xl opacity-30"
           style={{ background: "#15A39C" }}
         />
-        <div className="relative max-w-5xl mx-auto px-4 pt-10 sm:pt-16 pb-16 sm:pb-24">
-          <p className="text-white/70 text-[11px] font-bold uppercase tracking-[0.14em] mb-3 flex items-center gap-1.5">
-            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-            Community Hub
-          </p>
-          <div className="flex items-center gap-4 mb-5">
-            {config.logoUrl && (
-              <img
-                src={config.logoUrl}
-                alt={association?.name || "Community"}
-                className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl object-cover bg-white/95 p-1.5 shrink-0 shadow-lg ring-1 ring-white/30"
-              />
-            )}
-            <div className="min-w-0">
-              <h1
-                className="text-2xl sm:text-4xl font-bold text-white tracking-tight leading-tight"
-                style={{ fontFamily: BRAND_FONT }}
-              >
-                {association?.name || "Community Hub"}
-              </h1>
-              {association && (
-                <p className="text-white/85 text-sm sm:text-base mt-1 flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  {association.city}, {association.state}
+        <div className="relative max-w-5xl mx-auto px-4 py-12 sm:py-20">
+          <div className="grid gap-9 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-center">
+            <div>
+              <p className="text-white/70 text-[11px] font-bold uppercase tracking-[0.14em] mb-4 flex items-center gap-1.5">
+                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                Official community page
+              </p>
+              <div className="flex items-center gap-4 mb-5">
+                {config.logoUrl && (
+                  <img
+                    src={config.logoUrl}
+                    alt={association?.name || "Community"}
+                    className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl object-cover bg-white/95 p-1.5 shrink-0 shadow-lg ring-1 ring-white/30"
+                  />
+                )}
+                <div className="min-w-0">
+                  <h1
+                    className="text-3xl sm:text-5xl font-bold text-white tracking-[-0.035em] leading-[1.03]"
+                    style={{ fontFamily: BRAND_FONT }}
+                  >
+                    {association?.name || "Community Hub"}
+                  </h1>
+                  {association && (
+                    <p className="text-white/85 text-sm sm:text-base mt-2 flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      {association.city}, {association.state}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {config.communityDescription && (
+                <p className="text-white/90 max-w-2xl text-sm sm:text-lg leading-relaxed">
+                  {config.communityDescription}
                 </p>
               )}
             </div>
+
+            <aside className="rounded-2xl border border-white/20 bg-white/10 p-5 text-white shadow-2xl backdrop-blur-sm">
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/65">
+                Community at a glance
+              </p>
+              <dl className="mt-4 divide-y divide-white/15">
+                {association && (
+                  <div className="flex items-center justify-between gap-4 py-3 first:pt-0">
+                    <dt className="text-sm text-white/70">Location</dt>
+                    <dd className="text-sm font-bold text-right">{association.city}, {association.state}</dd>
+                  </div>
+                )}
+                {publicBuildings.length > 0 && (
+                  <div className="flex items-center justify-between gap-4 py-3">
+                    <dt className="text-sm text-white/70">Buildings</dt>
+                    <dd className="text-sm font-bold">{publicBuildings.length}</dd>
+                  </div>
+                )}
+                {totalUnits > 0 && (
+                  <div className="flex items-center justify-between gap-4 py-3">
+                    <dt className="text-sm text-white/70">Residences</dt>
+                    <dd className="text-sm font-bold">{totalUnits}</dd>
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-4 py-3">
+                  <dt className="text-sm text-white/70">Management</dt>
+                  <dd className="text-sm font-bold">Owner portal</dd>
+                </div>
+              </dl>
+              <a
+                href="#owner-signin"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold transition-colors hover:bg-white/90"
+                style={{ color: themeColor }}
+              >
+                Sign in to the owner portal
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </a>
+            </aside>
           </div>
-          {config.communityDescription && (
-            <p className="text-white/90 max-w-2xl text-sm sm:text-lg leading-relaxed">
-              {config.communityDescription}
-            </p>
-          )}
         </div>
         {/* base accent rule */}
         <div className="h-1 w-full" style={{ background: "#15A39C" }} aria-hidden="true" />
       </header>
 
-      {/* "At a glance" strip — overlaps the hero's bottom edge, the classic
-          modern-marketing-page motif that makes a redesign instantly legible
-          as a redesign, not just a palette tweak. Real DS Tile primitives. */}
-      {glanceStats.length > 0 && (
-        <div className="max-w-5xl mx-auto px-4 -mt-8 sm:-mt-12 relative z-10">
-          <div className="grid gap-3 sm:gap-4" style={{ gridTemplateColumns: `repeat(${glanceStats.length}, minmax(0, 1fr))` }}>
-            {glanceStats.map((stat) => (
-              <div key={stat.key} className="rounded-xl" style={{ boxShadow: "0 4px 14px rgba(1,77,74,0.10)" }}>
-                <Tile icon={stat.icon} title={stat.title} subtitle={stat.subtitle} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <main id="main-content" tabIndex={-1} className={`max-w-4xl mx-auto px-4 pb-6 sm:pb-8 space-y-6 sm:space-y-8 ${glanceStats.length > 0 ? "pt-6 sm:pt-8" : "pt-6 sm:pt-8"}`}>
+      <main id="main-content" tabIndex={-1} className="max-w-5xl mx-auto px-4 pb-8 pt-8 sm:pt-10">
         {/* Welcome Mode */}
         {config.welcomeModeEnabled === 1 && config.welcomeHeadline && (
           <Card className={`${CARD_V4} border`} style={{ borderColor: `${themeColor}33`, background: `linear-gradient(180deg, ${themeColor}0a, transparent)` }}>
@@ -407,16 +432,24 @@ export default function CommunityHubPublicPage() {
           </Card>
         )}
 
-        {/* Dynamic section rendering based on configurable order */}
-        {sectionOrder
-          .filter((section) => enabledSections.includes(section))
-          .map((section) => {
-            const renderer = sectionRenderers[section];
-            if (!renderer) return null;
-            const content = renderer();
-            if (!content) return null;
-            return <div key={section}>{content}</div>;
-          })}
+        {/* The configured order remains authoritative, while the 12-column
+            editorial grid gives notices, resources, maps, and contacts a
+            deliberate hierarchy instead of one long stack. */}
+        <div className="grid gap-7 lg:grid-cols-12 lg:gap-8">
+          {sectionOrder
+            .filter((section) => enabledSections.includes(section))
+            .map((section) => {
+              const renderer = sectionRenderers[section];
+              if (!renderer) return null;
+              const content = renderer();
+              if (!content) return null;
+              return (
+                <div key={section} className={sectionSpan[section] || "lg:col-span-12"}>
+                  {content}
+                </div>
+              );
+            })}
+        </div>
 
         {/* Empty state when no sections have content */}
         {sectionOrder.filter(s => enabledSections.includes(s)).every(s => {
@@ -439,7 +472,7 @@ export default function CommunityHubPublicPage() {
         )}
 
         {/* Authenticate CTA — anchor target for the nav's "Owner Portal" CTA */}
-        <div id="owner-signin" className="scroll-mt-20 space-y-6 sm:space-y-8">
+        <div id="owner-signin" className="scroll-mt-20 mt-10 space-y-6 sm:space-y-8">
           <Separator />
           <HubAuthSection themeColor={themeColor} />
         </div>
@@ -511,14 +544,14 @@ function NoticesSection({
           ))}
         </div>
       )}
-      <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {filteredNotices.map((notice) => (
           <Card
             key={notice.id}
-            className={`${CARD_V4} ${notice.isPinned ? "border-l-[3px]" : ""}`}
+            className={`${CARD_V4} h-full ${notice.isPinned ? "border-l-[3px]" : ""}`}
             style={notice.isPinned ? { ...cardBorder, borderLeftColor: themeColor } : cardBorder}
           >
-            <CardContent className="pt-5 pb-4 px-5">
+            <CardContent className="flex h-full flex-col pt-5 pb-4 px-5">
               <div className="min-w-0">
                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                   {notice.isPinned === 1 && <Pill tone="info">Pinned</Pill>}
@@ -530,7 +563,7 @@ function NoticesSection({
                 <h3 className="font-semibold text-[15px]" style={{ color: V4.ink }}>{notice.title}</h3>
                 <p className="text-sm text-muted-foreground mt-1.5 whitespace-pre-line leading-relaxed">{notice.body}</p>
               </div>
-              <div className="flex items-center gap-3 mt-3.5 pt-3 border-t text-xs text-muted-foreground" style={{ borderColor: V4.line }}>
+              <div className="flex items-center gap-3 mt-auto pt-3 border-t text-xs text-muted-foreground" style={{ borderColor: V4.line }}>
                 {notice.authorName && <span>By {notice.authorName}</span>}
                 {notice.publishedAt && (
                   <span>{new Date(notice.publishedAt).toLocaleDateString()}</span>
