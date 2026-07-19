@@ -76,6 +76,12 @@ async function main() {
       SESSION_SECRET: process.env.SESSION_SECRET ?? "wave17-playwright-test-secret",
       NODE_ENV: inTestMode ? "test" : "development",
       PLAYWRIGHT_TEST_MODE: inTestMode ? "1" : "",
+      // Test-only Stripe Connect webhook signer used by the owner money-loop
+      // Playwright scenario. This process is an ephemeral local server with an
+      // ephemeral PGlite database; production never executes this wrapper.
+      PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET: inTestMode
+        ? process.env.PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET ?? "whsec_playwright_owner_money_loop"
+        : process.env.PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET ?? "",
       AUTOMATION_SWEEPS_ENABLED: "0",
     },
   });

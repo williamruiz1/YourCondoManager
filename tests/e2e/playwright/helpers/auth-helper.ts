@@ -293,8 +293,18 @@ export async function realPortalLogin(page: Page, email: string): Promise<void> 
     throw new Error(`realPortalLogin: request-login → ${requestRes.status()}: ${await requestRes.text()}`);
   }
 
-  let otp: string | null = null;
+  // When no email provider is configured, the production handler's
+  // simulation-mode response carries the OTP directly. Test-mode CI often
+  // runs in exactly that configuration, so use the response before polling
+  // the captured-email route. When a provider is configured, simulatedOtp is
+  // absent and the helper continues to exercise the real email-capture path.
+  const requestBody = await requestRes.json() as { simulatedOtp?: string };
+  let otp: string | null =
+    typeof requestBody.simulatedOtp === "string" && /^\d{6}$/.test(requestBody.simulatedOtp)
+      ? requestBody.simulatedOtp
+      : null;
   for (let attempt = 0; attempt < 30; attempt += 1) {
+    if (otp) break;
     const lookup = await page.request.get(`/api/__test/last-otp?email=${encodeURIComponent(email)}`);
     if (lookup.ok()) {
       const body = await lookup.json() as { otp?: string };
