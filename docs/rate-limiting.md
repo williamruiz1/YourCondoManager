@@ -48,13 +48,49 @@ someone scales up. The Postgres counter is correct at any machine count.
 
 ## Tiers & limits
 
-| Tier | Window | Max / IP | Rationale |
-|---|---|---|---|
-| `auth-verify` | 10 min | 10 | OTP / token verification — the tightest brute-force surface (guessing a 6-digit OTP or a ballot/verify token). |
-| `auth-request` | 1 min | 10 | Login request / magic-link send — email-enumeration + OTP-spam. |
-| `money-write` | 1 min | 60 | Financial mutations + admin writes. 60/min is permissive for a treasurer recording a batch, blocks an automated write flood. |
-| `invite-gen` | 1 min | 20 | Onboarding invite sends — email-send abuse. |
-| `public` (in-memory) | 1 min | 20 | Coarse guard on the public marketing/API surface; per-machine is acceptable (non-money, non-auth). |
+| Tier | Window | Max | Key | Rationale |
+|---|---|---|---|---|
+| `auth-verify` | 10 min | 15 | **account (email) + IP**, falls back to `:token` param or bare IP when no email on the request | OTP / token verification — the tightest brute-force surface. Keyed by account+IP (not bare IP) since 2026-07-17 — see below. |
+| `auth-request` | 1 min | 10 | IP | Login request / magic-link send — email-enumeration + OTP-spam. Stays IP-only: the "account" here is the arbitrary *target* email being mailed, and keying by target email would let an attacker mail-bomb one inbox indefinitely by rotating source IPs. |
+| `money-write` | 1 min | 60 | IP | Financial mutations + admin writes. 60/min is permissive for a treasurer recording a batch, blocks an automated write flood. |
+| `invite-gen` | 1 min | 20 | IP | Onboarding invite sends — email-send abuse. |
+| `public` (in-memory) | 1 min | 20 | IP | Coarse guard on the public marketing/API surface; per-machine is acceptable (non-money, non-auth). |
+
+### `auth-verify` account+IP keying (2026-07-17 rebalance)
+
+Trigger: William (platform owner) was rate-limited signing in and got a "too
+many sign-in attempts" lockout. Investigation (`flyctl logs` + a read-only
+query against `rate_limit_counters` / `auth_events` in the incident window)
+found **no evidence this specific lockout came from YCM's own limiter** — no
+matching request ever reached the app in that window, which points at an
+upstream cause (most likely Google's own OAuth-side throttling on repeated
+sign-in attempts, outside this codebase). Independent of that specific
+incident, the investigation surfaced a real structural weakness worth fixing
+regardless:
+
+- `/api/portal/verify-login` costs **two calls** for any account with portal
+  access to more than one association — the OTP-verify call returns an
+  association picker, and picking an association re-submits the same OTP to
+  the same endpoint. A single successful multi-association login already
+  spends 2 of the window's budget before any retry.
+- The limiter was keyed purely by **IP**, so every user behind the same NAT /
+  VPN / shared office or building WiFi — or a household with more than one
+  owner — shared **one** budget. One person's retries could lock out someone
+  else with no relationship to them.
+
+Fix: `auth-verify` is now keyed by **`email:ip`** (see `authVerifyKey` in
+`server/index.ts`), and the ceiling moved from 10 to 15 per 10-minute window.
+This is still tight per account+IP pair — brute-forcing an OTP is bounded by
+the **existing, unchanged** per-token `attempts >= 5` cap
+(`portalLoginTokens.attempts` in `server/routes.ts`), which is IP/account-
+agnostic and is the real floor against guessing a specific code. The window
+ceiling's job is bounding request *volume*, not guess-space — raising it and
+keying it by account removes the false-lockout risk without weakening that
+floor. Routes with no email on the request (the admin-gated, bodyless
+`/api/platform/email/verify` health check) fall back to bare IP — unchanged
+behavior. The election-ballot routes (`/api/elections/ballot/:token[/cast]`)
+key by `tok-<token>:ip` — same protection shape as email+IP, scoped to the
+one-time ballot token instead.
 
 `onWriteOnly(...)` wraps the money/admin/invite mounts so **GET reads**
 (dashboards, reports, statements) are never throttled — only POST/PUT/PATCH/DELETE.

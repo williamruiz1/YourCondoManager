@@ -44,6 +44,14 @@ function safeInvalidateAlertCache(): void {
     console.error("[alerts][invalidate] cache flush failed (ignored):", err);
   }
 }
+import {
+  isFounderFeedbackEmail,
+  resolveAppVersion,
+  fileFounderFeedbackGithubIssue,
+  buildFounderFeedbackIssueTitle,
+  buildFounderFeedbackIssueBody,
+} from "./founder-feedback";
+import { founderFeedback } from "@shared/schema";
 import { createAuthRestoreToken, getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import { revokePortalAccess as revokePortalAccessForOwnership } from "./de-provisioning";
 import { sendDemoRequestConfirmation } from "./demo-request-confirmation";
@@ -271,6 +279,16 @@ import {
   planCatalog,
 } from "@shared/schema";
 import type { AdminRole, PlanCatalog } from "@shared/schema";
+// Tenant-isolation primitives — the single shared, fail-closed authz layer
+// (A-AUTHZ-001/004). Extracted from this file so per-feature route modules can
+// import the SAME guards instead of hand-rolling (or omitting) scope checks.
+import {
+  getAssociationIdQuery,
+  assertAssociationScope,
+  assertAssociationInputScope,
+  assertResourceScope,
+  setResourceAssociationResolver,
+} from "./lib/tenant-scope";
 import { resolveSelfManagedPlan } from "./services/pricing-service";
 import { reportInitialUsageForAssociation, reconcileAllSubscriptionUsage } from "./services/usage-reconcile";
 import type { MeterPoster } from "./services/stripe-meter-reporting";
@@ -312,6 +330,7 @@ import { registerArcRoutes } from "./routes/arc";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
 import { registerViolationsManagementRoutes } from "./routes/violations-management";
 import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
+import { registerReconSuggestionRoutes } from "./routes/recon-suggestion";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import { registerStatutoryRecordsRoutes } from "./routes/statutory-records";
@@ -864,32 +883,9 @@ async function resolveInviteUrl(req: Request, token: string): Promise<string> {
   return `${baseUrl}/onboarding/${encodeURIComponent(token)}`;
 }
 
-function getAssociationIdQuery(req: Request): string | undefined {
-  const requested = typeof req.query.associationId === "string" ? req.query.associationId : undefined;
-  const adminReq = req as AdminRequest;
-
-  // platform-admin has unrestricted access; skip scope enforcement
-  if (!adminReq.adminRole || adminReq.adminRole === "platform-admin") {
-    return requested;
-  }
-
-  const scopedAssociationIds = adminReq.adminScopedAssociationIds ?? [];
-  if (requested) {
-    if (!scopedAssociationIds.includes(requested)) {
-      throw new Error("Requested association is outside admin scope");
-    }
-    return requested;
-  }
-
-  if (scopedAssociationIds.length === 0) {
-    throw new Error("No association scopes assigned to this admin");
-  }
-  if (scopedAssociationIds.length === 1) {
-    return scopedAssociationIds[0];
-  }
-
-  throw new Error("associationId is required for multi-association scoped admins");
-}
+// getAssociationIdQuery / assertAssociationScope / assertAssociationInputScope /
+// assertResourceScope now live in ./lib/tenant-scope (imported above) so every
+// route module shares the SAME fail-closed guard (A-AUTHZ-004).
 
 function getIncludeArchivedQuery(req: Request): boolean {
   if (typeof req.query.includeArchived !== "string") return false;
@@ -1267,32 +1263,6 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
  * request that reaches this helper without an `adminRole` set has
  * already failed earlier middleware, but if it does, we deny.
  */
-function assertAssociationScope(req: AdminRequest, associationId: string) {
-  if (req.adminRole === "platform-admin") return;
-  if (!associationId) {
-    throw new Error("associationId is required");
-  }
-  // Defense-in-depth: a request with no role should never reach here,
-  // but if it does, deny.
-  if (!req.adminRole) {
-    throw new Error("Association is outside admin scope");
-  }
-  const scopedAssociationIds = req.adminScopedAssociationIds ?? [];
-  // Fail-closed: empty scope for a non-platform-admin role is a denial.
-  // Previously this branch short-circuited to "allowed".
-  if (scopedAssociationIds.length === 0 || !scopedAssociationIds.includes(associationId)) {
-    throw new Error("Association is outside admin scope");
-  }
-}
-
-function assertAssociationInputScope(req: AdminRequest, associationId: string | null | undefined) {
-  if (req.adminRole === "platform-admin") return;
-  if (!associationId) {
-    throw new Error("associationId is required");
-  }
-  assertAssociationScope(req, associationId);
-}
-
 /**
  * 4.3 Q6/Q8 — Resolve the `assessment_rules_write` PM toggle for an
  * association via the canonical `server/pm-toggles.ts` resolver.
@@ -1308,12 +1278,9 @@ async function readAssessmentRulesWriteToggle(
   return canAssessmentRulesWrite("assisted-board", associationId);
 }
 
-async function assertResourceScope(req: AdminRequest, resourceType: string, id: string) {
-  if (req.adminRole === "platform-admin") return;
-  const associationId = await storage.getAssociationIdForScopedResource(resourceType, id);
-  if (!associationId) return;
-  assertAssociationScope(req, associationId);
-}
+// assertResourceScope now lives in ./lib/tenant-scope (imported above), hardened
+// to FAIL CLOSED on an unresolved association (A-AUTHZ-001). Its resource→association
+// resolver is wired to storage once at registerRoutes time (see below).
 
 function requireAdminRole(roles: AdminRole[]) {
   return (req: AdminRequest, res: Response, next: NextFunction) => {
@@ -1494,6 +1461,13 @@ async function getOwnedPortalUnitsForAssociation(input: {
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // Wire the shared tenant-isolation guard's resource→association resolver to
+  // storage ONCE (A-AUTHZ-001/004). Done here (not at import) so ./lib/tenant-scope
+  // stays storage-free + unit-testable; every assertResourceScope call uses this.
+  setResourceAssociationResolver((resourceType, id) =>
+    storage.getAssociationIdForScopedResource(resourceType, id),
+  );
+
   registerAuthRoutes(app);
 
   // Observability smoke-test (Issue founder-os#1030). Admin-gated;
@@ -1658,6 +1632,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // `suggest.meeting_prep` (L1) action onto the W1 queue for human review.
   // NEVER distributes — distribution is a separate, never-auto-filed L2 action.
   registerMeetingPrepRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    assertAssociationScope,
+  });
+
+  // Bank-reconciliation suggestion agent ability (founder-os#9480, W2). Layers
+  // on the EXISTING auto-matcher: consumes its needs-manual-review output
+  // (scored candidates it declined to auto-commit), proposes the best
+  // commit-eligible pairing per bank credit with a confidence band + reasoning,
+  // and files each as a `financial.reconcile_bank_match` (L3) action onto the
+  // W1 queue. A pairing commits ONLY via the execute leg, which the W1 gate
+  // refuses without a recorded human approval — no auto-commit, ever.
+  registerReconSuggestionRoutes(app, {
     requireAdmin,
     requireAdminRole,
     assertAssociationScope,
@@ -9271,7 +9258,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.patch("/api/governance/templates/:id", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
     try {
-      await assertResourceScope(req, "governance-template", getParam(req.params.id));
+      await assertResourceScope(req, "governance-template", getParam(req.params.id), { write: true });
       const parsed = insertGovernanceComplianceTemplateSchema.partial().parse(req.body);
       if ((parsed.scope === "state-library" || parsed.scope === "ct-baseline") && req.adminRole !== "platform-admin") {
         throw new Error("Only platform admins can manage state library templates");
@@ -9312,7 +9299,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.post("/api/governance/templates/:templateId/items", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req, res) => {
     try {
-      await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId));
+      await assertResourceScope(req as AdminRequest, "governance-template", getParam(req.params.templateId), { write: true });
       const parsed = insertGovernanceTemplateItemSchema.parse({
         ...req.body,
         templateId: getParam(req.params.templateId),
@@ -9405,7 +9392,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const templateId = getParam(req.params.templateId);
       const [existing] = await db.select().from(governanceComplianceTemplates).where(eq(governanceComplianceTemplates.id, templateId)).limit(1);
       if (!existing) return res.status(404).json({ message: "Template not found" });
-      await assertResourceScope(req, "governance-template", templateId);
+      await assertResourceScope(req, "governance-template", templateId, { write: true });
 
       const [newVersion] = await db.insert(governanceComplianceTemplates).values({
         associationId: existing.associationId,
@@ -17643,6 +17630,135 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       }
     },
   );
+
+  /**
+   * William-only contextual feedback (2026-07-17).
+   *
+   * Resolves the calling identity's email from whichever session exists —
+   * admin session (cookie), portal session (x-portal-access-id header), or
+   * a general authenticated session — and checks it against the
+   * server-side allowlist in ./founder-feedback. Never trusts a
+   * client-supplied email. No auth middleware requirement on this route
+   * itself (it must work across all three surfaces); ineligible/anonymous
+   * callers simply get `{ eligible: false }`.
+   */
+  async function resolveFounderFeedbackIdentity(
+    req: AdminRequest & PortalRequest,
+  ): Promise<{ email: string; surface: "admin" | "portal" | "session"; identityId: string | null } | null> {
+    if (await tryHydrateAdminFromSession(req)) {
+      if (req.adminUserEmail) {
+        return { email: req.adminUserEmail, surface: "admin", identityId: req.adminUserId || null };
+      }
+    }
+
+    const portalAccessId = req.header("x-portal-access-id") || "";
+    if (portalAccessId) {
+      const resolved = await storage.resolvePortalAccessContext(portalAccessId);
+      if (resolved?.access?.email) {
+        return { email: resolved.access.email, surface: "portal", identityId: resolved.access.id };
+      }
+    }
+
+    const sessionUser = (req as unknown as { user?: { id?: string; email?: string } }).user;
+    if (req.isAuthenticated?.() && sessionUser?.email) {
+      return { email: sessionUser.email, surface: "session", identityId: sessionUser.id || null };
+    }
+
+    return null;
+  }
+
+  app.get("/api/founder-feedback/eligible", async (req: AdminRequest & PortalRequest, res) => {
+    try {
+      const identity = await resolveFounderFeedbackIdentity(req);
+      const eligible = isFounderFeedbackEmail(identity?.email);
+      res.json({
+        eligible,
+        identity: eligible && identity ? { email: identity.email, surface: identity.surface } : null,
+      });
+    } catch (error: any) {
+      // Fail closed — an error resolving identity means "not eligible", not
+      // a 500 that could leak stack traces into a public-page-mounted widget.
+      console.error("[founder-feedback][eligible] error", error?.message);
+      res.json({ eligible: false, identity: null });
+    }
+  });
+
+  const founderFeedbackSubmitSchema = z.object({
+    note: z.string().trim().min(1).max(4000),
+    severity: z.enum(["bug", "idea", "looks-wrong"]).optional(),
+    route: z.string().trim().min(1).max(500),
+    pageTitle: z.string().trim().max(300).optional(),
+    viewportWidth: z.number().int().positive().optional(),
+    viewportHeight: z.number().int().positive().optional(),
+  });
+
+  app.post("/api/founder-feedback", async (req: AdminRequest & PortalRequest, res) => {
+    try {
+      const identity = await resolveFounderFeedbackIdentity(req);
+      if (!identity || !isFounderFeedbackEmail(identity.email)) {
+        return res.status(403).json({ message: "Not eligible to submit feedback" });
+      }
+
+      const parsed = founderFeedbackSubmitSchema.parse(req.body);
+      const appVersion = resolveAppVersion();
+      const userAgent = req.header("user-agent") || null;
+      const createdAt = new Date();
+
+      const [row] = await db
+        .insert(founderFeedback)
+        .values({
+          email: identity.email,
+          surface: identity.surface,
+          identityId: identity.identityId,
+          note: parsed.note,
+          severity: parsed.severity || null,
+          route: parsed.route,
+          pageTitle: parsed.pageTitle || null,
+          viewportWidth: parsed.viewportWidth ?? null,
+          viewportHeight: parsed.viewportHeight ?? null,
+          appVersion,
+          userAgent,
+        })
+        .returning();
+
+      const githubResult = await fileFounderFeedbackGithubIssue({
+        title: buildFounderFeedbackIssueTitle(parsed.note),
+        body: buildFounderFeedbackIssueBody({
+          note: parsed.note,
+          severity: parsed.severity || null,
+          email: identity.email,
+          surface: identity.surface,
+          route: parsed.route,
+          pageTitle: parsed.pageTitle || null,
+          viewportWidth: parsed.viewportWidth ?? null,
+          viewportHeight: parsed.viewportHeight ?? null,
+          appVersion,
+          userAgent,
+          createdAt,
+        }),
+      });
+
+      if (githubResult) {
+        await db
+          .update(founderFeedback)
+          .set({ githubIssueUrl: githubResult.url, githubIssueNumber: githubResult.number })
+          .where(eq(founderFeedback.id, row.id));
+      }
+
+      res.status(201).json({
+        ok: true,
+        id: row.id,
+        githubIssueUrl: githubResult?.url || null,
+        dbOnly: !githubResult,
+      });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid feedback payload", issues: error.issues });
+      }
+      console.error("[founder-feedback][submit] error", error?.message);
+      res.status(500).json({ message: error?.message || "Failed to submit feedback" });
+    }
+  });
 
   app.get("/api/admin/roadmap", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {

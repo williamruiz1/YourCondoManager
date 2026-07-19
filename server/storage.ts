@@ -14904,7 +14904,11 @@ export class DatabaseStorage implements IStorage {
         return result?.associationId;
       }
       default:
-        return undefined;
+        // A-AUTHZ-001: fail LOUD on an unknown resourceType — a typo must never
+        // silently resolve to undefined (which the old fail-open guard treated as
+        // ALLOW). The caller (assertResourceScope) is fail-closed regardless, but
+        // throwing here surfaces the bug instead of masking it.
+        throw new Error(`getAssociationIdForScopedResource: unknown resourceType "${resourceType}"`);
     }
   }
 

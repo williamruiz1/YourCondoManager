@@ -77,6 +77,11 @@ export const ACTION_TYPE_LEVELS: Record<string, AgentActionLevel> = {
   "reversible.arc_route": "L2",
   // L3 — financial / irreversible. ALWAYS requires a human approval.
   "financial.approve_disbursement": "L3",
+  // Bank-credit ↔ ledger-entry reconciliation pairing proposed by the
+  // recon-suggestion agent (founder-os#9480, W2). Committing a pairing settles
+  // a ledger entry — financial, so a human approves EVERY pairing before the
+  // match actuates (through the standard manual-match validations).
+  "financial.reconcile_bank_match": "L3",
   "financial.post_ledger_entry": "L3",
   "financial.issue_refund": "L3",
   "irreversible.send_owner_notice": "L3",

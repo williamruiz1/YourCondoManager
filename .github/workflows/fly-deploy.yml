@@ -86,6 +86,10 @@ jobs:
 
   deploy-prod:
     name: Deploy app to Fly (prod)
+    # Ref-guard (founder-os#13288 / YCM#519): manual workflow_dispatch on a
+    # non-main ref may exercise money-migration-guard + staging-gate, but must
+    # have NO path to prod — only main deploys.
+    if: github.ref == 'refs/heads/main'
     needs: staging-gate
     runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 20

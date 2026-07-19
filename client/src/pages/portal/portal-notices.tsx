@@ -329,7 +329,7 @@ function NoticesContent() {
   return (
     <div className="pfx-scope mx-auto flex max-w-4xl flex-col gap-6" data-testid="portal-notices">
       <div className="pfx-pagehead">
-        <Link href="/portal/community" className="text-xs font-semibold" style={{ color: "var(--ds-accent, #15a39c)" }}>
+        <Link href="/portal/community" className="text-xs font-semibold" style={{ color: "var(--ds-teal-700, #0a6a63)" }}>
           ← Back to My Community
         </Link>
         <p className="pfx-eyebrow mt-3">My Community</p>

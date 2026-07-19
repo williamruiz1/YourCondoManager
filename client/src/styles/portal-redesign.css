@@ -39,7 +39,7 @@
 .pfx-pagehead { margin-bottom: 4px; }
 .pfx-pagehead .pfx-eyebrow {
   font-size: 11px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
-  color: var(--ds-accent, #15a39c);
+  color: var(--ds-teal-700, #0a6a63);
 }
 .pfx-pagehead h1 {
   font-family: var(--ds-font, "Inter Tight", sans-serif);
@@ -176,14 +176,14 @@
   box-shadow: var(--ds-shadow, 0 1px 3px rgba(1,77,74,.04));
 }
 .pfx-shortcut:hover { border-color: var(--ds-accent, #15a39c); transform: translateY(-1px); box-shadow: 0 8px 20px -10px rgba(1,77,74,.25); }
-.pfx-shortcut .pfx-eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ds-accent, #15a39c); }
+.pfx-shortcut .pfx-eyebrow { font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ds-teal-700, #0a6a63); }
 .pfx-shortcut h3 { font-size: 16.5px; font-weight: 800; color: var(--ds-teal, #014d4a); margin: 7px 0 4px; }
 .pfx-shortcut p { font-size: 12.5px; color: var(--ds-sub, #4a6b68); line-height: 1.5; margin: 0; }
 
 /* ── Section head (used above list sections everywhere) ─────────────────── */
 .pfx-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .pfx-section-head h2 { font-size: 15px; font-weight: 800; color: var(--ds-teal, #014d4a); margin: 0; }
-.pfx-section-head .pfx-view-all { font-size: 12px; font-weight: 700; color: var(--ds-accent, #15a39c); text-decoration: none; }
+.pfx-section-head .pfx-view-all { font-size: 12px; font-weight: 700; color: var(--ds-teal-700, #0a6a63); text-decoration: none; }
 .pfx-section-head .pfx-view-all:hover { text-decoration: underline; }
 
 /* ── Callout ──────────────────────────────────────────────────────────────── */

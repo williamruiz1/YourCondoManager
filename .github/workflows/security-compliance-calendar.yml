@@ -157,6 +157,17 @@ jobs:
             [annual_pen_test_assessment]="kind:security,kind:compliance-review,priority:p1"
           )
 
+          # Ensure every label this workflow references actually EXISTS in the repo
+          # (idempotent). A repo missing kind:security / kind:compliance-review /
+          # priority:* used to fail the ENTIRE run on `gh issue create --label`
+          # (founder-os#3376 — 12+ consecutive failures). Self-provision so label
+          # drift, or running against a fresh repo, can never re-break the
+          # compliance calendar. `|| true` makes an already-exists a no-op.
+          printf '%s\n' "${LABELS[@]}" | tr ',' '\n' | sed '/^$/d' | sort -u | while IFS= read -r lbl; do
+            gh label create "${lbl}" --repo "${GH_REPO}" --color "ededed" \
+              --description "auto-provisioned by security-compliance-calendar.yml (founder-os#3376)" 2>/dev/null || true
+          done
+
           for activity in ${ACTIVITIES}; do
             title="${TITLES[$activity]:-}"
             labels="${LABELS[$activity]:-}"

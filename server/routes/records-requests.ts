@@ -13,6 +13,13 @@
 
 import type { Express, NextFunction, Request, Response } from "express";
 import { storage } from "../storage";
+// A-AUTHZ-002/004: the shared, fail-closed tenant-isolation guards. Every route
+// in this module now enforces association scope (was: role-only, cross-tenant IDOR).
+import {
+  assertAssociationScope,
+  assertAssociationInputScope,
+  resolveScopedAssociationId,
+} from "../lib/tenant-scope";
 import {
   insertRecordsRequestSchema,
   insertRecordsRequestItemSchema,
@@ -44,6 +51,25 @@ function p(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/** Load-time scope gate for a by-id row: true iff the admin's scope includes the
+ * row's association (platform-admin always true). A false result → the caller
+ * responds 404 so a cross-tenant id is indistinguishable from a missing one (no
+ * existence oracle). */
+function inScope(req: AdminRequest, associationId: string | null | undefined): boolean {
+  try {
+    assertAssociationScope(req, associationId ?? "");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** True when an error is a tenant-scope denial (→ 403) vs a real server error. */
+function isScopeError(e: unknown): boolean {
+  const m = e instanceof Error ? e.message : "";
+  return /outside admin scope|association is outside|associationId is required|No association scopes/i.test(m);
+}
+
 const READ_ROLES: AdminRole[] = [
   "platform-admin",
   "board-officer",
@@ -71,7 +97,16 @@ export function registerRecordsRequestRoutes(
     requireAdmin,
     requireAdminRole(READ_ROLES),
     async (req: AdminRequest, res: Response) => {
-      const associationId = typeof req.query.associationId === "string" ? req.query.associationId : undefined;
+      // A-AUTHZ-002: scope the list. resolveScopedAssociationId validates any
+      // requested associationId against the admin's scope and — for a non-platform
+      // admin — never returns undefined-meaning-all-tenants.
+      let associationId: string | undefined;
+      try {
+        associationId = resolveScopedAssociationId(req);
+      } catch (e) {
+        if (isScopeError(e)) { res.status(403).json({ error: "Association is outside your scope" }); return; }
+        throw e;
+      }
       const requests = await storage.getRecordsRequests(associationId);
       res.json(requests);
     },
@@ -84,7 +119,7 @@ export function registerRecordsRequestRoutes(
     requireAdminRole(READ_ROLES),
     async (req: AdminRequest, res: Response) => {
       const request = await storage.getRecordsRequest(p(req.params.id));
-      if (!request) {
+      if (!request || !inScope(req, request.associationId)) {
         res.status(404).json({ error: "Records request not found" });
         return;
       }
@@ -100,6 +135,15 @@ export function registerRecordsRequestRoutes(
     requireAdmin,
     requireAdminRole(WRITE_ROLES),
     async (req: AdminRequest, res: Response) => {
+      // A-AUTHZ-002: reject a client-supplied cross-tenant associationId UP FRONT
+      // (before schema validation) so a non-scoped admin can never create a request
+      // inside another tenant.
+      try {
+        assertAssociationInputScope(req, req.body?.associationId);
+      } catch (e) {
+        if (isScopeError(e)) { res.status(403).json({ error: "Association is outside your scope" }); return; }
+        throw e;
+      }
       const receivedAt = req.body?.receivedAt ? new Date(req.body.receivedAt) : new Date();
       const responseDueAt = computeResponseDueDate(receivedAt); // §47-260(b)
       const parsed = insertRecordsRequestSchema.safeParse({
@@ -123,13 +167,21 @@ export function registerRecordsRequestRoutes(
     requireAdmin,
     requireAdminRole(WRITE_ROLES),
     async (req: AdminRequest, res: Response) => {
+      // A-AUTHZ-002: load first + assert scope BEFORE mutating (was: update by raw id).
+      const existing = await storage.getRecordsRequest(p(req.params.id));
+      if (!existing || !inScope(req, existing.associationId)) {
+        res.status(404).json({ error: "Records request not found" });
+        return;
+      }
       const patch: Record<string, unknown> = { ...req.body };
+      // Never let a client re-home a request into another tenant via the patch body.
+      delete patch.associationId;
       if (typeof patch.receivedAt === "string") patch.receivedAt = new Date(patch.receivedAt);
       if (typeof patch.responseDueAt === "string") patch.responseDueAt = new Date(patch.responseDueAt);
       if (typeof patch.examDate1 === "string") patch.examDate1 = new Date(patch.examDate1);
       if (typeof patch.examDate2 === "string") patch.examDate2 = new Date(patch.examDate2);
       if (typeof patch.fulfilledAt === "string") patch.fulfilledAt = new Date(patch.fulfilledAt);
-      const updated = await storage.updateRecordsRequest(p(req.params.id), patch, req.adminUserEmail);
+      const updated = await storage.updateRecordsRequest(existing.id, patch, req.adminUserEmail);
       if (!updated) {
         res.status(404).json({ error: "Records request not found" });
         return;
@@ -145,7 +197,7 @@ export function registerRecordsRequestRoutes(
     requireAdminRole(WRITE_ROLES),
     async (req: AdminRequest, res: Response) => {
       const request = await storage.getRecordsRequest(p(req.params.id));
-      if (!request) {
+      if (!request || !inScope(req, request.associationId)) {
         res.status(404).json({ error: "Records request not found" });
         return;
       }
@@ -173,7 +225,7 @@ export function registerRecordsRequestRoutes(
     requireAdminRole(WRITE_ROLES),
     async (req: AdminRequest, res: Response) => {
       const request = await storage.getRecordsRequest(p(req.params.id));
-      if (!request) {
+      if (!request || !inScope(req, request.associationId)) {
         res.status(404).json({ error: "Records request not found" });
         return;
       }
@@ -203,7 +255,7 @@ export function registerRecordsRequestRoutes(
     requireAdminRole(READ_ROLES),
     async (req: AdminRequest, res: Response) => {
       const request = await storage.getRecordsRequest(p(req.params.id));
-      if (!request) {
+      if (!request || !inScope(req, request.associationId)) {
         res.status(404).json({ error: "Records request not found" });
         return;
       }
