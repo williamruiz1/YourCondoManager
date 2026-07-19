@@ -8,9 +8,7 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { Input } from "@/components/ui/input";
-import { Bell, ExternalLink, Info, ChevronRight, Building2, Phone, MapPin, Calendar, FileText, Download, Mail, KeyRound, Loader2, CheckCircle2, Home, ShieldCheck } from "lucide-react";
+import { Bell, ExternalLink, Info, ChevronRight, Building2, MapPin, Calendar, FileText, Download, Mail, KeyRound, Home, ShieldCheck, Users, Landmark } from "lucide-react";
 import CommunityMapView from "@/components/community-map-view";
 import { Pill, type PillTone } from "@/components/redesign";
 // The Pill/Tile primitives pull in the canonical @ycm/design-system stylesheet
@@ -45,9 +43,16 @@ type PublicHubData = {
   };
   association: {
     name: string;
+    address: string;
     city: string;
     state: string;
   } | null;
+  boardContacts: Array<{
+    id: string;
+    role: string;
+    firstName: string;
+    lastName: string;
+  }>;
   notices: Array<{
     id: string;
     title: string;
@@ -200,7 +205,7 @@ export default function CommunityHubPublicPage() {
     );
   }
 
-  const { config, association, notices, infoBlocks, actionLinks, meetings = [], documents: docs = [] } = hub;
+  const { config, association, boardContacts = [], notices, infoBlocks, actionLinks, meetings = [], documents: docs = [] } = hub;
   // Brand teal default (was a generic blue #3b82f6 — the "blue tint" on the
   // community page). A community can still override via config.themeColor.
   const themeColor = config.themeColor || "#014D4A";
@@ -282,7 +287,7 @@ export default function CommunityHubPublicPage() {
         }
       />
     ),
-    contacts: () => <ContactsSection association={association} themeColor={themeColor} />,
+    contacts: () => <ContactsSection association={association} boardContacts={boardContacts} themeColor={themeColor} />,
   };
 
   return (
@@ -307,7 +312,7 @@ export default function CommunityHubPublicPage() {
             </div>
           </div>
           <a
-            href="#owner-signin"
+            href="/portal"
             className={`${BTN_V4} shrink-0 hover:bg-[var(--nav-cta-hover)]`}
             style={{ backgroundColor: themeColor, ["--nav-cta-hover" as any]: V4.teal700 }}
           >
@@ -398,11 +403,11 @@ export default function CommunityHubPublicPage() {
                 </div>
               </dl>
               <a
-                href="#owner-signin"
+                href="/portal"
                 className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold transition-colors hover:bg-white/90"
                 style={{ color: themeColor }}
               >
-                Sign in to the owner portal
+                Open the owner portal
                 <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </a>
             </aside>
@@ -471,11 +476,6 @@ export default function CommunityHubPublicPage() {
           </Card>
         )}
 
-        {/* Authenticate CTA — anchor target for the nav's "Owner Portal" CTA */}
-        <div id="owner-signin" className="scroll-mt-20 mt-10 space-y-6 sm:space-y-8">
-          <Separator />
-          <HubAuthSection themeColor={themeColor} />
-        </div>
       </main>
 
       {/* Footer — full brand lockup + legal links, so the page reads as a
@@ -695,177 +695,100 @@ function BuildingsSection({ buildings, themeColor }: { buildings: PublicBuilding
   );
 }
 
-function ContactsSection({ association, themeColor }: { association: PublicHubData["association"]; themeColor: string }) {
+function ContactsSection({
+  association,
+  boardContacts,
+  themeColor,
+}: {
+  association: PublicHubData["association"];
+  boardContacts: PublicHubData["boardContacts"];
+  themeColor: string;
+}) {
   if (!association) return null;
 
-  return (
-    <section>
-      <SectionHeading icon={Phone} title="Contact & Key Information" themeColor={themeColor} />
-      <Card className={CARD_V4} style={cardBorder}>
-        <CardContent className="pt-5 pb-5 px-5">
-          <div className="space-y-3.5">
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl shrink-0" style={{ backgroundColor: `${themeColor}14`, color: themeColor }} aria-hidden="true">
-                <Building2 className="h-[18px] w-[18px]" />
-              </span>
-              <div>
-                <p className="font-medium text-sm" style={{ color: V4.ink }}>{association.name}</p>
-                <p className="text-xs text-muted-foreground">{association.city}, {association.state}</p>
-              </div>
-            </div>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              For inquiries, please contact your property management office or sign in to the resident portal.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    </section>
-  );
-}
-
-function HubAuthSection({ themeColor }: { themeColor: string }) {
-  const [step, setStep] = useState<"idle" | "email" | "pin" | "success">("idle");
-  const [email, setEmail] = useState("");
-  const [pin, setPin] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [simulatedOtp, setSimulatedOtp] = useState<string | null>(null);
-
-  async function handleRequestPin(e: React.FormEvent) {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch("/api/portal/request-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Failed to send code");
-      if (data.simulatedOtp) setSimulatedOtp(data.simulatedOtp);
-      setStep("pin");
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleVerifyPin(e: React.FormEvent) {
-    e.preventDefault();
-    if (!pin.trim()) return;
-    setLoading(true);
-    setError("");
-    try {
-      const res = await fetch("/api/portal/verify-login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), otp: pin.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Invalid code");
-      if (data.portalAccessId) {
-        setStep("success");
-        setTimeout(() => {
-          window.location.href = `/portal?portalAccessId=${data.portalAccessId}`;
-        }, 1000);
-      } else if (data.associations) {
-        // Multiple associations — redirect to portal with email for picker
-        setStep("success");
-        setTimeout(() => {
-          window.location.href = `/portal?email=${encodeURIComponent(email)}`;
-        }, 1000);
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  if (step === "idle") {
-    return (
-      <section className="text-center py-6">
-        <p className="text-muted-foreground text-sm mb-4">
-          Are you a resident? Sign in for full access to documents, requests, and more.
-        </p>
-        <button type="button" className={`${BTN_V4} shadow-sm hover:shadow-md`} style={{ backgroundColor: themeColor }} onClick={() => setStep("email")}>
-          <Mail className="h-4 w-4" aria-hidden="true" />
-          Sign In with Email
-        </button>
-      </section>
-    );
-  }
-
-  if (step === "success") {
-    return (
-      <section className="text-center py-6">
-        <CheckCircle2 className="h-8 w-8 mx-auto mb-2" style={{ color: themeColor }} />
-        <p className="text-sm font-medium">Verified! Redirecting to your portal...</p>
-      </section>
-    );
-  }
+  const inquiryHref = (subject: string) =>
+    `mailto:support@yourcondomanager.org?subject=${encodeURIComponent(`${association.name}: ${subject}`)}`;
 
   return (
-    <section className="py-6">
-      <Card className={`max-w-sm mx-auto ${CARD_V4}`} style={cardBorder}>
-        <CardContent className="pt-6 pb-5 px-6">
-          {step === "email" ? (
-            <form onSubmit={handleRequestPin} className="space-y-3">
-              <div className="text-center mb-3">
-                <Mail className="h-6 w-6 mx-auto mb-1.5" style={{ color: themeColor }} />
-                <p className="text-sm font-medium">Enter your email to sign in</p>
-                <p className="text-xs text-muted-foreground">We'll send a one-time code to verify your identity.</p>
-              </div>
-              <Input
-                type="email"
-                placeholder="your.email@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoFocus
-              />
-              {error && <p className="text-xs text-destructive">{error}</p>}
-              <button type="submit" className={`${BTN_V4} w-full`} style={{ backgroundColor: themeColor }} disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Code"}
-              </button>
-              <button type="button" className="w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => setStep("idle")}>
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyPin} className="space-y-3">
-              <div className="text-center mb-3">
-                <KeyRound className="h-6 w-6 mx-auto mb-1.5" style={{ color: themeColor }} />
-                <p className="text-sm font-medium">Enter your verification code</p>
-                <p className="text-xs text-muted-foreground">
-                  Sent to <strong>{email}</strong>
+    <section className="space-y-7">
+      <div>
+        <SectionHeading icon={Users} title="Board contacts" themeColor={themeColor} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          {boardContacts.map((contact) => (
+            <Card key={contact.id} className={CARD_V4} style={cardBorder}>
+              <CardContent className="p-5">
+                <p className="text-[11px] font-bold uppercase tracking-[0.1em]" style={{ color: themeColor }}>
+                  {contact.role}
                 </p>
-                {simulatedOtp && (
-                  <p className="text-xs text-amber-600 mt-1">Demo mode — code: <strong>{simulatedOtp}</strong></p>
-                )}
-              </div>
-              <Input
-                type="text"
-                inputMode="numeric"
-                placeholder="Enter 6-digit code"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                maxLength={6}
-                required
-                autoFocus
-              />
-              {error && <p className="text-xs text-destructive">{error}</p>}
-              <button type="submit" className={`${BTN_V4} w-full`} style={{ backgroundColor: themeColor }} disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify & Sign In"}
-              </button>
-              <button type="button" className="w-full text-xs text-muted-foreground hover:text-foreground" onClick={() => { setStep("email"); setPin(""); setError(""); }}>
-                Use a different email
-              </button>
-            </form>
+                <h3 className="mt-1 font-semibold" style={{ color: V4.ink }}>
+                  {contact.firstName} {contact.lastName}
+                </h3>
+                <p className="mt-3 flex items-start gap-2 text-sm leading-relaxed" style={{ color: V4.muted }}>
+                  <MapPin className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span>{association.address}, {association.city}, {association.state}</span>
+                </p>
+                <a
+                  href={inquiryHref(`message for ${contact.firstName} ${contact.lastName}, ${contact.role}`)}
+                  className="mt-3 inline-flex items-center gap-2 text-sm font-semibold hover:underline"
+                  style={{ color: themeColor }}
+                >
+                  <Mail className="h-4 w-4" aria-hidden="true" />
+                  Contact through YCM
+                </a>
+              </CardContent>
+            </Card>
+          ))}
+          {boardContacts.length === 0 && (
+            <Card className={CARD_V4} style={cardBorder}>
+              <CardContent className="p-5 text-sm" style={{ color: V4.muted }}>
+                The public board directory is being confirmed. Messages can still be routed to the association through YCM.
+              </CardContent>
+            </Card>
           )}
+        </div>
+      </div>
+
+      <div>
+        <SectionHeading icon={Landmark} title="Lenders, insurers & closing professionals" themeColor={themeColor} />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Card className={CARD_V4} style={cardBorder}>
+            <CardContent className="p-5">
+              <p className="font-semibold text-sm" style={{ color: V4.ink }}>Lender and closing inquiries</p>
+              <p className="mt-1.5 text-sm leading-relaxed" style={{ color: V4.muted }}>
+                Request association documents, resale information, questionnaires, or closing coordination.
+              </p>
+              <a href={inquiryHref("lender or closing inquiry")} className={`${BTN_V4} mt-4`} style={{ backgroundColor: themeColor }}>
+                <Mail className="h-4 w-4" aria-hidden="true" />
+                Start an inquiry
+              </a>
+            </CardContent>
+          </Card>
+          <Card className={CARD_V4} style={cardBorder}>
+            <CardContent className="p-5">
+              <p className="font-semibold text-sm" style={{ color: V4.ink }}>Insurance inquiries</p>
+              <p className="mt-1.5 text-sm leading-relaxed" style={{ color: V4.muted }}>
+                Ask about master-policy records, certificates of insurance, or association coverage contacts.
+              </p>
+              <a href={inquiryHref("insurance or certificate inquiry")} className={`${BTN_V4} mt-4`} style={{ backgroundColor: themeColor }}>
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                Contact the association
+              </a>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <Card className={CARD_V4} style={cardBorder}>
+        <CardContent className="p-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl shrink-0" style={{ backgroundColor: `${themeColor}14`, color: themeColor }} aria-hidden="true">
+              <Building2 className="h-[18px] w-[18px]" />
+            </span>
+            <div>
+              <p className="font-medium text-sm" style={{ color: V4.ink }}>{association.name}</p>
+              <p className="text-xs text-muted-foreground">{association.address}, {association.city}, {association.state}</p>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </section>
