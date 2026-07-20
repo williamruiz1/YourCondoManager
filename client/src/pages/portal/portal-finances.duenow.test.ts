@@ -11,9 +11,16 @@
  *   - `buildActivityFeed` — merge in-flight payment_transactions with settled
  *     ledger entries for the redesigned Overview "Recent activity" (2026-07-14
  *     My Finances redesign, reflecting the PR #514 processing-state fix).
+ *   - `buildLedgerHistory` — apply the same lifecycle visibility to the full
+ *     ledger without treating informational rows as posted balance activity.
  */
 import { describe, expect, it } from "vitest";
-import { ledgerTypeLabel, computeDueNow, buildActivityFeed } from "./portal-finances";
+import {
+  ledgerTypeLabel,
+  computeDueNow,
+  buildActivityFeed,
+  buildLedgerHistory,
+} from "./portal-finances";
 
 describe("ledgerTypeLabel — human owner-facing type labels", () => {
   it('maps "charge" → "HOA Dues" (the core William finding #5 fix)', () => {
@@ -243,5 +250,77 @@ describe("buildActivityFeed — merges pending payment_transactions with settled
     // through the same branch as "pending" today (the pure function trusts
     // its caller's filtering, which is covered by the component itself).
     expect(items[0].kind).toBe("pending");
+  });
+});
+
+describe("buildLedgerHistory — status-aware full account timeline", () => {
+  it("merges processing and failed payments with posted ledger entries in date order", () => {
+    const items = buildLedgerHistory(
+      [
+        {
+          id: "ledger-1",
+          entryType: "charge",
+          unitId: "u-1",
+          amount: 330,
+          postedAt: "2026-07-01T00:00:00.000Z",
+          description: "July HOA dues",
+        },
+      ],
+      [
+        {
+          id: "tx-processing",
+          unitId: "u-1",
+          amountCents: 33000,
+          status: "pending",
+          checkoutMethod: "ach",
+          createdAt: "2026-07-14T15:12:00.000Z",
+        },
+        {
+          id: "tx-failed",
+          unitId: "u-2",
+          amountCents: 12500,
+          status: "failed",
+          checkoutMethod: "card",
+          createdAt: "2026-07-13T15:12:00.000Z",
+          failureReason: "Card declined",
+        },
+      ],
+    );
+
+    expect(items.map((item) => item.id)).toEqual([
+      "processing-tx-processing",
+      "failed-tx-failed",
+      "ledger-1",
+    ]);
+    expect(items[0]).toMatchObject({
+      kind: "processing",
+      entryType: "payment",
+      amount: -330,
+      description: "ACH bank transfer submitted — not yet applied to your balance",
+    });
+    expect(items[1]).toMatchObject({
+      kind: "failed",
+      entryType: "payment",
+      amount: -125,
+      description: "Card declined",
+    });
+    expect(items[2].kind).toBe("posted");
+  });
+
+  it("does not include succeeded transactions because their posted ledger row is canonical", () => {
+    const items = buildLedgerHistory(
+      [],
+      [
+        {
+          id: "tx-succeeded",
+          unitId: "u-1",
+          amountCents: 33000,
+          status: "succeeded",
+          checkoutMethod: "ach",
+          createdAt: "2026-07-14T15:12:00.000Z",
+        },
+      ].filter((tx) => tx.status === "initiated" || tx.status === "pending" || tx.status === "failed"),
+    );
+    expect(items).toEqual([]);
   });
 });

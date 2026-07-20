@@ -78,6 +78,7 @@ function installFetchStub(overrides: Record<string, unknown> = {}, handlers: Rec
     "/api/portal/amenities/settings": { amenitiesEnabled: true },
     "/api/portal/payment-methods": [],
     "/api/portal/autopay/enrollments": [],
+    "/api/portal/payment-transactions": [],
     "/api/portal/ledger": [],
     "/api/portal/documents": [],
     "/api/portal/communications": [],
@@ -188,6 +189,82 @@ describe("Portal zone files — render under session + heading per 1.1 Q5", () =
     installFetchStub();
     renderAt("/portal/finances/ledger", <PortalFinancesPage subPath="ledger" />);
     await waitFor(() => expect(screen.getByTestId("portal-finances-ledger-heading")).toBeInTheDocument());
+  });
+
+  it("full ledger shows processing and failed payments without presenting them as posted", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 330,
+        totalCharges: 330,
+        totalPayments: 0,
+        byUnit: [
+          {
+            unitId: "u-1417F",
+            unitLabel: "1417-F",
+            unitNumber: "F",
+            building: "1417",
+            total: 330,
+            byCategory: { charge: 330 },
+            entries: [],
+          },
+          {
+            unitId: "u-1421B",
+            unitLabel: "1421-B",
+            unitNumber: "B",
+            building: "1421",
+            total: 0,
+            byCategory: {},
+            entries: [],
+          },
+        ],
+      },
+      "/api/portal/ledger": {
+        entries: [
+          {
+            id: "posted-charge",
+            associationId: "assoc-1",
+            unitId: "u-1417F",
+            personId: "person-1",
+            entryType: "charge",
+            amount: 330,
+            postedAt: "2026-07-01T00:00:00.000Z",
+            description: "July HOA dues",
+          },
+        ],
+        balance: 330,
+      },
+      "/api/portal/payment-transactions": [
+        {
+          id: "pending-ach",
+          unitId: "u-1417F",
+          amountCents: 33000,
+          status: "pending",
+          checkoutMethod: "ach",
+          createdAt: "2026-07-14T15:12:00.000Z",
+        },
+        {
+          id: "failed-card",
+          unitId: "u-1421B",
+          amountCents: 12500,
+          status: "failed",
+          checkoutMethod: "card",
+          createdAt: "2026-07-13T15:12:00.000Z",
+          failureReason: "Card declined",
+        },
+      ],
+    });
+
+    renderAt("/portal/finances/ledger", <PortalFinancesPage subPath="ledger" />);
+
+    expect(await screen.findByTestId("portal-finances-ledger-processing-note")).toHaveTextContent(
+      "update your balance only after the bank confirms",
+    );
+    expect(screen.getByTestId("ledger-row-processing-pending-ach")).toHaveTextContent("1417-F");
+    expect(screen.getByTestId("ledger-row-processing-pending-ach-status")).toHaveTextContent("Processing");
+    expect(screen.getByTestId("ledger-row-processing-pending-ach")).toHaveTextContent("not yet applied");
+    expect(screen.getByTestId("ledger-row-failed-failed-card")).toHaveTextContent("1421-B");
+    expect(screen.getByTestId("ledger-row-failed-failed-card-status")).toHaveTextContent("Failed");
+    expect(screen.getByTestId("ledger-row-posted-charge-status")).toHaveTextContent("Posted");
   });
 
   it("PortalRequests hub mounts and renders My Requests heading", async () => {
@@ -497,6 +574,68 @@ describe("Portal Finances — 'Pay this period' + assessment PLAN redesign (2026
     );
     expect(screen.getByTestId("portal-finances-pinned-remaining-dues")).toHaveTextContent("2,964.00");
     expect(screen.getByTestId("portal-finances-pinned-remaining-assessment")).toHaveTextContent("5,618.61");
+  });
+
+  it("requires a multi-unit owner to choose the payment unit and submits that exact unit", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 660,
+        grandTotal: 660,
+        totalCharges: 660,
+        totalPayments: 0,
+        byUnit: [
+          { unitId: "u-1417F", unitLabel: "1417-F", total: 330, byCategory: { charge: 330 } },
+          { unitId: "u-1421B", unitLabel: "1421-B", total: 330, byCategory: { charge: 330 } },
+        ],
+        perUnit: [
+          {
+            unitId: "u-1417F",
+            unitLabel: "1417-F",
+            dueNowDues: 330,
+            dueNowAssessment: 0,
+            dueNowTotal: 330,
+            balanceDues: 330,
+            balanceAssessment: 0,
+            balanceTotal: 330,
+          },
+          {
+            unitId: "u-1421B",
+            unitLabel: "1421-B",
+            dueNowDues: 330,
+            dueNowAssessment: 0,
+            dueNowTotal: 330,
+            balanceDues: 330,
+            balanceAssessment: 0,
+            balanceTotal: 330,
+          },
+        ],
+      },
+      "/api/portal/pay": { checkoutUrl: null },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+
+    const unitPicker = await screen.findByTestId("portal-finances-payment-unit");
+    expect(screen.queryByTestId("portal-finances-pay-this-period-cta")).not.toBeInTheDocument();
+    expect(screen.getByTestId("portal-finances-pay-now")).toBeDisabled();
+
+    await userEvent.selectOptions(unitPicker, "u-1417F");
+    expect(await screen.findByTestId("portal-finances-pay-this-period-cta")).toHaveTextContent(
+      "Pay $330.00 for 1417-F",
+    );
+
+    await userEvent.type(screen.getByTestId("portal-finances-amount-input"), "125");
+    await userEvent.click(screen.getByTestId("portal-finances-pay-now"));
+
+    await waitFor(() => {
+      const payCall = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/portal/pay");
+      expect(payCall).toBeDefined();
+      const request = payCall?.[1] as RequestInit;
+      expect(JSON.parse(String(request.body))).toMatchObject({
+        amountCents: 12500,
+        unitId: "u-1417F",
+        paymentMethod: "ach",
+      });
+    });
   });
 
   it("renders the special assessment as a PLAN (total · remaining over time · progress), On track — no red", async () => {
