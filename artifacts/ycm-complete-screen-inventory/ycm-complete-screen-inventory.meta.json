@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 2,
+  "title": "YCM Complete Screen Inventory \u2014 Manager, Board, and Owner Portals",
+  "filename": "ycm-complete-screen-inventory.html",
+  "kind": "html",
+  "preview_kind": "iframe",
+  "produced_by": "YCM GM via Codex",
+  "model": "gpt-5-codex",
+  "parent_dispatch": null,
+  "session_id": null,
+  "topic_slug": "ycm-complete-screen-inventory",
+  "product": "ycm",
+  "product_name": "YourCondoManager",
+  "channel": "ycm",
+  "created_at": "2026-07-20T00:14:07Z",
+  "channels": [
+    "dashboard"
+  ],
+  "url": "https://founder-mini.taila070f1.ts.net/foscc-chat/artifact?path=product%2Fycm%2Fycm-complete-screen-inventory%2Fycm-complete-screen-inventory.html",
+  "manifest_url": "https://founder-mini.taila070f1.ts.net/foscc-chat/artifact?path=product%2Fycm%2Fycm-complete-screen-inventory%2Fycm-complete-screen-inventory.meta.json",
+  "native_path": "product/ycm/ycm-complete-screen-inventory/ycm-complete-screen-inventory.html",
+  "canonical_repo": "YourCondoManager",
+  "canonical_path": "artifacts/ycm-complete-screen-inventory/ycm-complete-screen-inventory.html",
+  "admin_hub_repo": "ycm-admin-hub",
+  "admin_hub_path": "content/ycm-complete-screen-inventory.html",
+  "branch": "main",
+  "commit_sha": "",
+  "status": "open",
+  "notes": "66-screen visual inventory: 43 property manager, 11 board, 12 owner portal; captured against isolated real-backend test data."
+}
