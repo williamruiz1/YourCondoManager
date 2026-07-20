@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 describe("AddOwnerWizard", () => {
-  it("posts owner details to /api/persons with the active association", async () => {
+  it("posts owner details to the atomic Board workflow", async () => {
     renderWiz(<AddOwnerWizard />);
     fireEvent.change(screen.getByTestId("input-first-name"), { target: { value: "Jane" } });
     fireEvent.change(screen.getByTestId("input-last-name"), { target: { value: "Doe" } });
@@ -62,8 +62,8 @@ describe("AddOwnerWizard", () => {
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(
         "POST",
-        "/api/persons",
-        expect.objectContaining({ firstName: "Jane", lastName: "Doe", associationId: "assoc-1" }),
+        "/api/board/workflows/add-owner",
+        expect.objectContaining({ firstName: "Jane", lastName: "Doe", associationId: "assoc-1", unitId: null }),
       ),
     );
   });
@@ -112,7 +112,7 @@ describe("RequestVendorWorkWizard", () => {
 });
 
 describe("LogViolationWizard", () => {
-  it("posts to /api/violations (no fine) with the default type", async () => {
+  it("posts to the atomic violation workflow (no fine) with the default type", async () => {
     renderWiz(<LogViolationWizard />);
     fireEvent.change(screen.getByTestId("input-description"), { target: { value: "Bins left out 3 days" } });
     next(); // step 0 → 1 (who/where, skipped)
@@ -122,7 +122,7 @@ describe("LogViolationWizard", () => {
     await waitFor(() => expect(apiRequest).toHaveBeenCalled());
     const [method, url, body] = apiRequest.mock.calls[0];
     expect(method).toBe("POST");
-    expect(url).toBe("/api/violations");
+    expect(url).toBe("/api/board/workflows/log-violation");
     expect(body).toMatchObject({
       associationId: "assoc-1",
       violationType: "Trash / bins",

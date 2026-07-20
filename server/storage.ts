@@ -3981,7 +3981,7 @@ export interface IStorage {
   createOwnerLedgerEntry(data: InsertOwnerLedgerEntry): Promise<OwnerLedgerEntry>;
   getOwnerLedgerSummary(associationId: string): Promise<Array<{ personId: string; unitId: string; balance: number }>>;
   getGovernanceMeetings(associationId?: string): Promise<GovernanceMeeting[]>;
-  createGovernanceMeeting(data: InsertGovernanceMeeting): Promise<GovernanceMeeting>;
+  createGovernanceMeeting(data: InsertGovernanceMeeting, actorEmail?: string): Promise<GovernanceMeeting>;
   updateGovernanceMeeting(id: string, data: Partial<InsertGovernanceMeeting>): Promise<GovernanceMeeting | undefined>;
   getMeetingAgendaItems(meetingId: string): Promise<MeetingAgendaItem[]>;
   createMeetingAgendaItem(data: InsertMeetingAgendaItem): Promise<MeetingAgendaItem>;
@@ -5302,7 +5302,7 @@ export class DatabaseStorage implements IStorage {
       action: "create",
       entityType: "person",
       entityId: result.id,
-      associationId: null,
+      associationId: result.associationId ?? null,
       beforeJson: null,
       afterJson: result,
     });
@@ -8750,11 +8750,20 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(governanceMeetings.scheduledAt));
   }
 
-  async createGovernanceMeeting(data: InsertGovernanceMeeting): Promise<GovernanceMeeting> {
+  async createGovernanceMeeting(data: InsertGovernanceMeeting, actorEmail?: string): Promise<GovernanceMeeting> {
     const [result] = await db
       .insert(governanceMeetings)
       .values({ ...data, updatedAt: new Date() })
       .returning();
+    await this.recordAuditEvent({
+      actorEmail: actorEmail || "system",
+      action: "create",
+      entityType: "governance-meeting",
+      entityId: result.id,
+      associationId: result.associationId,
+      beforeJson: null,
+      afterJson: result,
+    });
     return result;
   }
 

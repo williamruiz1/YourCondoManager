@@ -30,6 +30,7 @@
  */
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
+import { sendPlatformEmail } from "../email-provider";
 import {
   violations,
   units,
@@ -290,6 +291,40 @@ export async function sendViolationNotice(
   const ordinal = priorNotices.length + 1;
   const ordinalLabel = ordinalNoticeLabel(ordinal);
   const unitDisplay = unit ? (unit.building ? `${unit.building} · ${unit.unitNumber}` : unit.unitNumber) : "the unit";
+  const subject = `${ordinalLabel} — ${violation.violationType} (${unitDisplay})`;
+  const body =
+    input.note?.trim() ||
+    `${ordinalLabel.toLowerCase()} regarding ${violation.violationType.toLowerCase()} at ${unitDisplay}.`;
+
+  if (channel !== "email") {
+    throw new ViolationsManagementError(
+      `${channel === "portal" ? "Portal" : "Certified-mail"} delivery is not connected yet. No notice was recorded as sent.`,
+      "DELIVERY_CHANNEL_NOT_CONNECTED",
+      409,
+    );
+  }
+  if (!person?.email) {
+    throw new ViolationsManagementError(
+      "This owner does not have an email address. No notice was sent.",
+      "RECIPIENT_EMAIL_REQUIRED",
+      409,
+    );
+  }
+
+  const delivery = await sendPlatformEmail({
+    to: person.email,
+    subject,
+    text: body,
+    templateKey: "violation-notice",
+    enableTracking: true,
+  });
+  if (delivery.status === "failed") {
+    throw new ViolationsManagementError(
+      delivery.errorMessage || "The email provider could not send this notice.",
+      "NOTICE_DELIVERY_FAILED",
+      502,
+    );
+  }
 
   const [event] = await db
     .insert(communicationHistory)
@@ -297,16 +332,22 @@ export async function sendViolationNotice(
       associationId,
       channel,
       direction: "outbound",
-      subject: `${ordinalLabel} — ${violation.violationType} (${unitDisplay})`,
-      bodySnippet:
-        input.note?.trim() ||
-        `${ordinalLabel.toLowerCase()} regarding ${violation.violationType.toLowerCase()} at ${unitDisplay}.`,
-      recipientEmail: person?.email ?? null,
-      recipientPersonId: person?.id ?? null,
+      subject,
+      bodySnippet: body,
+      recipientEmail: person.email,
+      recipientPersonId: person.id,
       relatedType: "violation-notice",
       relatedId: id,
-      metadataJson: { violationId: id, ordinal, channel },
-      deliveryStatus: "sent",
+      metadataJson: {
+        violationId: id,
+        ordinal,
+        channel,
+        provider: delivery.provider,
+        providerMessageId: delivery.messageId,
+        emailLogId: delivery.logId,
+      },
+      deliveryStatus: delivery.status,
+      deliveryStatusUpdatedAt: new Date(),
     })
     .returning();
 

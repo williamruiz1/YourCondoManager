@@ -1,6 +1,6 @@
 // founder-os#9487 — Board mode wizard: Add an owner.
 // Guided: owner details → (optional) link to a home → review → save.
-// Submits POST /api/persons, then optionally POST /api/ownerships.
+// Submits one atomic Board workflow request for the person + optional ownership.
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -33,23 +33,15 @@ export function AddOwnerWizard() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const personRes = await apiRequest("POST", "/api/persons", {
+      const response = await apiRequest("POST", "/api/board/workflows/add-owner", {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim() || null,
         phone: phone.trim() || null,
         associationId: activeAssociationId || null,
+        unitId: unitId && unitId !== NONE ? unitId : null,
       });
-      const person = (await personRes.json()) as { id: string };
-      if (unitId && unitId !== NONE) {
-        await apiRequest("POST", "/api/ownerships", {
-          unitId,
-          personId: person.id,
-          ownershipPercentage: 100,
-          startDate: new Date().toISOString(),
-        });
-      }
-      return person;
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/persons"] });
@@ -62,7 +54,7 @@ export function AddOwnerWizard() {
   if (done) {
     return (
       <WizardDone
-        message={`${firstName} ${lastName} was added to your community.`}
+        message={`${firstName} ${lastName} was added to your community. No portal invitation was sent.`}
         onAgain={() => {
           setFirstName(""); setLastName(""); setEmail(""); setPhone(""); setUnitId(NONE); setStep(0); setDone(false);
         }}

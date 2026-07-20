@@ -23,6 +23,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../../db", () => ({ db: {} }));
+vi.mock("../../email-provider", () => ({
+  sendPlatformEmail: vi.fn(),
+}));
 
 import {
   ALLOWED_TRANSITIONS,
