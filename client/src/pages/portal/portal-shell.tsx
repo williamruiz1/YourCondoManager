@@ -159,6 +159,9 @@ export function resolvePortalBreadcrumb(pathname: string): Array<{ label: string
     return [{ label: "My Community", href: "/portal/community" }, { label: "Notices" }];
   if (pathname === "/portal/documents")
     return [{ label: "My Community", href: "/portal/community" }, { label: "Documents" }];
+  if (pathname === "/portal/account") return [{ label: "Profile & preferences" }];
+  if (pathname === "/portal/privacy/my-consents")
+    return [{ label: "Profile & preferences", href: "/portal/account" }, { label: "Consent history" }];
   return [];
 }
 
@@ -185,7 +188,11 @@ function ShellHeader({ session, associationName, onLogout }: ShellHeaderProps) {
         {title}
       </h1>
       <div className="flex items-center gap-3">
-        <div className="hidden text-right sm:block">
+        <Link
+          href="/portal/account"
+          className="hidden rounded-md px-2 py-1 text-right transition-colors hover:bg-[var(--ds-off)] sm:block"
+          data-testid="portal-header-account"
+        >
           <p className="truncate text-xs font-semibold" style={{ color: "var(--ds-ink)" }} data-testid="portal-header-user">
             {displayName}
           </p>
@@ -194,7 +201,14 @@ function ShellHeader({ session, associationName, onLogout }: ShellHeaderProps) {
           ) : (
             <p className="text-[10px] uppercase tracking-widest" style={{ color: "var(--ds-sub)" }}>Owner</p>
           )}
-        </div>
+        </Link>
+        <Link
+          href="/portal/account"
+          className="rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-[var(--ds-off)] sm:hidden"
+          style={{ borderColor: "var(--ds-gray)", color: "var(--ds-sub)" }}
+        >
+          Profile
+        </Link>
         <button
           type="button"
           onClick={onLogout}

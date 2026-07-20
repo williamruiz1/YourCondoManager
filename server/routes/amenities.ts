@@ -6,6 +6,7 @@ import {
   amenityBlocks,
   amenityReservations,
   associations,
+  persons,
   insertAmenitySchema,
   insertAmenityBlockSchema,
   insertAmenityReservationSchema,
@@ -23,6 +24,8 @@ import {
   captureAmenityBookingMoney,
   resolveAmenityDeposit,
 } from "../services/amenity-money-service";
+import { sendPlatformEmail } from "../email-provider";
+import { sendAssociationAdminEmailNotification } from "../admin-notification-service";
 
 // `AdminRole` is imported from `@shared/schema` (Wave 38 / Phase 14 dedup —
 // the canonical source of truth, derived from `adminUserRoleEnum.enumValues`).
@@ -52,6 +55,15 @@ type RoleMiddlewareFactory = (roles: AdminRole[]) => AnyMiddleware;
 function p(value: string | string[] | undefined): string {
   if (!value) return "";
   return Array.isArray(value) ? value[0] : value;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 /** True iff the admin's scope includes `associationId` (platform-admin always).
@@ -86,6 +98,49 @@ async function reservationAssociationId(id: string): Promise<string | null> {
     .from(amenityReservations)
     .where(eq(amenityReservations.id, id));
   return row?.associationId ?? null;
+}
+
+async function sendAmenityOwnerNotification(params: {
+  reservationId: string;
+  subject: string;
+  message: string;
+  templateKey: string;
+}): Promise<void> {
+  const [row] = await db
+    .select({
+      associationId: amenityReservations.associationId,
+      status: amenityReservations.status,
+      startAt: amenityReservations.startAt,
+      endAt: amenityReservations.endAt,
+      ownerEmail: persons.email,
+      amenityName: amenities.name,
+    })
+    .from(amenityReservations)
+    .innerJoin(persons, eq(persons.id, amenityReservations.personId))
+    .innerJoin(amenities, eq(amenities.id, amenityReservations.amenityId))
+    .where(eq(amenityReservations.id, params.reservationId));
+  if (!row?.ownerEmail) return;
+
+  await sendPlatformEmail({
+    associationId: row.associationId,
+    to: row.ownerEmail,
+    subject: params.subject,
+    text: [
+      params.message,
+      `Amenity: ${row.amenityName}`,
+      `Start: ${row.startAt.toISOString()}`,
+      `End: ${row.endAt.toISOString()}`,
+      `Status: ${row.status}`,
+      "",
+      "Sign in to the Owner Portal to review your reservation.",
+    ].join("\n"),
+    templateKey: params.templateKey,
+    metadata: {
+      amenityReservationId: params.reservationId,
+      status: row.status,
+    },
+    enableTracking: true,
+  });
 }
 
 /** Resolve the owning associationId of a block by id, via its amenity. */
@@ -287,6 +342,14 @@ export function registerAmenityRoutes(
       }
 
       res.json(responseRow);
+      if (status) {
+        sendAmenityOwnerNotification({
+          reservationId: responseRow.id,
+          subject: `Amenity reservation ${status}`,
+          message: `Your amenity reservation is now ${status}.`,
+          templateKey: "amenity-reservation-status-owner",
+        }).catch((error) => console.error("[amenities] Failed to send owner status notification:", error));
+      }
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -531,6 +594,35 @@ export function registerAmenityRoutes(
       }
 
       res.status(201).json(responseRow);
+
+      sendAmenityOwnerNotification({
+        reservationId: responseRow.id,
+        subject: amenity.requiresApproval ? "Amenity reservation received" : "Amenity reservation confirmed",
+        message: amenity.requiresApproval
+          ? "We received your reservation request. It is pending association approval."
+          : "Your amenity reservation is confirmed.",
+        templateKey: "amenity-reservation-created-owner",
+      }).catch((error) => console.error("[amenities] Failed to send owner booking notification:", error));
+
+      sendAssociationAdminEmailNotification({
+        associationId,
+        category: "maintenance",
+        priority: "realtime",
+        email: {
+          subject: `${amenity.requiresApproval ? "Amenity reservation awaiting approval" : "Amenity reserved"}: ${amenity.name}`,
+          html: `<p>An owner ${amenity.requiresApproval ? "requested" : "created"} an amenity reservation.</p>
+            <p><strong>Amenity:</strong> ${escapeHtml(amenity.name)}</p>
+            <p><strong>Start:</strong> ${escapeHtml(start.toISOString())}</p>
+            <p><strong>Status:</strong> ${escapeHtml(initialStatus)}</p>`,
+          text: `Amenity: ${amenity.name}\nStart: ${start.toISOString()}\nStatus: ${initialStatus}`,
+          templateKey: "amenity-reservation-admin",
+          metadata: {
+            amenityReservationId: responseRow.id,
+            amenityId: amenity.id,
+            status: initialStatus,
+          },
+        },
+      }).catch((error) => console.error("[amenities] Failed to send admin booking notification:", error));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -556,6 +648,12 @@ export function registerAmenityRoutes(
         .where(eq(amenityReservations.id, id))
         .returning();
       res.json(updated);
+      sendAmenityOwnerNotification({
+        reservationId: updated.id,
+        subject: "Amenity reservation cancelled",
+        message: "Your amenity reservation was cancelled.",
+        templateKey: "amenity-reservation-cancelled-owner",
+      }).catch((error) => console.error("[amenities] Failed to send owner cancellation notification:", error));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
