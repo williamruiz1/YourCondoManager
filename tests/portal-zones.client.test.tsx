@@ -420,6 +420,85 @@ describe("Portal Finances — 'Pay this period' + assessment PLAN redesign (2026
     expect(screen.queryByTestId("portal-finances-balance")).not.toBeInTheDocument();
   });
 
+  it("always labels HOA and assessment dues separately for the current period, including $0 categories", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 990,
+        totalCharges: 990,
+        totalPayments: 0,
+        byUnit: [{ unitId: "u-1", unitLabel: "1417-F", total: 990, byCategory: { charge: 990 } }],
+        specialAssessmentUpcomingInstallments: [],
+        assessmentPlans: [],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("portal-finances-due-now-total")).toHaveTextContent("990.00"),
+    );
+    expect(screen.getByText(/Total due this period/i)).toBeInTheDocument();
+    expect(screen.getByTestId("portal-finances-due-now-dues")).toHaveTextContent("990.00");
+    expect(screen.getByTestId("portal-finances-due-now-assessment")).toHaveTextContent("0.00");
+  });
+
+  it("keeps an assessment-only period distinct from HOA dues", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 5618.61,
+        totalCharges: 5618.61,
+        totalPayments: 0,
+        byUnit: [{
+          unitId: "u-1",
+          unitLabel: "1417-F",
+          total: 5618.61,
+          byCategory: { assessment: 5618.61 },
+        }],
+        specialAssessmentUpcomingInstallments: [{ installmentAmount: 331 }],
+        assessmentPlans: [ROOF_PLAN],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("portal-finances-due-now-total")).toHaveTextContent("331.00"),
+    );
+    expect(screen.getByTestId("portal-finances-due-now-dues")).toHaveTextContent("0.00");
+    expect(screen.getByTestId("portal-finances-due-now-assessment")).toHaveTextContent("331.00");
+  });
+
+  it("splits the total account balance into HOA dues and assessment dues", async () => {
+    installFetchStub({
+      "/api/portal/financial-dashboard": {
+        balance: 8582.61,
+        grandTotal: 8582.61,
+        totalCharges: 8588.61,
+        totalPayments: 6,
+        byUnit: [{
+          unitId: "u-1",
+          unitLabel: "1417-F",
+          total: 8582.61,
+          byCategory: { charge: 2970, assessment: 5618.61, payment: -6 },
+        }],
+        perUnit: [{
+          unitId: "u-1",
+          unitLabel: "1417-F",
+          dueNowDues: 2970,
+          dueNowAssessment: 0,
+          dueNowTotal: 2970,
+          balanceDues: 2964,
+          balanceAssessment: 5618.61,
+          balanceTotal: 8582.61,
+        }],
+        specialAssessmentUpcomingInstallments: [],
+        assessmentPlans: [],
+      },
+    });
+    renderAt("/portal/finances", <PortalFinancesPage />);
+    await waitFor(() =>
+      expect(screen.getByTestId("portal-finances-pinned-remaining-amount")).toHaveTextContent("8,582.61"),
+    );
+    expect(screen.getByTestId("portal-finances-pinned-remaining-dues")).toHaveTextContent("2,964.00");
+    expect(screen.getByTestId("portal-finances-pinned-remaining-assessment")).toHaveTextContent("5,618.61");
+  });
+
   it("renders the special assessment as a PLAN (total · remaining over time · progress), On track — no red", async () => {
     installFetchStub({
       "/api/portal/financial-dashboard": {
@@ -474,7 +553,9 @@ describe("Portal Finances — 'Pay this period' + assessment PLAN redesign (2026
     await waitFor(() =>
       expect(screen.getByTestId("portal-finances-pinned-remaining-amount")).toHaveTextContent("12,000.00"),
     );
-    expect(screen.getByTestId("portal-finances-pinned-remaining")).toHaveTextContent(/across all open assessments/i);
+    expect(screen.getByTestId("portal-finances-pinned-remaining")).toHaveTextContent(/account balance due/i);
+    expect(screen.getByTestId("portal-finances-pinned-remaining")).toHaveTextContent(/HOA dues balance/i);
+    expect(screen.getByTestId("portal-finances-pinned-remaining")).toHaveTextContent(/Assessment dues balance/i);
   });
 
   it("PAID IN FULL: shows the calm caught-up state, no red 'due' hero", async () => {
