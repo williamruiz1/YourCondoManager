@@ -39,6 +39,11 @@ import { ErrorBoundary } from "@/components/error-boundary";
 import { RouteGuard } from "@/components/RouteGuard";
 import { ConsentModal } from "@/components/ConsentModal";
 import type { AdminRole } from "@shared/schema";
+import {
+  isBoardScopedAdminRole,
+  shouldUseStaticBoardAssociationLabel,
+} from "@shared/board-role-boundaries";
+import { canAccess as canAccessRoute } from "@shared/persona-access";
 
 const LandingPage = lazyWithReload(() => import("@/pages/landing"), "@/pages/landing");
 const SolutionsPage = lazyWithReload(() => import("@/pages/solutions"), "@/pages/solutions");
@@ -257,10 +262,6 @@ function formatAdminRole(role: AdminRole) {
     .join(" ");
 }
 
-function isSingleAssociationBoardExperience(adminRole: AdminRole | null, associationCount: number) {
-  return (adminRole === "board-officer" || adminRole === "assisted-board") && associationCount <= 1;
-}
-
 function getUserInitials(email?: string | null) {
   const source = email?.split("@")[0]?.trim();
   if (!source) return "CM";
@@ -366,10 +367,10 @@ function OnboardingResumeGuard({ children }: { children: React.ReactNode }) {
 
 function WorkspaceRouter({
   adminRole,
-  singleAssociationBoardExperience,
+  boardScopedExperience,
 }: {
   adminRole: AdminRole | null;
-  singleAssociationBoardExperience: boolean;
+  boardScopedExperience: boolean;
 }) {
   // founder-os#9487 — on the Board surface, Home is the wizard-first board home,
   // not the manager KPI dashboard.
@@ -444,10 +445,18 @@ function WorkspaceRouter({
           <DocumentsPage typeFilter="Operations" />
         </Route>
         <Route path="/app/associations">
-          {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <AssociationsPage />}
+          {boardScopedExperience ? (
+            <RouteRedirect to="/app" />
+          ) : (
+            <RouteGuard route="/app/associations"><AssociationsPage /></RouteGuard>
+          )}
         </Route>
-        <Route path="/app/association-context" component={AssociationContextPage} />
-        <Route path="/app/new-association" component={NewAssociationPage} />
+        <Route path="/app/association-context">
+          <RouteGuard route="/app/association-context"><AssociationContextPage /></RouteGuard>
+        </Route>
+        <Route path="/app/new-association">
+          <RouteGuard route="/app/new-association"><NewAssociationPage /></RouteGuard>
+        </Route>
         <Route path="/app/units" component={UnitsPage} />
         <Route path="/app/persons" component={PersonsPage} />
         <Route path="/app/owners">
@@ -467,16 +476,26 @@ function WorkspaceRouter({
             below. The previous `<Route path="/app/admin" component={RoadmapPage} />`
             declaration is intentionally removed; legitimate access to the
             roadmap goes through `/app/admin/roadmap`. */}
-        <Route path="/app/admin/roadmap" component={RoadmapPage} />
-        <Route path="/app/admin/users" component={AdminUsersPage} />
-        <Route path="/app/admin/access-review" component={AdminAccessReviewPage} />
+        <Route path="/app/admin/roadmap">
+          <RouteGuard route="/app/admin/roadmap"><RoadmapPage /></RouteGuard>
+        </Route>
+        <Route path="/app/admin/users">
+          <RouteGuard route="/app/admin/users"><AdminUsersPage /></RouteGuard>
+        </Route>
+        <Route path="/app/admin/access-review">
+          <RouteGuard route="/app/admin/access-review"><AdminAccessReviewPage /></RouteGuard>
+        </Route>
         {/* #342 (WS3) — consent audit trail admin view. */}
-        <Route path="/app/admin/consent-audit" component={AdminConsentAuditPage} />
+        <Route path="/app/admin/consent-audit">
+          <RouteGuard route="/app/admin/consent-audit"><AdminConsentAuditPage /></RouteGuard>
+        </Route>
         <Route path="/admin/consent-audit">
           <RouteRedirect to="/app/admin/consent-audit" />
         </Route>
         {/* #1340 — Cherry Hill go-live readiness dashboard. Platform-admin only. */}
-        <Route path="/app/admin/go-live-readiness" component={GoLiveReadinessPage} />
+        <Route path="/app/admin/go-live-readiness">
+          <RouteGuard route="/app/admin/go-live-readiness"><GoLiveReadinessPage /></RouteGuard>
+        </Route>
         {/* founder-os#970 Gap C — reconciliation auto-match + manual-match + report. */}
         <Route path="/app/admin/reconciliation" component={AdminReconciliationPage} />
         {/* founder-os#2479 — admin manual payment recording. */}
@@ -487,7 +506,9 @@ function WorkspaceRouter({
         <Route path="/admin/payments/record">
           <RouteRedirect to="/app/admin/payments/record" />
         </Route>
-        <Route path="/app/admin/executive" component={ExecutivePage} />
+        <Route path="/app/admin/executive">
+          <RouteGuard route="/app/admin/executive"><ExecutivePage /></RouteGuard>
+        </Route>
         {/* Finance — consolidated routes (Wave 18: each wrapped in zone-scoped ErrorBoundary;
             Phase 12: wrapped in <RouteGuard> per ADR 0b — role list lives in ROUTE_MANIFEST). */}
         <Route path="/app/financial/foundation"><RouteGuard route="/app/financial/foundation"><ZoneBoundary zone="Financials"><FinancialFoundationPage /></ZoneBoundary></RouteGuard></Route>
@@ -573,7 +594,11 @@ function WorkspaceRouter({
           docs/projects/platform-overhaul/decisions/0.1-dashboard-resolution.md.
         */}
         <Route path="/app/portfolio">
-          {singleAssociationBoardExperience ? <RouteRedirect to="/app" /> : <PortfolioPage />}
+          {boardScopedExperience ? (
+            <RouteRedirect to="/app" />
+          ) : (
+            <RouteGuard route="/app/portfolio"><PortfolioPage /></RouteGuard>
+          )}
         </Route>
         <Route path="/app/community-hub" component={CommunityHubPage} />
         <Route path="/app/amenities" component={AmenitiesAdminPage} />
@@ -588,7 +613,9 @@ function WorkspaceRouter({
         <Route path="/app/settings/billing">
           <RouteGuard route="/app/settings/billing"><SettingsBillingPage /></RouteGuard>
         </Route>
-        <Route path="/app/settings" component={UserSettingsPage} />
+        <Route path="/app/settings">
+          <RouteGuard route="/app/settings"><UserSettingsPage /></RouteGuard>
+        </Route>
         <Route component={NotFound} />
       </Switch>
     </Suspense>
@@ -860,7 +887,12 @@ function HeaderActions({
   const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
   const { mode: viewMode } = useViewMode();
   const accountEmail = authSession?.user?.email || authSession?.admin?.email || null;
-  const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
+  const boardScopedExperience = isBoardScopedAdminRole(adminRole);
+  const canOpenSettings = canAccessRoute(adminRole, "/app/settings");
+  const staticBoardAssociationLabel = shouldUseStaticBoardAssociationLabel(
+    adminRole,
+    associations.length,
+  );
   const activeAssociationName =
     associations.find((association) => association.id === activeAssociationId)?.name ?? "Select association";
 
@@ -939,7 +971,7 @@ function HeaderActions({
               ))
             )}
           </div>
-          {alertCount > 0 && (
+          {alertCount > 0 && !boardScopedExperience && (
             <div className="px-4 py-2.5 border-t border-slate-100 dark:border-slate-800">
               <button
                 onClick={() => navigate("/app/portfolio")}
@@ -952,15 +984,17 @@ function HeaderActions({
         </PopoverContent>
       </Popover>
       {/* Settings — navigates to user settings */}
-      <button
-        className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-        aria-label="Settings"
-        onClick={() => navigate("/app/settings")}
-      >
-        <span className="material-symbols-outlined text-[20px] text-slate-600 dark:text-slate-400">settings</span>
-      </button>
+      {canOpenSettings && (
+        <button
+          className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          aria-label="Settings"
+          onClick={() => navigate("/app/settings")}
+        >
+          <span className="material-symbols-outlined text-[20px] text-slate-600 dark:text-slate-400">settings</span>
+        </button>
+      )}
       <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1 hidden sm:block" />
-      {singleAssociationBoardExperience ? (
+      {staticBoardAssociationLabel ? (
         <div
           className="hidden h-8 items-center rounded-md border bg-muted/40 px-3 text-sm font-medium text-foreground sm:flex"
           data-testid="text-active-association"
@@ -1187,8 +1221,7 @@ function OperationsParentTabBar() {
 function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
   const [location] = useLocation();
   const mainRef = useRef<HTMLElement | null>(null);
-  const { associations } = useAssociationContext();
-  const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
+  const boardScopedExperience = isBoardScopedAdminRole(adminRole);
 
   useEffect(() => {
     mainRef.current?.scrollTo({ top: 0, behavior: "auto" });
@@ -1216,7 +1249,7 @@ function MainContent({ adminRole }: { adminRole: AdminRole | null }) {
           <ConsentGate>
             <WorkspaceRouter
               adminRole={adminRole}
-              singleAssociationBoardExperience={singleAssociationBoardExperience}
+              boardScopedExperience={boardScopedExperience}
             />
           </ConsentGate>
         </div>

@@ -114,6 +114,27 @@ const SETTINGS_BILLING_ROLES: readonly AdminRole[] = [
  * for any unlisted route per OQ-3 Option A.
  */
 export const ROUTE_MANIFEST: RouteManifest = {
+  // ---- Board/portfolio authority boundaries ----
+  // A volunteer Board Officer may serve multiple YCM associations, but the
+  // count never grants the paid Manager portfolio surface. They switch active
+  // association context in the header and remain Board-scoped.
+  "/app/associations": ["platform-admin", "manager", "pm-assistant", "viewer"],
+  "/app/portfolio": ["platform-admin", "manager", "pm-assistant", "viewer"],
+  "/app/association-context": ["platform-admin", "manager"],
+  "/app/new-association": ["platform-admin", "manager", "board-officer"],
+
+  // Board Officer owns self-managed settings; Assisted Board does not own the
+  // PM-managed association's settings.
+  "/app/settings": ["platform-admin", "manager", "board-officer"],
+
+  // Platform administration is never delegable to Board personas.
+  "/app/admin/roadmap": ["platform-admin"],
+  "/app/admin/users": ["platform-admin"],
+  "/app/admin/access-review": ["platform-admin"],
+  "/app/admin/consent-audit": ["platform-admin"],
+  "/app/admin/go-live-readiness": ["platform-admin"],
+  "/app/admin/executive": ["platform-admin"],
+
   // ---- Financials zone hub (3.2 Q1, Phase 11) ----
   "/app/financials": FINANCIALS_ACCESS,
 

@@ -281,7 +281,7 @@ describe("Board-member scoping — single-association Board Officer (CHC board-m
   // contract that backs the sidebar + the top-bar association-switcher gate.
   const baseCtx = {
     role: "board-officer" as const,
-    singleAssociationBoardExperience: true,
+    boardScopedExperience: true,
     amenitiesDisabled: false,
   };
 
