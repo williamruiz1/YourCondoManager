@@ -51,7 +51,12 @@ function grepTrackedForGoogleKey(): string[] {
 describe("git hygiene: no committed Google API key (A-SEC-002 / COST-B-004 / CQ-012)", () => {
   it("no git-tracked file contains a Google-API-key-shaped literal", () => {
     const offenders = grepTrackedForGoogleKey().filter(
-      (line) => !line.startsWith(`${SELF}:`),
+      (line) =>
+        !line.startsWith(`${SELF}:`) &&
+        // Screenshot inventory artifacts embed PNG bytes as data URLs. Their
+        // random base64 payload can contain an API-key-shaped substring but
+        // is not executable text or a credential.
+        !line.includes('src="data:image/'),
     );
 
     expect(
