@@ -172,6 +172,39 @@ export function computeDueNow(
   return { duesDue, assessmentInstallmentDue, totalDueNow: duesDue + assessmentInstallmentDue };
 }
 
+export interface BalanceDueBreakdown {
+  hoaDuesBalance: number;
+  assessmentDuesBalance: number;
+  totalBalance: number;
+}
+
+// Keep the account-wide balance legible as two distinct obligations. Prefer
+// the server's canonical per-unit partition; fall back to the raw ledger
+// categories while older/cached responses roll forward.
+export function computeBalanceDue(
+  perUnit: Array<Pick<PerUnitBreakdown, "balanceDues" | "balanceAssessment">>,
+  byUnit: Array<Pick<FinanceUnitBreakdown, "total" | "byCategory">>,
+  totalBalance: number,
+): BalanceDueBreakdown {
+  if (perUnit.length > 0) {
+    return {
+      hoaDuesBalance: perUnit.reduce((sum, unit) => sum + unit.balanceDues, 0),
+      assessmentDuesBalance: perUnit.reduce((sum, unit) => sum + unit.balanceAssessment, 0),
+      totalBalance,
+    };
+  }
+
+  const assessmentDuesBalance = byUnit.reduce(
+    (sum, unit) => sum + (unit.byCategory.assessment ?? 0),
+    0,
+  );
+  return {
+    hoaDuesBalance: totalBalance - assessmentDuesBalance,
+    assessmentDuesBalance,
+    totalBalance,
+  };
+}
+
 // 2026-07-14 (My Finances redesign — Overview "Recent activity") — the wire
 // shape of `GET /api/portal/payment-transactions` this page cares about.
 // The endpoint already returns the full `PaymentTransaction` row; only the
@@ -1038,6 +1071,10 @@ function FinancesHubContent() {
   // Breakdown tab). Pinned above the tabs per the wireframe so they stay
   // visible regardless of which tab is open.
   const totalRemaining = dashboard?.grandTotal ?? balance;
+  const remainingBalanceBreakdown = useMemo(
+    () => computeBalanceDue(perUnit, byUnit, totalRemaining),
+    [perUnit, byUnit, totalRemaining],
+  );
 
   // 2026-07-14 (My Finances redesign — Overview "Recent activity", PR #514
   // coordination) — merge in-flight payment_transactions (not yet reflected
@@ -1114,16 +1151,37 @@ function FinancesHubContent() {
           </Link>
         </div>
         <div className="pfx-pin-card" data-testid="portal-finances-pinned-remaining">
-          <p className="pfx-k">Total remaining</p>
+          <p className="pfx-k">Account balance due</p>
           <p
             className={`pfx-v ${totalRemaining > 0 ? "pfx-bad" : ""}`}
             data-testid="portal-finances-pinned-remaining-amount"
           >
             ${formatCurrency(totalRemaining)}
           </p>
-          <p className="pfx-sub">
-            Across all open assessments &amp; dues — see the Breakdown tab.
-          </p>
+          <div className="mt-3 grid grid-cols-1 gap-2 border-t border-border/70 pt-3 sm:grid-cols-2">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                HOA dues balance
+              </p>
+              <p
+                className="mt-0.5 tabular-nums text-sm font-bold text-on-surface"
+                data-testid="portal-finances-pinned-remaining-dues"
+              >
+                ${formatCurrency(remainingBalanceBreakdown.hoaDuesBalance)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-on-surface-variant">
+                Assessment dues balance
+              </p>
+              <p
+                className="mt-0.5 tabular-nums text-sm font-bold text-on-surface"
+                data-testid="portal-finances-pinned-remaining-assessment"
+              >
+                ${formatCurrency(remainingBalanceBreakdown.assessmentDuesBalance)}
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -1211,7 +1269,7 @@ function FinancesHubContent() {
               </div>
 
               <p className="mt-4 text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--ds-sub, #4a6b68)" }}>
-                Pay this period · {thisPeriodLabel}
+                Total due this period · {thisPeriodLabel}
               </p>
               <p
                 className="mt-0 tabular-nums font-headline"
@@ -1226,24 +1284,23 @@ function FinancesHubContent() {
                 ${formatCurrency(totalDueNow)}
               </p>
 
-              {/* breakdown: this month's dues + this month's installment */}
+              {/* Always show both categories so owners never have to infer
+                  whether the period total contains HOA or assessment dues. */}
               <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm" style={{ color: "var(--ds-sub, #4a6b68)" }}>
                 <span className="inline-flex items-center gap-2">
                   <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "var(--ds-teal, #014d4a)" }} aria-hidden="true" />
-                  Monthly dues{" "}
+                  HOA dues due this period{" "}
                   <b className="tabular-nums" style={{ color: "#1a3634" }} data-testid="portal-finances-due-now-dues">
                     ${formatCurrency(duesDue)}
                   </b>
                 </span>
-                {assessmentInstallmentDue > 0 ? (
-                  <span className="inline-flex items-center gap-2">
-                    <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "var(--ds-accent, #15a39c)" }} aria-hidden="true" />
-                    Assessment installment{" "}
-                    <b className="tabular-nums" style={{ color: "#1a3634" }} data-testid="portal-finances-due-now-assessment">
-                      ${formatCurrency(assessmentInstallmentDue)}
-                    </b>
-                  </span>
-                ) : null}
+                <span className="inline-flex items-center gap-2">
+                  <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: "var(--ds-accent, #15a39c)" }} aria-hidden="true" />
+                  Assessment dues due this period{" "}
+                  <b className="tabular-nums" style={{ color: "#1a3634" }} data-testid="portal-finances-due-now-assessment">
+                    ${formatCurrency(assessmentInstallmentDue)}
+                  </b>
+                </span>
               </div>
 
               {/* 2026-07-17 (William: pending-payment visibility) — a
