@@ -3,6 +3,10 @@ import { pgTable, text, varchar, integer, real, doublePrecision, timestamp, pgEn
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { HUB_VISIBILITY_ALL_VALUES } from "./hub-visibility";
+import {
+  ASSISTED_BOARD_TOGGLE_KEYS,
+  type AssistedBoardToggleKey,
+} from "./delegated-feature-access";
 
 export const associations = pgTable("associations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -1759,8 +1763,8 @@ export const pmToggles = pgTable("pm_toggles", {
   uniquePmToggleAssociationKey: uniqueIndex("pm_toggles_association_key_uq").on(table.associationId, table.toggleKey),
 }));
 
-export const PM_TOGGLE_KEYS = ["assessment_rules_write"] as const;
-export type PmToggleKey = (typeof PM_TOGGLE_KEYS)[number];
+export const PM_TOGGLE_KEYS = ASSISTED_BOARD_TOGGLE_KEYS;
+export type PmToggleKey = AssistedBoardToggleKey;
 
 export function isPmToggleKey(value: unknown): value is PmToggleKey {
   return typeof value === "string" && (PM_TOGGLE_KEYS as readonly string[]).includes(value);

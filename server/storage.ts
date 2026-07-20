@@ -54,11 +54,15 @@ import {
   clauseTags,
   complianceAlertOverrides,
   communicationHistory,
+  communityAnnouncements,
   contactUpdateRequests,
   inspectionRecords,
   maintenanceScheduleInstances,
   maintenanceScheduleTemplates,
   maintenanceRequests,
+  amenities,
+  amenityBlocks,
+  amenityReservations,
   associationIngestionCorrectionMemory,
   documentTags,
   documentVersions,
@@ -86,6 +90,7 @@ import {
   roadmapTaskAttachments,
   roadmapTasks,
   roadmapWorkstreams,
+  residentFeedbacks,
   lateFeeEvents,
   lateFeeRules,
   noticeSends,
@@ -109,6 +114,7 @@ import {
   units,
   voteRecords,
   vendors,
+  violations,
   workOrders,
   type AdminAssociationScope,
   type AssociationMembership,
@@ -14715,6 +14721,34 @@ export class DatabaseStorage implements IStorage {
 
   async getAssociationIdForScopedResource(resourceType: string, id: string): Promise<string | null | undefined> {
     switch (resourceType) {
+      case "building": {
+        const [result] = await db.select({ associationId: buildings.associationId }).from(buildings).where(eq(buildings.id, id));
+        return result?.associationId;
+      }
+      case "unit": {
+        const [result] = await db.select({ associationId: units.associationId }).from(units).where(eq(units.id, id));
+        return result?.associationId;
+      }
+      case "person": {
+        const [result] = await db.select({ associationId: persons.associationId }).from(persons).where(eq(persons.id, id));
+        return result?.associationId;
+      }
+      case "ownership": {
+        const [result] = await db
+          .select({ associationId: units.associationId })
+          .from(ownerships)
+          .innerJoin(units, eq(units.id, ownerships.unitId))
+          .where(eq(ownerships.id, id));
+        return result?.associationId;
+      }
+      case "occupancy": {
+        const [result] = await db
+          .select({ associationId: units.associationId })
+          .from(occupancies)
+          .innerJoin(units, eq(units.id, occupancies.unitId))
+          .where(eq(occupancies.id, id));
+        return result?.associationId;
+      }
       case "board-role": {
         const [result] = await db.select({ associationId: boardRoles.associationId }).from(boardRoles).where(eq(boardRoles.id, id));
         return result?.associationId;
@@ -14800,6 +14834,46 @@ export class DatabaseStorage implements IStorage {
       }
       case "vendor": {
         const [result] = await db.select({ associationId: vendors.associationId }).from(vendors).where(eq(vendors.id, id));
+        return result?.associationId;
+      }
+      case "election": {
+        const [result] = await db.select({ associationId: elections.associationId }).from(elections).where(eq(elections.id, id));
+        return result?.associationId;
+      }
+      case "violation": {
+        const [result] = await db.select({ associationId: violations.associationId }).from(violations).where(eq(violations.id, id));
+        return result?.associationId;
+      }
+      case "community-announcement": {
+        const [result] = await db
+          .select({ associationId: communityAnnouncements.associationId })
+          .from(communityAnnouncements)
+          .where(eq(communityAnnouncements.id, id));
+        return result?.associationId;
+      }
+      case "resident-feedback": {
+        const [result] = await db
+          .select({ associationId: residentFeedbacks.associationId })
+          .from(residentFeedbacks)
+          .where(eq(residentFeedbacks.id, id));
+        return result?.associationId;
+      }
+      case "amenity": {
+        const [result] = await db.select({ associationId: amenities.associationId }).from(amenities).where(eq(amenities.id, id));
+        return result?.associationId;
+      }
+      case "amenity-reservation": {
+        const [result] = await db
+          .select({ associationId: amenityReservations.associationId })
+          .from(amenityReservations)
+          .where(eq(amenityReservations.id, id));
+        return result?.associationId;
+      }
+      case "amenity-block": {
+        const [result] = await db
+          .select({ associationId: amenityBlocks.associationId })
+          .from(amenityBlocks)
+          .where(eq(amenityBlocks.id, id));
         return result?.associationId;
       }
       case "utility-payment": {

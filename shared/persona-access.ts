@@ -41,6 +41,7 @@
 export { type AdminRole } from "./schema";
 
 import type { AdminRole } from "./schema";
+import { ASSISTED_BOARD_FEATURES } from "./delegated-feature-access";
 
 // ---------------------------------------------------------------------------
 // Route manifest
@@ -196,11 +197,18 @@ export const ROUTE_MANIFEST: RouteManifest = {
 
 export type FeatureManifest = Readonly<Record<string, readonly AdminRole[]>>;
 
-/**
- * Phase 0b.2: empty. Phase 9 populates from the 0.2 PM-Managed Default
- * Access Table.
- */
-export const FEATURE_MANIFEST: FeatureManifest = {};
+export const FEATURE_MANIFEST: FeatureManifest = Object.fromEntries(
+  ASSISTED_BOARD_FEATURES.map((feature) => [
+    feature.id,
+    [
+      "manager",
+      "board-officer",
+      "pm-assistant",
+      "viewer",
+      ...(feature.defaultView ? ["assisted-board" as const] : []),
+    ] satisfies readonly AdminRole[],
+  ]),
+);
 
 // ---------------------------------------------------------------------------
 // canAccess — pure predicate

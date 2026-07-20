@@ -32,6 +32,13 @@ describe("4.3 Q6 — PM_TOGGLE_KEYS / isPmToggleKey", () => {
     expect(PM_TOGGLE_KEYS).toContain("assessment_rules_write");
   });
 
+  it("PM_TOGGLE_KEYS includes independent View and Write keys", () => {
+    expect(PM_TOGGLE_KEYS).toContain("financials.reports.view");
+    expect(PM_TOGGLE_KEYS).toContain("financials.reports.write");
+    expect(PM_TOGGLE_KEYS).toContain("operations.work-orders.view");
+    expect(PM_TOGGLE_KEYS).toContain("operations.work-orders.write");
+  });
+
   it("isPmToggleKey accepts every canonical key", () => {
     for (const key of PM_TOGGLE_KEYS) {
       expect(isPmToggleKey(key)).toBe(true);

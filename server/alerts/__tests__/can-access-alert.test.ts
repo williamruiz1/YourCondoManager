@@ -42,8 +42,22 @@ describe("canAccessAlert", () => {
     // governance-compliance (insurance expiry) mirrors governance.documents
     // — board-level oversight, so Assisted Board can view.
     expect(canAccessAlert("assisted-board", FEATURE_DOMAINS.GOVERNANCE_COMPLIANCE, EMPTY_TOGGLES)).toBe(true);
-    // vendors is PM-operational, like work orders — Assisted Board denied.
-    expect(canAccessAlert("assisted-board", FEATURE_DOMAINS.VENDORS, EMPTY_TOGGLES)).toBe(false);
+    // Vendor-contract oversight is visible by default; operational vendor
+    // management remains a separate, non-delegated feature.
+    expect(canAccessAlert("assisted-board", FEATURE_DOMAINS.VENDORS, EMPTY_TOGGLES)).toBe(true);
+  });
+
+  it("Manager overrides change Assisted Board alert visibility per permission", () => {
+    expect(
+      canAccessAlert("assisted-board", FEATURE_DOMAINS.FINANCIALS_REPORTS, {
+        "financials.reports.view": false,
+      }),
+    ).toBe(false);
+    expect(
+      canAccessAlert("assisted-board", FEATURE_DOMAINS.OPERATIONS_WORK_ORDERS, {
+        "operations.work-orders.view": true,
+      }),
+    ).toBe(true);
   });
 
   it("Tier 2 feature domains resolve for Board Officer, PM Assistant, Manager, Platform Admin", () => {

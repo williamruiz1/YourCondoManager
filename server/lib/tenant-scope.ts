@@ -161,6 +161,20 @@ export function setResourceAssociationResolver(resolver: ResourceAssociationReso
   boundResolver = resolver;
 }
 
+/** Resolve a scoped resource to its canonical association using the same
+ * application-bound resolver as `assertResourceScope`. Callers that need the
+ * tenant id for a second authorization decision (such as a per-association
+ * delegation envelope) must use this instead of trusting client context. */
+export async function resolveResourceAssociationId(
+  resourceType: string,
+  id: string,
+): Promise<string | null | undefined> {
+  if (!boundResolver) {
+    throw new Error("Resource association resolver is not configured");
+  }
+  return boundResolver(resourceType, id);
+}
+
 /**
  * Assert a non-platform admin may access resource `(resourceType, id)`. Fail-closed
  * per `resourceScopeDecision`. `opts.write` marks a mutating call (a write to a

@@ -300,9 +300,16 @@ import { reportInitialUsageForAssociation, reconcileAllSubscriptionUsage } from 
 import type { MeterPoster } from "./services/stripe-meter-reporting";
 import {
   listTogglesForAssociation,
+  listAssistedBoardAccessMatrix,
   setToggle,
   canAssessmentRulesWrite,
 } from "./pm-toggles";
+import { evaluateAssistedBoardMutation } from "./assisted-board-delegation";
+import {
+  ASSISTED_BOARD_FEATURES,
+  delegatedToggleDescriptor,
+  delegatedToggleKey,
+} from "@shared/delegated-feature-access";
 import {
   ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
   ADMIN_CONTEXTUAL_FEEDBACK_PROJECT_ID,
@@ -1230,6 +1237,31 @@ function evaluateAiIngestionRollout(input: {
 
 async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction) {
   if (await tryHydrateAdminFromSession(req)) {
+    try {
+      const delegatedDecision = await evaluateAssistedBoardMutation(req);
+      if (!delegatedDecision.allowed) {
+        console.warn("[assisted-board-delegation][denied]", {
+          code: delegatedDecision.code,
+          path: req.path,
+          method: req.method,
+          adminUserId: req.adminUserId ?? null,
+          associationId: delegatedDecision.associationId ?? null,
+          featureId: delegatedDecision.featureId ?? null,
+        });
+        return res.status(403).json({
+          message: "Insufficient delegated access",
+          code: delegatedDecision.code,
+          detail: delegatedDecision.detail,
+          featureId: delegatedDecision.featureId ?? null,
+        });
+      }
+    } catch (error) {
+      return res.status(403).json({
+        message: "Insufficient delegated access",
+        code: "ASSISTED_BOARD_SCOPE_REQUIRED",
+        detail: error instanceof Error ? error.message : "Association scope could not be resolved.",
+      });
+    }
     return next();
   }
 
@@ -2091,11 +2123,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           adminRole: req.adminRole!,
           adminScopedAssociationIds: req.adminScopedAssociationIds ?? [],
         });
+        const personaTogglesByAssociation = req.adminRole === "assisted-board"
+          ? Object.fromEntries(
+              await Promise.all(
+                permittedAssociations.map(async ({ id }) => [
+                  id,
+                  await listTogglesForAssociation(id),
+                ] as const),
+              ),
+            )
+          : undefined;
 
         const payload = await getCrossAssociationAlerts({
           adminUserId: req.adminUserId!,
           adminRole: req.adminRole!,
           personaToggles: {},
+          personaTogglesByAssociation,
           permittedAssociations,
           zone,
           limit,
@@ -2188,21 +2231,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(404).json({ message: "Alert not found", code: "ALERT_NOT_FOUND" });
       }
 
-      const { canAccessAlert } = await import("./alerts/can-access-alert");
-      const { parseAlertId, RULE_TYPE_FEATURE_DOMAIN } = await import("./alerts/types");
       const { invalidateAlertCache } = await import("./alerts");
-
-      const parsed = parseAlertId(alertId);
-      if (!parsed) {
-        return res.status(404).json({ message: "Alert not found", code: "ALERT_NOT_FOUND" });
-      }
-      const featureDomain = RULE_TYPE_FEATURE_DOMAIN[parsed.ruleType];
-      if (!canAccessAlert(req.adminRole!, featureDomain, {})) {
-        return res.status(403).json({
-          message: "You do not have access to this alert",
-          code: "ALERT_FEATURE_DOMAIN_FORBIDDEN",
-        });
-      }
 
       // Cross-tenant ownership gate — must run BEFORE the upsert.
       const ownershipError = await assertAlertOwnership(req, alertId);
@@ -2262,21 +2291,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(404).json({ message: "Alert not found", code: "ALERT_NOT_FOUND" });
       }
 
-      const { canAccessAlert } = await import("./alerts/can-access-alert");
-      const { parseAlertId, RULE_TYPE_FEATURE_DOMAIN } = await import("./alerts/types");
       const { invalidateAlertCache } = await import("./alerts");
-
-      const parsed = parseAlertId(alertId);
-      if (!parsed) {
-        return res.status(404).json({ message: "Alert not found", code: "ALERT_NOT_FOUND" });
-      }
-      const featureDomain = RULE_TYPE_FEATURE_DOMAIN[parsed.ruleType];
-      if (!canAccessAlert(req.adminRole!, featureDomain, {})) {
-        return res.status(403).json({
-          message: "You do not have access to this alert",
-          code: "ALERT_FEATURE_DOMAIN_FORBIDDEN",
-        });
-      }
 
       // Cross-tenant ownership gate — must run BEFORE the upsert.
       const ownershipError = await assertAlertOwnership(req, alertId);
@@ -2822,20 +2837,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ---------------------------------------------------------------------------
   // 4.3 Q6 — PM toggle management (per-association boolean overrides)
   //
-  // Managers + Platform Admins read/write `pmToggles`. Other roles are 403.
+  // Managers configure `pmToggles`; Assisted Board may read its effective
+  // envelope. Other roles are 403 and no platform/admin authority is
+  // delegable.
   // Valid keys are enumerated by `PM_TOGGLE_KEYS` in shared/schema.ts; unknown
   // keys return 400 on write.
   // ---------------------------------------------------------------------------
   app.get(
     "/api/associations/:id/pm-toggles",
     requireAdmin,
-    requireAdminRole(["platform-admin", "manager"]),
+    requireAdminRole(["manager", "assisted-board"]),
     async (req: AdminRequest, res) => {
       try {
         const associationId = getParam(req.params.id);
         assertAssociationScope(req, associationId);
         const toggles = await listTogglesForAssociation(associationId);
-        res.json({ toggles });
+        const access = await listAssistedBoardAccessMatrix(associationId, toggles);
+        res.json({
+          toggles,
+          access,
+          features: ASSISTED_BOARD_FEATURES,
+          configurable: req.adminRole === "manager",
+        });
       } catch (error: any) {
         const status = error?.status ?? 403;
         res.status(status).json({
@@ -2849,7 +2872,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.put(
     "/api/associations/:id/pm-toggles/:toggleKey",
     requireAdmin,
-    requireAdminRole(["platform-admin", "manager"]),
+    requireAdminRole(["manager"]),
     async (req: AdminRequest, res) => {
       try {
         const associationId = getParam(req.params.id);
@@ -2873,8 +2896,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
 
         const adminUserId = req.adminUserId!;
+        const descriptor = delegatedToggleDescriptor(toggleKey);
+        if (descriptor?.permission === "write" && enabled) {
+          await setToggle(
+            associationId,
+            delegatedToggleKey(descriptor.featureId, "view"),
+            true,
+            adminUserId,
+          );
+        }
+        if (descriptor?.permission === "view" && !enabled) {
+          await setToggle(
+            associationId,
+            delegatedToggleKey(descriptor.featureId, "write"),
+            false,
+            adminUserId,
+          );
+        }
         await setToggle(associationId, toggleKey, enabled, adminUserId);
-        res.json({ toggleKey, enabled });
+        const access = await listAssistedBoardAccessMatrix(associationId);
+        res.json({ toggleKey, enabled, access });
       } catch (error: any) {
         const status = error?.status ?? 403;
         res.status(status).json({

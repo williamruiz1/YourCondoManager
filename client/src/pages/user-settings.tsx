@@ -27,6 +27,7 @@ import type { AdminNotificationPreferences } from "@shared/admin-notification-pr
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAssociationContext } from "@/context/association-context";
 import { AmenitiesFeatureToggleCard } from "@/components/settings/amenities-feature-toggle-card";
+import { AssistedBoardAccessCard } from "@/components/settings/assisted-board-access-card";
 import { CriticalAlertDeliveryCard } from "@/components/settings/critical-alert-delivery-card";
 import { Link } from "wouter";
 import { CreditCard, ChevronRight } from "lucide-react";
@@ -452,6 +453,10 @@ export default function UserSettingsPage() {
 
             {/* 4.2 Q3 addendum (3a): per-association amenities feature toggle. */}
             <AmenitiesFeatureToggleCard associationId={activeAssociationId || null} />
+
+            {role === "manager" ? (
+              <AssistedBoardAccessCard associationId={activeAssociationId || null} />
+            ) : null}
 
             {/* 4.4 Q6 Wave 13 — Billing entry point. The full /app/settings/billing
                 page handles role-gating; this is a discovery link for Manager /
