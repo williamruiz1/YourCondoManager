@@ -320,6 +320,72 @@ export function buildActivityFeed(
     .slice(0, limit);
 }
 
+export interface LedgerHistoryItem {
+  id: string;
+  kind: "posted" | "processing" | "failed";
+  entryType: string;
+  unitId: string;
+  amount: number;
+  occurredAt: string | Date | null;
+  description: string | null;
+}
+
+// The full ledger is an account history, not only a journal dump. Merge
+// unsettled payment attempts alongside posted owner-ledger entries so the
+// owner sees one continuous timeline from submission through settlement.
+// Informational processing/failed rows never participate in balance math;
+// only owner_ledger_entries remain the accounting source of truth.
+export function buildLedgerHistory(
+  ledger: Array<{
+    id: string;
+    entryType: string;
+    unitId: string;
+    amount: number;
+    postedAt: string | Date | null;
+    description: string | null;
+  }>,
+  nonSettledTransactions: PortalPaymentTransaction[],
+): LedgerHistoryItem[] {
+  const transactionItems: LedgerHistoryItem[] = nonSettledTransactions.map((tx) => {
+    const methodLabel =
+      tx.checkoutMethod === "card"
+        ? "Card"
+        : tx.checkoutMethod === "ach"
+          ? "ACH bank transfer"
+          : "Payment";
+    const isFailed = tx.status === "failed";
+    return {
+      id: `${isFailed ? "failed" : "processing"}-${tx.id}`,
+      kind: isFailed ? "failed" : "processing",
+      entryType: "payment",
+      unitId: tx.unitId,
+      // Match the posted-payment sign convention while the status and notice
+      // make clear this informational row is not yet applied to the balance.
+      amount: -(tx.amountCents / 100),
+      occurredAt: tx.createdAt,
+      description: isFailed
+        ? tx.failureReason?.trim() || `${methodLabel} failed — not applied to your balance`
+        : `${methodLabel} submitted — not yet applied to your balance`,
+    };
+  });
+
+  const postedItems: LedgerHistoryItem[] = ledger.map((entry) => ({
+    id: entry.id,
+    kind: "posted",
+    entryType: entry.entryType,
+    unitId: entry.unitId,
+    amount: Number(entry.amount),
+    occurredAt: entry.postedAt,
+    description: entry.description,
+  }));
+
+  return [...transactionItems, ...postedItems].sort((a, b) => {
+    const aTime = a.occurredAt ? new Date(a.occurredAt).getTime() : 0;
+    const bTime = b.occurredAt ? new Date(b.occurredAt).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 type FinanceUnitEntry = {
   id: string;
   entryType: FinanceCategoryKey | string;
@@ -884,6 +950,11 @@ function FinancesHubContent() {
   const { portalFetch, session } = usePortalContext();
   const qc = useQueryClient();
   const [paymentAmount, setPaymentAmount] = useState("");
+  // A payment transaction and its eventual ledger credit belong to exactly
+  // one unit. Multi-unit owners must choose that unit explicitly; silently
+  // applying an account-wide amount to the first unit with a balance caused
+  // a real payment to be attributed to the wrong property.
+  const [selectedPaymentUnitId, setSelectedPaymentUnitId] = useState("");
   // 2026-06-30 — surface pay-flow errors so the owner sees WHY a payment
   // didn't start, rather than a silently-dead button (William finding #2).
   const [payError, setPayError] = useState<string | null>(null);
@@ -922,24 +993,23 @@ function FinancesHubContent() {
   });
 
   const startCheckout = useMutation({
-    mutationFn: async ({ amount, method }: { amount: number; method: "ach" | "card" }) => {
+    mutationFn: async ({
+      amount,
+      method,
+      unitId,
+    }: {
+      amount: number;
+      method: "ach" | "card";
+      unitId: string;
+    }) => {
       // 2026-06-30 — fix the request/response contract to match the server.
       // `POST /api/portal/pay` (server/routes/payment-portal.ts) expects
       // `{ amountCents: integer, unitId }` and returns `{ checkoutUrl }`.
       // The prior body `{ amount, description }` + `data.url` read silently
       // broke the owner "Pay now" button (400 "amountCents must be a positive
       // integer", and no redirect even on success). Convert dollars→cents and
-      // resolve the unit the payment applies to.
-      const units = dashboard?.byUnit ?? [];
-      // Prefer the single owned unit; for multi-unit owners default to the
-      // unit carrying an outstanding balance (oldest/first such), else the
-      // first unit. Stripe Checkout still collects the full amount entered.
-      const unitId =
-        units.length === 1
-          ? units[0].unitId
-          : (units.find((u) => (u.total ?? 0) > 0)?.unitId ?? units[0]?.unitId);
       if (!unitId) {
-        throw new Error("No unit is associated with your account to apply this payment to.");
+        throw new Error("Choose the unit this payment should apply to.");
       }
       const amountCents = Math.round(amount * 100);
       const res = await portalFetch("/api/portal/pay", {
@@ -980,6 +1050,25 @@ function FinancesHubContent() {
   // line items = rows) for EVERY owner, single-unit included (William ask
   // 2026-07-03). Sums reconcile to the owner-wide due-now + balance totals.
   const perUnit = dashboard?.perUnit ?? [];
+  const paymentUnits = useMemo(
+    () =>
+      byUnit.map((unit) => {
+        const breakdown = perUnit.find((item) => item.unitId === unit.unitId);
+        return {
+          unitId: unit.unitId,
+          unitLabel: unit.unitLabel || "Unit",
+          dueNow: breakdown?.dueNowTotal ?? Math.max(0, unit.total ?? 0),
+          balance: breakdown?.balanceTotal ?? Math.max(0, unit.total ?? 0),
+        };
+      }),
+    [byUnit, perUnit],
+  );
+  const isMultiUnitOwner = paymentUnits.length > 1;
+  const effectivePaymentUnitId =
+    paymentUnits.length === 1 ? paymentUnits[0].unitId : selectedPaymentUnitId;
+  const selectedPaymentUnit = paymentUnits.find(
+    (unit) => unit.unitId === effectivePaymentUnitId,
+  );
 
   // 2026-06-30 — "What's due now" breakdown (William finding #3): separate HOA
   // dues from special-assessment installments, and show the installment(s)
@@ -999,7 +1088,18 @@ function FinancesHubContent() {
   const overdueFromPriorPeriods = dashboard?.overdueFromPriorPeriods ?? null;
   const overdueAmount = overdueFromPriorPeriods?.amount ?? 0;
   const totalToCatchUp = totalDueNow + overdueAmount;
-  const heroPrimaryAmount = overdueAmount > 0 ? totalToCatchUp : totalDueNow;
+  // For a multi-unit owner the payment destination is a single unit, so the
+  // CTA uses that unit's due-now figure. The account-wide totals above remain
+  // useful context but are never silently posted wholesale to one property.
+  const selectedUnitDueNow = isMultiUnitOwner
+    ? selectedPaymentUnit?.dueNow ?? 0
+    : totalDueNow;
+  const heroPrimaryAmount =
+    isMultiUnitOwner
+      ? selectedUnitDueNow
+      : overdueAmount > 0
+        ? totalToCatchUp
+        : totalDueNow;
 
   // CT convenience-fee structure (memo §6) — preview for the hero "Pay this
   // period" amount. `cardFeeEnabled` is false for every association until
@@ -1394,23 +1494,58 @@ function FinancesHubContent() {
                   (this period + everything overdue), otherwise just this
                   period; a secondary "pay just this period" option appears
                   only when there's real arrears to separate from. */}
+              {isMultiUnitOwner ? (
+                <div className="mt-5 max-w-sm">
+                  <Label htmlFor="portal-finances-payment-unit" className="text-sm font-semibold text-on-surface">
+                    Apply payment to
+                  </Label>
+                  <select
+                    id="portal-finances-payment-unit"
+                    value={selectedPaymentUnitId}
+                    onChange={(event) => {
+                      setSelectedPaymentUnitId(event.target.value);
+                      setPayError(null);
+                    }}
+                    className="mt-1 h-11 w-full rounded-md border border-input bg-background px-3 text-sm text-on-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    data-testid="portal-finances-payment-unit"
+                  >
+                    <option value="">Choose a unit</option>
+                    {paymentUnits.map((unit) => (
+                      <option key={unit.unitId} value={unit.unitId}>
+                        {unit.unitLabel} — ${formatCurrency(unit.dueNow)} due this period
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-on-surface-variant">
+                    Each payment applies to one unit. You can make another payment for a different unit.
+                  </p>
+                </div>
+              ) : null}
               <div className="mt-5 flex flex-wrap items-center gap-3">
                 {heroPrimaryAmount > 0 ? (
                   <Button
                     onClick={() => {
                       setPayError(null);
-                      startCheckout.mutate({ amount: Number(heroAmountForMethod.toFixed(2)), method: paymentMethod });
+                      if (!effectivePaymentUnitId) {
+                        setPayError("Choose the unit this payment should apply to.");
+                        return;
+                      }
+                      startCheckout.mutate({
+                        amount: Number(heroAmountForMethod.toFixed(2)),
+                        method: paymentMethod,
+                        unitId: effectivePaymentUnitId,
+                      });
                     }}
-                    disabled={startCheckout.isPending}
+                    disabled={startCheckout.isPending || !effectivePaymentUnitId}
                     className="min-h-11"
                     data-testid="portal-finances-pay-this-period-cta"
                   >
                     {startCheckout.isPending
                       ? t("portal.finances.makePayment.redirecting")
-                      : `Pay $${formatCurrency(heroAmountForMethod)}${overdueAmount > 0 ? " — catch up now" : ""}${paymentMethod === "card" && heroCardFeeEnabled ? " by card" : ""}`}
+                      : `Pay $${formatCurrency(heroAmountForMethod)}${selectedPaymentUnit ? ` for ${selectedPaymentUnit.unitLabel}` : ""}${!isMultiUnitOwner && overdueAmount > 0 ? " — catch up now" : ""}${paymentMethod === "card" && heroCardFeeEnabled ? " by card" : ""}`}
                   </Button>
                 ) : null}
-                {overdueAmount > 0 && totalDueNow > 0 ? (
+                {!isMultiUnitOwner && overdueAmount > 0 && totalDueNow > 0 ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -1432,9 +1567,6 @@ function FinancesHubContent() {
                 >
                   Pay a different amount &rarr;
                 </a>
-                {byUnit.length > 1 ? (
-                  <span className="text-xs text-on-surface-variant">All {byUnit.length} units</span>
-                ) : null}
               </div>
               {payError ? (
                 <p className="mt-3 text-xs text-destructive" role="alert" data-testid="portal-finances-pay-error-hero">
@@ -1461,30 +1593,44 @@ function FinancesHubContent() {
         <Card data-testid="portal-finances-pay-card" id="make-payment" className="scroll-mt-24">
           <CardContent className="space-y-3 py-5">
             <h2 className="font-headline text-lg" id="portal-finances-make-payment-heading">{t("portal.finances.makePayment.title")}</h2>
+            {isMultiUnitOwner ? (
+              <p className="text-sm text-on-surface-variant">
+                {selectedPaymentUnit
+                  ? `This payment will apply to ${selectedPaymentUnit.unitLabel}.`
+                  : "Choose a unit above before entering a payment."}
+              </p>
+            ) : null}
             {/* Quick-fill chips: pay what's due now, or the full balance. The
                 owner can still type any amount below. */}
-            {(totalDueNow > 0 || balance > 0) ? (
+            {((selectedPaymentUnit?.dueNow ?? totalDueNow) > 0 ||
+              (selectedPaymentUnit?.balance ?? balance) > 0) ? (
               <div className="flex flex-wrap gap-2" data-testid="portal-finances-pay-quickfill">
-                {totalDueNow > 0 ? (
+                {(selectedPaymentUnit?.dueNow ?? totalDueNow) > 0 ? (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => setPaymentAmount(totalDueNow.toFixed(2))}
+                    onClick={() =>
+                      setPaymentAmount((selectedPaymentUnit?.dueNow ?? totalDueNow).toFixed(2))
+                    }
+                    disabled={isMultiUnitOwner && !selectedPaymentUnit}
                     data-testid="portal-finances-pay-fill-due"
                   >
-                    Due now (${formatCurrency(totalDueNow)})
+                    Due now (${formatCurrency(selectedPaymentUnit?.dueNow ?? totalDueNow)})
                   </Button>
                 ) : null}
-                {balance > 0 ? (
+                {(selectedPaymentUnit?.balance ?? balance) > 0 ? (
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={() => setPaymentAmount(balance.toFixed(2))}
+                    onClick={() =>
+                      setPaymentAmount((selectedPaymentUnit?.balance ?? balance).toFixed(2))
+                    }
+                    disabled={isMultiUnitOwner && !selectedPaymentUnit}
                     data-testid="portal-finances-pay-fill-balance"
                   >
-                    Full balance (${formatCurrency(balance)})
+                    Full balance (${formatCurrency(selectedPaymentUnit?.balance ?? balance)})
                   </Button>
                 ) : null}
               </div>
@@ -1511,14 +1657,26 @@ function FinancesHubContent() {
                   setPayError(null);
                   const amt = Number(paymentAmount);
                   if (Number.isFinite(amt) && amt > 0) {
+                    if (!effectivePaymentUnitId) {
+                      setPayError("Choose the unit this payment should apply to.");
+                      return;
+                    }
                     const chargeAmt =
                       paymentMethod === "card" && customFeePreview.data
                         ? customFeePreview.data.cardTotalCents / 100
                         : amt;
-                    startCheckout.mutate({ amount: Number(chargeAmt.toFixed(2)), method: paymentMethod });
+                    startCheckout.mutate({
+                      amount: Number(chargeAmt.toFixed(2)),
+                      method: paymentMethod,
+                      unitId: effectivePaymentUnitId,
+                    });
                   }
                 }}
-                disabled={startCheckout.isPending || !paymentAmount}
+                disabled={
+                  startCheckout.isPending ||
+                  !paymentAmount ||
+                  !effectivePaymentUnitId
+                }
                 data-testid="portal-finances-pay-now"
                 className="min-h-11 w-full sm:w-auto"
               >
@@ -2036,6 +2194,27 @@ function LedgerContent() {
     },
   });
 
+  const { data: paymentTransactions = [] } = useQuery<PortalPaymentTransaction[]>({
+    queryKey: ["portal/payment-transactions", session.id],
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/payment-transactions");
+      if (!res.ok) return [];
+      const body = await res.json();
+      return Array.isArray(body) ? (body as PortalPaymentTransaction[]) : [];
+    },
+  });
+  const nonSettledTransactions = useMemo(
+    () =>
+      paymentTransactions.filter(
+        (tx) => tx.status === "initiated" || tx.status === "pending" || tx.status === "failed",
+      ),
+    [paymentTransactions],
+  );
+  const history = useMemo(
+    () => buildLedgerHistory(ledger, nonSettledTransactions),
+    [ledger, nonSettledTransactions],
+  );
+
   // 2026-06-30 — load the dashboard's per-unit breakdown (cached; same query
   // key as the hub) so the full ledger can attribute each row to its unit
   // (William finding #5). Owner ledger entries carry only `unitId`.
@@ -2052,8 +2231,8 @@ function LedgerContent() {
   const showUnitColumn = byUnit.length > 1;
 
   const filtered = useMemo(
-    () => (typeFilter === "all" ? ledger : ledger.filter((l) => l.entryType === typeFilter)),
-    [ledger, typeFilter],
+    () => (typeFilter === "all" ? history : history.filter((item) => item.entryType === typeFilter)),
+    [history, typeFilter],
   );
 
   const typeOptions = ["all", "charge", "assessment", "payment", "late-fee", "credit", "adjustment"];
@@ -2089,7 +2268,16 @@ function LedgerContent() {
           </button>
         ))}
       </div>
-      {ledger.length === 0 ? (
+      {nonSettledTransactions.some((tx) => tx.status === "initiated" || tx.status === "pending") ? (
+        <div
+          className="rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          role="status"
+          data-testid="portal-finances-ledger-processing-note"
+        >
+          Processing payments appear here immediately. They update your balance only after the bank confirms them.
+        </div>
+      ) : null}
+      {history.length === 0 ? (
         <EmptyState
           icon={Receipt}
           title={t("portal.finances.ledger.empty.title")}
@@ -2117,6 +2305,7 @@ function LedgerContent() {
                   <TableRow>
                     <TableHead>{t("portal.finances.col.date")}</TableHead>
                     <TableHead>{t("portal.finances.col.type")}</TableHead>
+                    <TableHead>Status</TableHead>
                     {showUnitColumn ? <TableHead>{t("portal.finances.col.unit")}</TableHead> : null}
                     <TableHead>{t("portal.finances.col.description")}</TableHead>
                     <TableHead className="text-right">{t("portal.finances.col.amount")}</TableHead>
@@ -2125,7 +2314,7 @@ function LedgerContent() {
                 <TableBody>
                   {filtered.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={showUnitColumn ? 5 : 4} className="py-6 text-center text-sm text-on-surface-variant">
+                      <TableCell colSpan={showUnitColumn ? 6 : 5} className="py-6 text-center text-sm text-on-surface-variant">
                         {t("portal.finances.ledger.empty.filterMatch")}
                       </TableCell>
                     </TableRow>
@@ -2133,10 +2322,30 @@ function LedgerContent() {
                     filtered.map((entry) => (
                       <TableRow key={entry.id} data-testid={`ledger-row-${entry.id}`}>
                         <TableCell className="text-xs">
-                          {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
+                          {entry.occurredAt ? new Date(entry.occurredAt).toLocaleDateString() : "—"}
                         </TableCell>
                         <TableCell className="text-xs">
                           <Badge variant="outline">{ledgerTypeLabel(entry.entryType)}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {entry.kind === "processing" ? (
+                            <span className="pfx-chip pfx-pending" data-testid={`ledger-row-${entry.id}-status`}>
+                              <span className="pfx-dot" aria-hidden="true" />
+                              Processing
+                            </span>
+                          ) : entry.kind === "failed" ? (
+                            <Badge
+                              variant="outline"
+                              className="border-destructive/40 bg-destructive/10 text-destructive"
+                              data-testid={`ledger-row-${entry.id}-status`}
+                            >
+                              Failed
+                            </Badge>
+                          ) : (
+                            <span className="text-on-surface-variant" data-testid={`ledger-row-${entry.id}-status`}>
+                              Posted
+                            </span>
+                          )}
                         </TableCell>
                         {showUnitColumn ? (
                           <TableCell className="text-xs text-on-surface-variant">
@@ -2279,13 +2488,13 @@ function VirtualizedPortalLedger({
   entries,
   unitLabelMap,
 }: {
-  entries: OwnerLedgerEntry[];
+  entries: LedgerHistoryItem[];
   unitLabelMap?: Map<string, string>;
 }) {
   const showUnit = !!unitLabelMap;
   const gridTemplate = showUnit
-    ? "minmax(90px, 110px) minmax(90px, 130px) minmax(80px, 120px) minmax(150px, 1fr) minmax(80px, 110px)"
-    : "minmax(90px, 110px) minmax(90px, 130px) minmax(150px, 1fr) minmax(80px, 110px)";
+    ? "minmax(90px, 110px) minmax(90px, 130px) minmax(90px, 120px) minmax(80px, 120px) minmax(150px, 1fr) minmax(80px, 110px)"
+    : "minmax(90px, 110px) minmax(90px, 130px) minmax(90px, 120px) minmax(150px, 1fr) minmax(80px, 110px)";
   return (
     <div data-testid="portal-finances-ledger-virtualized" role="table" aria-label={t("portal.finances.ledger.title")}>
       <div
@@ -2295,11 +2504,12 @@ function VirtualizedPortalLedger({
       >
         <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.date")}</div>
         <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.type")}</div>
+        <div className="px-4 py-3" role="columnheader">Status</div>
         {showUnit ? <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.unit")}</div> : null}
         <div className="px-4 py-3" role="columnheader">{t("portal.finances.col.description")}</div>
         <div className="px-4 py-3 text-right" role="columnheader">{t("portal.finances.col.amount")}</div>
       </div>
-      <VirtualizedLedgerTable<OwnerLedgerEntry>
+      <VirtualizedLedgerTable<LedgerHistoryItem>
         rows={entries}
         threshold={LEDGER_VIRTUALIZE_THRESHOLD}
         estimateRowHeight={44}
@@ -2313,10 +2523,30 @@ function VirtualizedPortalLedger({
             role="row"
           >
             <div className="px-4 py-3">
-              {entry.postedAt ? new Date(entry.postedAt).toLocaleDateString() : "—"}
+              {entry.occurredAt ? new Date(entry.occurredAt).toLocaleDateString() : "—"}
             </div>
             <div className="px-4 py-3">
               <Badge variant="outline">{ledgerTypeLabel(entry.entryType)}</Badge>
+            </div>
+            <div className="px-4 py-3">
+              {entry.kind === "processing" ? (
+                <span className="pfx-chip pfx-pending" data-testid={`ledger-row-${entry.id}-status`}>
+                  <span className="pfx-dot" aria-hidden="true" />
+                  Processing
+                </span>
+              ) : entry.kind === "failed" ? (
+                <Badge
+                  variant="outline"
+                  className="border-destructive/40 bg-destructive/10 text-destructive"
+                  data-testid={`ledger-row-${entry.id}-status`}
+                >
+                  Failed
+                </Badge>
+              ) : (
+                <span className="text-on-surface-variant" data-testid={`ledger-row-${entry.id}-status`}>
+                  Posted
+                </span>
+              )}
             </div>
             {showUnit ? (
               <div className="truncate px-4 py-3 text-on-surface-variant">
