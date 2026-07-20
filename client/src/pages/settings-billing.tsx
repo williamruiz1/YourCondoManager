@@ -43,6 +43,7 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useAdminRole } from "@/hooks/useAdminRole";
 import { EmptyState } from "@/components/empty-state";
 import { t } from "@/i18n/use-strings";
+import { useAssociationContext } from "@/context/association-context";
 
 // 4.4 Q6 Wave 13 — role gate. Mirrors the requireAdminRole on
 // POST /api/admin/billing/portal-session at server/routes.ts:13390.
@@ -92,6 +93,7 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
 export default function SettingsBillingPage() {
   useDocumentTitle(`${t("settings.billing.title")} · Settings`);
   const { role, authResolved } = useAdminRole();
+  const { activeAssociationId } = useAssociationContext();
   const [, navigate] = useLocation();
 
   const allowed = authResolved && role !== null && (ALLOWED_ROLES as readonly string[]).includes(role);
@@ -103,7 +105,11 @@ export default function SettingsBillingPage() {
   }, [authResolved, allowed, navigate]);
 
   const { data: billingData, isLoading } = useQuery<BillingResponse>({
-    queryKey: ["/api/admin/billing/subscription"],
+    queryKey: [
+      activeAssociationId
+        ? `/api/admin/billing/subscription?associationId=${encodeURIComponent(activeAssociationId)}`
+        : "/api/admin/billing/subscription",
+    ],
     enabled: allowed,
     staleTime: 5 * 60 * 1000,
   });
@@ -113,6 +119,8 @@ export default function SettingsBillingPage() {
       const res = await fetch("/api/admin/billing/portal-session", {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ associationId: activeAssociationId || undefined }),
       });
       if (!res.ok) return;
       const { url } = (await res.json()) as { url?: string };

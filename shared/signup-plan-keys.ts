@@ -28,6 +28,20 @@ export interface ResolvedSignupPlan {
   planKey: string | null;
 }
 
+export type SignupAdminRole = "manager" | "board-officer";
+
+/**
+ * A paid property-management company receives the Manager persona. A
+ * self-managed association receives the Board Officer persona, even when the
+ * same volunteer later adds more self-managed associations. Association count
+ * is never an entitlement signal.
+ */
+export function resolveSignupAdminRole(
+  resolved: ResolvedSignupPlan,
+): SignupAdminRole {
+  return resolved.track === "property-manager" ? "manager" : "board-officer";
+}
+
 /**
  * Map a raw `?plan=` slug to its track + plan_catalog tier.
  *
