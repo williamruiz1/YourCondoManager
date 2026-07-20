@@ -114,6 +114,7 @@ const PortalCommunityPage = lazyWithReload(() => import("@/pages/portal/portal-c
 const PortalAmenitiesPage = lazyWithReload(() => import("@/pages/portal/portal-amenities"), "@/pages/portal/portal-amenities");
 const PortalDocumentsPage = lazyWithReload(() => import("@/pages/portal/portal-documents"), "@/pages/portal/portal-documents");
 const PortalNoticesPage = lazyWithReload(() => import("@/pages/portal/portal-notices"), "@/pages/portal/portal-notices");
+const PortalAccountPage = lazyWithReload(() => import("@/pages/portal/portal-account"), "@/pages/portal/portal-account");
 // #342 (WS3) — portal-side "My Consents" transparency view.
 const PortalMyConsentsPage = lazyWithReload(() => import("@/pages/portal/portal-my-consents"), "@/pages/portal/portal-my-consents");
 const VendorPortalPage = lazyWithReload(() => import("@/pages/vendor-portal"), "@/pages/vendor-portal");
@@ -723,6 +724,9 @@ function PublicRouter({
         </Route>
         <Route path="/portal/notices">
           <ZoneBoundary zone="Portal"><PortalNoticesPage /></ZoneBoundary>
+        </Route>
+        <Route path="/portal/account">
+          <ZoneBoundary zone="Portal"><PortalAccountPage /></ZoneBoundary>
         </Route>
         {/* #342 (WS3) — owner consent transparency. */}
         <Route path="/portal/privacy/my-consents">

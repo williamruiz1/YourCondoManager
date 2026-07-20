@@ -77,11 +77,11 @@ async function main() {
       NODE_ENV: inTestMode ? "test" : "development",
       PLAYWRIGHT_TEST_MODE: inTestMode ? "1" : "",
       // Test-only Stripe Connect webhook signer used by the owner money-loop
-      // Playwright scenario. This process is an ephemeral local server with an
-      // ephemeral PGlite database; production never executes this wrapper.
-      PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET: inTestMode
-        ? process.env.PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET ?? "whsec_playwright_owner_money_loop"
-        : process.env.PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET ?? "",
+      // Playwright scenario. Real-backend mode always runs this isolated wrapper
+      // with an ephemeral PGlite database, even when PLAYWRIGHT_TEST_MODE is not
+      // enabled for the separate test-only routes. Production never executes it.
+      PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET:
+        process.env.PLATFORM_STRIPE_CONNECT_WEBHOOK_SECRET ?? "whsec_playwright_owner_money_loop",
       AUTOMATION_SWEEPS_ENABLED: "0",
     },
   });

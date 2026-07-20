@@ -13792,6 +13792,12 @@ export class DatabaseStorage implements IStorage {
       if (typeof patch.contactPreference === "string") personPatch.contactPreference = patch.contactPreference;
       if (Object.keys(personPatch).length > 0) {
         await db.update(persons).set(personPatch).where(eq(persons.id, result.personId));
+        if (personPatch.email) {
+          await db
+            .update(portalAccess)
+            .set({ email: personPatch.email, updatedAt: new Date() })
+            .where(eq(portalAccess.personId, result.personId));
+        }
       }
     }
 
@@ -13897,19 +13903,55 @@ export class DatabaseStorage implements IStorage {
       .returning();
 
     if (before.status !== result.status) {
+      const subject = `Maintenance status update: ${result.title}`;
+      const body = `Your maintenance request status changed from ${before.status} to ${result.status}.`;
+      const recipientEmail = result.submittedByEmail?.trim() || null;
+      let deliveryStatus: "sent" | "failed" | "simulated" | "not-configured" = "not-configured";
+      let providerMessageId: string | null = null;
+
+      if (recipientEmail) {
+        try {
+          const delivery = await sendPlatformEmail({
+            associationId: result.associationId,
+            to: recipientEmail,
+            subject,
+            text: [
+              body,
+              result.resolutionNotes ? `Resolution notes: ${result.resolutionNotes}` : null,
+              "",
+              "Sign in to the Owner Portal to view the latest request details.",
+            ].filter(Boolean).join("\n"),
+            templateKey: "maintenance-request-status-owner",
+            metadata: {
+              maintenanceRequestId: result.id,
+              fromStatus: before.status,
+              toStatus: result.status,
+            },
+            enableTracking: true,
+          });
+          deliveryStatus = delivery.status;
+          providerMessageId = delivery.messageId;
+        } catch (error) {
+          deliveryStatus = "failed";
+          console.error("[maintenance] Failed to send owner status notification:", error);
+        }
+      }
+
       await this.createCommunicationHistoryRecord({
         associationId: result.associationId,
         channel: "email",
         direction: "outbound",
-        subject: `Maintenance status update: ${result.title}`,
-        bodySnippet: `Status changed from ${before.status} to ${result.status}.`,
-        recipientEmail: result.submittedByEmail ?? null,
+        subject,
+        bodySnippet: body,
+        recipientEmail,
         recipientPersonId: result.submittedByPersonId ?? null,
         relatedType: "maintenance-request-status",
         relatedId: result.id,
         metadataJson: {
           from: before.status,
           to: result.status,
+          deliveryStatus,
+          providerMessageId,
         },
       });
     }

@@ -13659,6 +13659,34 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         reviewedBy: req.adminUserEmail || null,
       });
       if (!result) return res.status(404).json({ message: "Contact update request not found" });
+
+      const portalContext = await storage.resolvePortalAccessContext(result.portalAccessId);
+      const requestedEmail = result.requestJson && typeof result.requestJson === "object"
+        && typeof (result.requestJson as Record<string, unknown>).email === "string"
+        ? String((result.requestJson as Record<string, unknown>).email).trim()
+        : "";
+      const ownerEmail = (reviewStatus === "approved" ? requestedEmail : "") || portalContext?.access.email?.trim();
+      if (ownerEmail) {
+        sendPlatformEmail({
+          associationId: result.associationId,
+          to: ownerEmail,
+          subject: `Contact update ${reviewStatus}`,
+          text: [
+            `Your contact update request was ${reviewStatus}.`,
+            reviewStatus === "approved"
+              ? "The approved details are now reflected in your owner profile."
+              : "Your existing contact details remain unchanged. Contact your association manager if you have questions.",
+            "",
+            "Sign in to the Owner Portal to review your information.",
+          ].join("\n"),
+          templateKey: "contact-update-review-owner",
+          metadata: {
+            contactUpdateRequestId: result.id,
+            reviewStatus,
+          },
+          enableTracking: true,
+        }).catch((error) => console.error("[contact-update] Failed to send owner review notification:", error));
+      }
       res.json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -14224,6 +14252,40 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       if (!ownedUnits.some((unit) => unit.unitId === unitId)) {
         return res.status(403).json({ message: "You can only update occupancy for units you own" });
       }
+      const ownedUnit = ownedUnits.find((unit) => unit.unitId === unitId);
+      const unitLabel = [ownedUnit?.building, ownedUnit?.unitNumber].filter(Boolean).join("-") || "your unit";
+      const notifyOccupancyRecorded = (summary: string) => {
+        sendPlatformEmail({
+          associationId: req.portalAssociationId!,
+          to: req.portalEmail!,
+          subject: `Occupancy updated for ${unitLabel}`,
+          text: [
+            `We recorded the following occupancy update for ${unitLabel}:`,
+            summary,
+            "",
+            "Sign in to the Owner Portal to review your current information.",
+          ].join("\n"),
+          templateKey: "occupancy-update-owner",
+          metadata: { unitId, occupancyType },
+          enableTracking: true,
+        }).catch((error) => console.error("[occupancy] Failed to send owner confirmation:", error));
+
+        sendAssociationAdminEmailNotification({
+          associationId: req.portalAssociationId!,
+          category: "occupancy",
+          priority: "realtime",
+          email: {
+            subject: `Owner occupancy update: ${unitLabel}`,
+            html: `<p>An owner recorded an occupancy update through the Owner Portal.</p>
+              <p><strong>Unit:</strong> ${escapeHtml(unitLabel)}</p>
+              <p><strong>Update:</strong> ${escapeHtml(summary)}</p>
+              <p><strong>Submitted by:</strong> ${escapeHtml(req.portalEmail || "portal user")}</p>`,
+            text: `An owner recorded an occupancy update.\nUnit: ${unitLabel}\nUpdate: ${summary}\nSubmitted by: ${req.portalEmail}`,
+            templateKey: "occupancy-update-admin",
+            metadata: { unitId, occupancyType },
+          },
+        }).catch((error) => console.error("[occupancy] Failed to send admin notification:", error));
+      };
 
       if (occupancyType === "OWNER_OCCUPIED") {
         const occupancy = await storage.createOccupancy({
@@ -14233,6 +14295,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           startDate: new Date(),
           endDate: null,
         }, req.portalEmail);
+        notifyOccupancyRecorded("Owner occupied");
         return res.status(201).json({ occupancy });
       }
 
@@ -14301,6 +14364,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         endDate: null,
       }, req.portalEmail);
 
+      notifyOccupancyRecorded(`Tenant occupied by ${firstName} ${lastName}`);
       res.status(201).json({ occupancy, person: tenantPerson });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -14589,6 +14653,43 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       });
       const result = await storage.createContactUpdateRequest(parsed);
       res.status(201).json(result);
+
+      sendAssociationAdminEmailNotification({
+        associationId: result.associationId,
+        category: "associationContext",
+        priority: "realtime",
+        email: {
+          subject: "Owner contact update awaiting review",
+          html: `<p>An owner submitted a contact-information update through the Owner Portal.</p>
+            <p><strong>Owner:</strong> ${escapeHtml(req.portalEmail || "portal user")}</p>
+            <p>Review the pending request in Communications.</p>`,
+          text: `An owner submitted a contact-information update.\nOwner: ${req.portalEmail || "portal user"}\nReview the pending request in Communications.`,
+          templateKey: "contact-update-request-admin",
+          metadata: {
+            contactUpdateRequestId: result.id,
+            associationId: result.associationId,
+          },
+        },
+      }).catch((error) => console.error("[contact-update] Failed to send admin notification:", error));
+
+      if (req.portalEmail) {
+        sendPlatformEmail({
+          associationId: result.associationId,
+          to: req.portalEmail,
+          subject: "We received your contact update",
+          text: [
+            "Your contact-information update was submitted for review.",
+            "It will remain marked pending until an association administrator approves or rejects it.",
+            "",
+            "You can track the request from your Owner Portal.",
+          ].join("\n"),
+          templateKey: "contact-update-request-owner",
+          metadata: {
+            contactUpdateRequestId: result.id,
+          },
+          enableTracking: true,
+        }).catch((error) => console.error("[contact-update] Failed to send owner submission notification:", error));
+      }
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
