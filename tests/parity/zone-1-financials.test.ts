@@ -195,7 +195,7 @@ describe("Phase 12 Tier 3 — sidebar SUBSET-RENDER for Financials zone", () => 
   function findFinancialsZone(role: AdminRole | null) {
     const zones = filterZonesForPersona(SIDEBAR_ZONES, {
       role,
-      singleAssociationBoardExperience: false,
+      boardScopedExperience: false,
       amenitiesDisabled: false,
     });
     return zones.find((z) => z.label === ZONE_LABELS.FINANCIALS);

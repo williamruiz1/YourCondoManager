@@ -16,6 +16,7 @@ import {
 import { useAssociationContext } from "@/context/association-context";
 import { canAccessWipRoute } from "@/lib/wip-features";
 import type { AdminRole } from "@shared/schema";
+import { isBoardScopedAdminRole } from "@shared/board-role-boundaries";
 
 type CommandLink = {
   label: string;
@@ -55,10 +56,6 @@ function canAccess(item: CommandLink, role?: AdminRole | null) {
   return item.roles.includes(role);
 }
 
-function isSingleAssociationBoardExperience(adminRole: AdminRole | null | undefined, associationCount: number) {
-  return (adminRole === "board-officer" || adminRole === "assisted-board") && associationCount <= 1;
-}
-
 type SearchResult = { type: string; id: string; label: string; href: string };
 
 const SEARCH_ICON: Record<string, typeof Search> = {
@@ -78,7 +75,8 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [location, navigate] = useLocation();
   const { associations, activeAssociationId, setActiveAssociationId } = useAssociationContext();
-  const singleAssociationBoardExperience = isSingleAssociationBoardExperience(adminRole, associations.length);
+  const boardScopedExperience = isBoardScopedAdminRole(adminRole);
+  const canSwitchAssociations = associations.length > 1;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -125,12 +123,12 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
     return current
       .map((href) => navigationLinks.find((item) => item.href === href))
       .filter((item): item is CommandLink => Boolean(item))
-      .filter((item) => !singleAssociationBoardExperience || (item.href !== "/app/associations" && item.href !== "/app/portfolio"))
+      .filter((item) => !boardScopedExperience || (item.href !== "/app/associations" && item.href !== "/app/portfolio"))
       .filter((item) => canAccess(item, adminRole));
-  }, [adminRole, open, singleAssociationBoardExperience]);
+  }, [adminRole, boardScopedExperience, open]);
 
   const filteredNavigation = navigationLinks
-    .filter((item) => !singleAssociationBoardExperience || (item.href !== "/app/associations" && item.href !== "/app/portfolio"))
+    .filter((item) => !boardScopedExperience || (item.href !== "/app/associations" && item.href !== "/app/portfolio"))
     .filter((item) => canAccess(item, adminRole));
   const filteredCreate = createLinks.filter((item) => canAccess(item, adminRole));
 
@@ -275,7 +273,7 @@ export function GlobalCommandPalette({ adminRole }: { adminRole?: AdminRole | nu
             ))}
           </CommandGroup>
 
-          {!singleAssociationBoardExperience && (
+          {canSwitchAssociations && (
             <>
               <CommandSeparator />
 

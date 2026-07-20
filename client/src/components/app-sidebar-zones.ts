@@ -214,10 +214,8 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         icon: Building2,
         materialIcon: "domain",
         activePrefix: "/app/associations",
-        // Manager + multi-association personas + Platform Admin. Single-
-        // association Board Officer / Assisted Board are filtered out at
-        // render time by the same `singleAssociationBoardExperience` rule
-        // currently applied in app-sidebar.tsx.
+        // Manager + portfolio personas + Platform Admin. Board Officer and
+        // Assisted Board remain excluded regardless of association count.
         roles: PORTFOLIO_OPERATORS,
       },
     ],
@@ -549,9 +547,9 @@ export const SIDEBAR_FOOTER_ITEMS: ReadonlyArray<SidebarItem> = [
 export interface FilterContext {
   /** Active admin role; null until session resolves. */
   role: AdminRole | null | undefined;
-  /** True for self-managed Board Officer or PM-managed Assisted Board with
-   *  ≤ 1 association — Portfolio Health + Associations sub-items are hidden. */
-  singleAssociationBoardExperience: boolean;
+  /** True for Board Officer or Assisted Board regardless of association
+   * count — portfolio-management items stay hidden. */
+  boardScopedExperience: boolean;
   /** Hide the Communications "Amenity Booking" entry when the active
    *  association has disabled amenities. */
   amenitiesDisabled: boolean;
@@ -584,9 +582,8 @@ export function filterZonesForPersona(
     if (!roleAllowsItem(ctx.role, zone.roles)) continue;
     let items = zone.items.filter((item) => roleAllowsItem(ctx.role, item.roles));
 
-    // Per 3.1 AC 17/18 + Q4 — single-association Board Officer / Assisted
-    // Board hide Portfolio Health + Associations under Home.
-    if (zone.label === ZONE_LABELS.HOME && ctx.singleAssociationBoardExperience) {
+    // Board-scoped volunteers never receive portfolio-management navigation.
+    if (zone.label === ZONE_LABELS.HOME && ctx.boardScopedExperience) {
       items = items.filter(
         (item) => item.url !== "/app/portfolio" && item.url !== "/app/associations",
       );

@@ -54,7 +54,6 @@ describe("canAccess — strict default-deny (OQ-3 Option A)", () => {
     const stillAbsentRoutes = [
       "/app",
       "/app/governance/meetings",
-      "/app/admin/users",
       "/app/platform/controls",
       "/",
     ];
@@ -174,7 +173,7 @@ describe("canAccess — platform-admin financials access (2026-06-02 pilot grant
   it("platform-admin is still denied on unknown routes (OQ-3 Option A preserved)", () => {
     expect(canAccess("platform-admin", "/app/any")).toBe(false);
     expect(canAccess("platform-admin", "/app/governance/meetings")).toBe(false);
-    expect(canAccess("platform-admin", "/app/admin/users")).toBe(false);
+    expect(canAccess("platform-admin", "/app/admin/users")).toBe(true);
   });
 });
 

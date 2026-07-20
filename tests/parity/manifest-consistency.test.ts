@@ -37,7 +37,7 @@ const MANIFEST_SAMPLE: ReadonlyArray<ManifestRow> = [
   // Row 32 — Communications hub
   { path: "/app/communications", access: { "manager": "full", "board-officer": "full", "assisted-board": "full", "pm-assistant": "toggle-gated", "viewer": "read-only", "platform-admin": "full" } },
   // Row 35 — Associations
-  { path: "/app/associations", access: { "manager": "full", "board-officer": "full", "assisted-board": "full", "pm-assistant": "full", "viewer": "full", "platform-admin": "full" } },
+  { path: "/app/associations", access: { "manager": "full", "pm-assistant": "full", "viewer": "full", "platform-admin": "full" } },
   // Row 38 — Units
   { path: "/app/units", access: { "manager": "full", "board-officer": "full", "assisted-board": "read-only", "pm-assistant": "toggle-gated", "viewer": "read-only", "platform-admin": "full" } },
   // Row 39 — Persons
