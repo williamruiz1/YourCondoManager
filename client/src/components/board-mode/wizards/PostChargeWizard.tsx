@@ -1,6 +1,6 @@
 // founder-os#9487 — Board mode wizard: Post a charge (bill an owner).
 // Guided: pick home & owner → charge amount + reason → review → save.
-// Submits POST /api/financial/owner-ledger/entries (entryType "charge").
+// Submits the Board charge workflow, which validates the owner/home relationship.
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -36,7 +36,7 @@ export function PostChargeWizard() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/financial/owner-ledger/entries", {
+      const res = await apiRequest("POST", "/api/board/workflows/post-charge", {
         associationId: activeAssociationId,
         unitId,
         personId,
@@ -57,7 +57,7 @@ export function PostChargeWizard() {
   if (done) {
     return (
       <WizardDone
-        message={`A charge of $${amountNum.toFixed(2)} was added to the owner's account.`}
+        message={`A charge of $${amountNum.toFixed(2)} was added to the owner's account. No owner notice was sent.`}
         onAgain={() => { setUnitId(""); setPersonId(""); setAmount(""); setDescription(""); setStep(0); setDone(false); }}
         againLabel="Post another charge"
       />

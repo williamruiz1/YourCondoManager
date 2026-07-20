@@ -25,6 +25,12 @@ import { buildPerUnitBreakdown } from "@shared/portal-per-unit";
 import { invalidateAlertCache } from "./alerts";
 import { getMigrationHealth } from "./migration-health";
 import { vendorComplianceStatus } from "./services/vendor-compliance";
+import {
+  addBoardOwner,
+  BoardWorkflowError,
+  logBoardViolation,
+  postBoardCharge,
+} from "./services/board-workflows";
 
 /**
  * 4.1 Wave 15a — real-time alert cache invalidation wiring.
@@ -3152,6 +3158,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/board/workflows/add-owner", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const person = insertPersonSchema.parse({
+        firstName: req.body?.firstName,
+        lastName: req.body?.lastName,
+        email: req.body?.email,
+        phone: req.body?.phone ? normalizePhoneNumber(req.body.phone) || null : null,
+        associationId: req.body?.associationId,
+      });
+      if (!person.associationId) return res.status(400).json({ message: "associationId is required" });
+      assertAssociationScope(req, person.associationId);
+      if (req.body?.unitId) await assertResourceScope(req, "unit", req.body.unitId);
+      const result = await addBoardOwner({
+        person,
+        unitId: req.body?.unitId || null,
+        actorEmail: req.adminUserEmail || "system",
+      });
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(error instanceof BoardWorkflowError ? error.httpStatus : 400).json({
+        message: error.message,
+        ...(error instanceof BoardWorkflowError ? { code: error.code } : {}),
+      });
     }
   });
 
@@ -6826,6 +6858,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.post("/api/board/workflows/post-charge", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const ledgerEntry = insertOwnerLedgerEntrySchema.parse({
+        ...req.body,
+        entryType: "charge",
+        postedAt: req.body?.postedAt ? new Date(req.body.postedAt) : new Date(),
+      });
+      assertAssociationScope(req, ledgerEntry.associationId);
+      const result = await postBoardCharge({
+        ledgerEntry,
+        actorEmail: req.adminUserEmail || "system",
+      });
+      safeInvalidateAlertCache();
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(error instanceof BoardWorkflowError ? error.httpStatus : 400).json({
+        message: error.message,
+        ...(error instanceof BoardWorkflowError ? { code: error.code } : {}),
+      });
+    }
+  });
+
   // Admin payment activity feed
   app.get("/api/financial/payment-activity", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
@@ -7742,7 +7796,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         scheduledAt: req.body?.scheduledAt ? new Date(req.body.scheduledAt) : req.body?.scheduledAt,
       });
       assertAssociationScope(req as AdminRequest, parsed.associationId);
-      const result = await storage.createGovernanceMeeting(parsed);
+      const result = await storage.createGovernanceMeeting(parsed, (req as AdminRequest).adminUserEmail);
       res.status(201).json(result);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -7784,6 +7838,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(created);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/board/workflows/log-violation", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+    try {
+      const violation = insertViolationSchema.parse({
+        ...req.body,
+        observedAt: req.body?.observedAt ? new Date(req.body.observedAt) : new Date(),
+      });
+      assertAssociationScope(req, violation.associationId);
+      const result = await logBoardViolation({
+        violation,
+        actorEmail: req.adminUserEmail || "system",
+      });
+      if (result.ledgerEntry) safeInvalidateAlertCache();
+      res.status(201).json(result);
+    } catch (error: any) {
+      res.status(error instanceof BoardWorkflowError ? error.httpStatus : 400).json({
+        message: error.message,
+        ...(error instanceof BoardWorkflowError ? { code: error.code } : {}),
+      });
     }
   });
 

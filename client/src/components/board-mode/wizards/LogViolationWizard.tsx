@@ -1,7 +1,6 @@
 // founder-os#9487 — Board mode wizard: Log a violation.
 // Guided: what happened → who & where (optional) → fine? (optional) → review → save.
-// Submits POST /api/violations, then (if a fine is added) an owner-ledger `charge`
-// entry linked back to the violation via PATCH.
+// Submits one atomic workflow request for the violation + optional linked fine.
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -53,7 +52,7 @@ export function LogViolationWizard() {
 
   const save = useMutation({
     mutationFn: async () => {
-      const violationRes = await apiRequest("POST", "/api/violations", {
+      const response = await apiRequest("POST", "/api/board/workflows/log-violation", {
         associationId: activeAssociationId,
         unitId: unitId !== NONE ? unitId : null,
         personId: personId !== NONE ? personId : null,
@@ -62,25 +61,7 @@ export function LogViolationWizard() {
         observedAt: new Date().toISOString(),
         fineAmount: wantsFine && fineValid ? fineNum : null,
       });
-      const violation = (await violationRes.json()) as { id: string };
-
-      if (wantsFine && fineValid && unitId !== NONE && personId !== NONE) {
-        const ledgerRes = await apiRequest("POST", "/api/financial/owner-ledger/entries", {
-          associationId: activeAssociationId,
-          unitId,
-          personId,
-          entryType: "charge",
-          amount: fineNum,
-          postedAt: new Date().toISOString(),
-          description: `Fine — ${violationType}`,
-          referenceType: "violation",
-          referenceId: violation.id,
-        });
-        const ledger = (await ledgerRes.json()) as { id: string };
-        // Link the ledger charge back to the violation (best-effort).
-        await apiRequest("PATCH", `/api/violations/${violation.id}`, { ledgerEntryId: ledger.id }).catch(() => {});
-      }
-      return violation;
+      return response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/violations"] });
@@ -93,7 +74,7 @@ export function LogViolationWizard() {
   if (done) {
     return (
       <WizardDone
-        message={wantsFine && fineValid ? `The violation was logged and a $${fineNum.toFixed(2)} fine was added to the owner's account.` : "The violation was logged."}
+        message={wantsFine && fineValid ? `The violation and linked $${fineNum.toFixed(2)} fine were saved together. No violation notice was sent.` : "The violation was logged. No violation notice was sent."}
         onAgain={() => { setViolationType(VIOLATION_TYPES[0]); setDescription(""); setUnitId(NONE); setPersonId(NONE); setAddFine("no"); setFineAmount(""); setStep(0); setDone(false); }}
         againLabel="Log another violation"
       />
