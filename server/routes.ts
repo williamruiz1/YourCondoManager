@@ -2553,8 +2553,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  app.post("/api/associations", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (req: AdminRequest, res) => {
+  app.post("/api/associations", requireAdmin, requireAdminRole(["platform-admin", "manager"]), async (req: AdminRequest, res) => {
     try {
+      // Direct portfolio expansion belongs to a paid Property Manager account.
+      // Self-managed Board Officers add another HOA through the authenticated
+      // checkout route so each association receives its own subscription.
+      // Association count alone must never turn a volunteer board account into
+      // a PM account or let a legacy self-managed "manager" bypass billing.
+      if (req.adminRole === "manager") {
+        const scopedSubscriptions = await Promise.all(
+          (req.adminScopedAssociationIds ?? []).map((associationId) =>
+            storage.getPlatformSubscription(associationId),
+          ),
+        );
+        const hasPropertyManagerPlan = scopedSubscriptions.some(
+          (subscription) =>
+            subscription?.plan === "property-manager" &&
+            !["canceled", "unpaid"].includes(subscription.status),
+        );
+        if (!hasPropertyManagerPlan) {
+          return res.status(403).json({
+            message:
+              "Adding an association directly requires an active Property Manager plan. Self-managed boards must use association checkout.",
+            code: "PROPERTY_MANAGER_PLAN_REQUIRED",
+          });
+        }
+      }
       const parsed = insertAssociationSchema.parse(req.body);
       const result = await storage.createAssociation(parsed, req.adminUserEmail);
       res.status(201).json(result);
@@ -16869,12 +16893,41 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     });
   }
 
-  // GET /api/admin/billing/subscription — current subscription for the active association
+  async function resolveAdminBillingSubscription(req: AdminRequest, requestedAssociationId?: string) {
+    const scopedIds = req.adminScopedAssociationIds ?? [];
+    if (requestedAssociationId) {
+      assertAssociationScope(req, requestedAssociationId);
+    }
+
+    const scopedSubscriptions = (
+      await Promise.all(scopedIds.map((associationId) => storage.getPlatformSubscription(associationId)))
+    ).filter((subscription) => Boolean(subscription));
+
+    // A PM subscription is portfolio-wide and may be anchored to any one of
+    // the manager's scoped associations. Prefer it over both array ordering
+    // and the currently selected client association.
+    if (req.adminRole === "manager" || req.adminRole === "pm-assistant") {
+      const pmSubscription = scopedSubscriptions.find(
+        (subscription) => subscription?.plan === "property-manager",
+      );
+      if (pmSubscription) return pmSubscription;
+    }
+    if (requestedAssociationId) {
+      const requested = scopedSubscriptions.find(
+        (subscription) => subscription?.associationId === requestedAssociationId,
+      );
+      if (requested) return requested;
+    }
+    return scopedSubscriptions[0] ?? null;
+  }
+
+  // GET /api/admin/billing/subscription — current association subscription,
+  // or the portfolio subscription for paid Property Manager accounts.
   app.get("/api/admin/billing/subscription", requireAdmin, async (req: AdminRequest, res) => {
     try {
-      const associationId = (req.adminScopedAssociationIds?.[0]) ?? req.query.associationId as string;
-      if (!associationId) return res.json({ status: "none" });
-      const sub = await storage.getPlatformSubscription(associationId);
+      const requestedAssociationId =
+        typeof req.query.associationId === "string" ? req.query.associationId : undefined;
+      const sub = await resolveAdminBillingSubscription(req, requestedAssociationId);
       if (!sub) return res.json({ status: "none" });
       res.json(sub);
     } catch (e: any) {
@@ -16889,9 +16942,9 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   // Board Officer surface locked in 3.2 amendment 2026-04-21).
   app.post("/api/admin/billing/portal-session", requireAdmin, requireAdminRole(["platform-admin", "manager", "board-officer", "pm-assistant"]), async (req: AdminRequest, res) => {
     try {
-      const associationId = req.adminScopedAssociationIds?.[0];
-      if (!associationId) return res.status(400).json({ message: "No association context" });
-      const sub = await storage.getPlatformSubscription(associationId);
+      const requestedAssociationId =
+        typeof req.body?.associationId === "string" ? req.body.associationId : undefined;
+      const sub = await resolveAdminBillingSubscription(req, requestedAssociationId);
       if (!sub?.stripeCustomerId) return res.status(400).json({ message: "No billing account found" });
       const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.yourcondomanager.org";
       const params = new URLSearchParams({ customer: sub.stripeCustomerId, return_url: `${baseUrl}/app/settings/billing` });
@@ -17193,7 +17246,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const { name, email, organizationName, associationType, unitCount, plan } = req.body as Record<string, string>;
       if (!name || !email || !organizationName || !plan) return res.status(400).json({ message: "name, email, organizationName, and plan are required" });
 
-      const { resolveSignupPlan } = await import("@shared/signup-plan-keys");
+      const { resolveSignupPlan, resolveSignupAdminRole } = await import("@shared/signup-plan-keys");
       const resolved = resolveSignupPlan(plan);
 
       // Enterprise (either track) → contact sales, no self-serve checkout.
@@ -17246,7 +17299,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       // Create Stripe customer
       const customerParams = new URLSearchParams({ email: email.trim(), name: name.trim() });
       customerParams.set("metadata[organizationName]", organizationName);
-      customerParams.set("metadata[plan]", plan);
+      customerParams.set("metadata[plan]", resolved.track);
+      customerParams.set("metadata[signupSlug]", plan);
       customerParams.set("metadata[planKey]", tier.planKey);
       // A-STRIPE-004: stable key so a retry of this signup reuses the customer.
       const customer = await stripeRequest("POST", "/customers", customerParams, {
@@ -17256,10 +17310,15 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
       // Create stub association + admin user
       const [assoc] = await db.insert(associations).values({ name: organizationName, associationType: associationType || "HOA", address: "TBD", city: "TBD", state: "TBD", country: "USA" }).returning();
-      // Signup default role is always "manager". Platform-admin accounts are created
-      // only through internal tooling or platform-admin seeding, never via public signup.
-      // See: docs/projects/platform-overhaul/decisions/4.4-signup-and-checkout-flow.md Q1
-      const [adminUser] = await db.insert(adminUsers).values({ email: email.toLowerCase().trim(), role: "manager", isActive: 0 }).returning();
+      // Persona is derived from the commercial track, never association count:
+      // paid PM accounts receive Manager; self-managed associations receive
+      // Board Officer. Platform-admin remains unreachable through public signup.
+      const signupRole = resolveSignupAdminRole(resolved);
+      const [adminUser] = await db.insert(adminUsers).values({
+        email: email.toLowerCase().trim(),
+        role: signupRole,
+        isActive: 0,
+      }).returning();
 
       // Create Stripe Checkout Session
       const baseUrl = (await getSecret("APP_BASE_URL", "app_base_url")) ?? "https://app.yourcondomanager.org";
@@ -17292,11 +17351,16 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       }
       sessionParams.set("subscription_data[metadata][associationId]", assoc.id);
       sessionParams.set("subscription_data[metadata][adminUserId]", adminUser.id);
-      sessionParams.set("subscription_data[metadata][plan]", plan);
+      // Provisioning persists the canonical platform_plan enum value. Tier-
+      // specific marketing slugs (for example property-manager-growth) are
+      // retained separately and must never reach the enum-backed plan column.
+      sessionParams.set("subscription_data[metadata][plan]", resolved.track);
+      sessionParams.set("subscription_data[metadata][signupSlug]", plan);
       sessionParams.set("subscription_data[metadata][planKey]", tier.planKey);
       sessionParams.set("metadata[associationId]", assoc.id);
       sessionParams.set("metadata[adminUserId]", adminUser.id);
-      sessionParams.set("metadata[plan]", plan);
+      sessionParams.set("metadata[plan]", resolved.track);
+      sessionParams.set("metadata[signupSlug]", plan);
       sessionParams.set("metadata[planKey]", tier.planKey);
 
       // A-STRIPE-004: stable key so a retry of this signup collapses to one session.

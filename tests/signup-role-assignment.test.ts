@@ -6,12 +6,17 @@
  * and that platform-admin is never reachable via public signup.
  *
  * References:
- *   - 4.4 Q1 decision: signup default is "manager", never "platform-admin"
- *   - 0.2 §Persona 1 (Manager): the signup persona
+ *   - paid property-manager track → manager
+ *   - self-managed track → board-officer
+ *   - platform-admin is never reachable through public signup
  */
 
 import { describe, it, expect } from "vitest";
 import * as fs from "fs";
+import {
+  resolveSignupAdminRole,
+  resolveSignupPlan,
+} from "../shared/signup-plan-keys";
 
 describe("Signup role assignment (source-scan)", () => {
   const routesSource = fs.readFileSync("server/routes.ts", "utf8");
@@ -20,24 +25,32 @@ describe("Signup role assignment (source-scan)", () => {
     expect(routesSource).toContain("/api/public/signup/start");
   });
 
-  // Window widened 5000 -> 6000 (founder-os#10752): the Stripe idempotency
-  // hardening pass added a plan/price-resolution rewrite + explanatory
-  // comments ahead of the signup INSERT, pushing role: "manager" from
-  // ~4300 to ~5158 chars past the anchor. 6000 gives comfortable margin
-  // (measured: the route mount for the NEXT endpoint starts at ~5328).
-  it('signup INSERT uses role: "manager"', () => {
-    // Anchor on the actual route handler (a comment sits above the handler),
-    // and use a 6000-char window (the #10752 Stripe idempotency pass pushed the
-    // INSERT to ~5158 past the anchor; 6000 gives margin).
+  it("derives the account persona from the commercial track", () => {
+    expect(resolveSignupAdminRole(resolveSignupPlan("property-manager"))).toBe("manager");
+    expect(resolveSignupAdminRole(resolveSignupPlan("property-manager-growth"))).toBe("manager");
+    expect(resolveSignupAdminRole(resolveSignupPlan("self-managed"))).toBe("board-officer");
+    expect(resolveSignupAdminRole(resolveSignupPlan("unknown-safe-default"))).toBe("board-officer");
+  });
+
+  it("signup INSERT uses the derived role", () => {
     const signupIdx = routesSource.indexOf('app.post("/api/public/signup/start"');
-    const region = routesSource.substring(signupIdx, signupIdx + 6000);
-    expect(region).toContain('role: "manager"');
+    const region = routesSource.substring(signupIdx, signupIdx + 7500);
+    expect(region).toContain("const signupRole = resolveSignupAdminRole(resolved)");
+    expect(region).toMatch(/role:\s*signupRole/);
   });
 
   it('signup INSERT does NOT use role: "platform-admin"', () => {
     const signupIdx = routesSource.indexOf('app.post("/api/public/signup/start"');
-    const region = routesSource.substring(signupIdx, signupIdx + 6000);
+    const region = routesSource.substring(signupIdx, signupIdx + 7500);
     expect(region).not.toMatch(/role:\s*["']platform-admin["']/);
+  });
+
+  it("writes canonical plan metadata instead of tier-specific signup slugs", () => {
+    const signupIdx = routesSource.indexOf('app.post("/api/public/signup/start"');
+    const region = routesSource.substring(signupIdx, signupIdx + 9000);
+    expect(region).toContain('sessionParams.set("subscription_data[metadata][plan]", resolved.track)');
+    expect(region).toContain('sessionParams.set("subscription_data[metadata][signupSlug]", plan)');
+    expect(region).not.toContain('sessionParams.set("subscription_data[metadata][plan]", plan)');
   });
 
   it("provisionWorkspace does NOT set role to platform-admin", () => {

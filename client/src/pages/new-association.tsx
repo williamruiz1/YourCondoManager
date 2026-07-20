@@ -369,14 +369,43 @@ export default function NewAssociationPage() {
     mutationFn: async (
       data: FormValues & { latitudeDeg?: string; longitudeDeg?: string },
     ) => {
+      const previousCount = existingAssociations?.length ?? 0;
+      const isSelfManaged = subscription?.plan === "self-managed";
+
+      if (previousCount >= 1 && isSelfManaged) {
+        const checkoutResponse = await apiRequest(
+          "POST",
+          "/api/admin/associations/start-checkout",
+          {
+            associationName: data.name,
+            associationAddress: [data.address, data.city, data.state]
+              .filter(Boolean)
+              .join(", "),
+            plan: "self-managed",
+          },
+        );
+        const checkout = (await checkoutResponse.json()) as {
+          checkoutUrl: string;
+          associationId: string;
+        };
+        window.location.assign(checkout.checkoutUrl);
+        return {
+          id: checkout.associationId,
+          name: data.name,
+          checkoutStarted: true as const,
+        };
+      }
+
       const payload = { ...data };
       if (!payload.dateFormed)
         delete (payload as Record<string, unknown>).dateFormed;
       if (!payload.ein) delete (payload as Record<string, unknown>).ein;
       const res = await apiRequest("POST", "/api/associations", payload);
-      return res.json() as Promise<{ id: string; name: string }>;
+      const created = (await res.json()) as { id: string; name: string };
+      return { ...created, checkoutStarted: false as const };
     },
     onSuccess: (created) => {
+      if (created.checkoutStarted) return;
       queryClient.invalidateQueries({ queryKey: ["/api/associations"] });
       setActiveAssociationId(created.id);
       toast({ title: `${created.name} created successfully` });

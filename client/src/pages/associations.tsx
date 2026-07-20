@@ -66,6 +66,8 @@ type AssociationSearchResult = {
   longitude: number | null;
 };
 
+type SubscriptionSummary = { status?: string; plan?: string };
+
 function isAssociationArchived(association: Association): boolean {
   return Number((association as Association & { isArchived?: unknown }).isArchived ?? 0) === 1;
 }
@@ -84,6 +86,10 @@ export default function AssociationsPage() {
 
   const { data: associations, isLoading } = useQuery<Association[]>({
     queryKey: ["/api/associations?includeArchived=1"],
+  });
+  const { data: subscription } = useQuery<SubscriptionSummary>({
+    queryKey: ["/api/admin/billing/subscription"],
+    staleTime: 5 * 60 * 1000,
   });
   const { data: selectedOverview } = useQuery<{
     associationId: string;
@@ -113,9 +119,37 @@ export default function AssociationsPage() {
   }
 
   const createMutation = useMutation({
-    mutationFn: (data: z.infer<typeof formSchema>) =>
-      apiRequest("POST", "/api/associations", data),
-    onSuccess: () => {
+    mutationFn: async (data: z.infer<typeof formSchema>) => {
+      const activeCount = (associations ?? []).filter(
+        (association) => !isAssociationArchived(association),
+      ).length;
+      const isSelfManaged = subscription?.plan === "self-managed";
+
+      if (activeCount >= 1 && isSelfManaged) {
+        const checkoutResponse = await apiRequest(
+          "POST",
+          "/api/admin/associations/start-checkout",
+          {
+            associationName: data.name,
+            associationAddress: [data.address, data.city, data.state]
+              .filter(Boolean)
+              .join(", "),
+            plan: "self-managed",
+          },
+        );
+        const checkout = (await checkoutResponse.json()) as {
+          checkoutUrl: string;
+          associationId: string;
+        };
+        window.location.assign(checkout.checkoutUrl);
+        return { checkoutStarted: true as const };
+      }
+
+      await apiRequest("POST", "/api/associations", data);
+      return { checkoutStarted: false as const };
+    },
+    onSuccess: (result) => {
+      if (result.checkoutStarted) return;
       invalidateAssociationQueries();
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
       toast({ title: "Association created successfully" });
