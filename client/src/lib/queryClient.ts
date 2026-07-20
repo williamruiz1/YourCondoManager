@@ -28,9 +28,11 @@ function maybeApplyAssociationScope(rawUrl: string, method: string): string {
   return `${rawUrl}${separator}associationId=${encodeURIComponent(associationId)}`;
 }
 
-function buildHeaders(hasBody: boolean) {
+function buildHeaders(hasBody: boolean, rawUrl?: string) {
   const headers: Record<string, string> = {};
   if (hasBody) headers["Content-Type"] = "application/json";
+  const associationId = rawUrl?.startsWith("/api/") ? getActiveAssociationId() : "";
+  if (associationId) headers["X-YCM-Association-Id"] = associationId;
   return headers;
 }
 
@@ -68,7 +70,7 @@ export async function apiRequest(
   const scopedUrl = maybeApplyAssociationScope(url, method);
   const res = await fetch(scopedUrl, {
     method,
-    headers: buildHeaders(Boolean(data)),
+    headers: buildHeaders(Boolean(data), scopedUrl),
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -86,7 +88,7 @@ export const getQueryFn: <T>(options: {
     const rawUrl = queryKey.join("/") as string;
     const url = maybeApplyAssociationScope(rawUrl, "GET");
     const res = await fetch(url, {
-      headers: buildHeaders(false),
+      headers: buildHeaders(false, url),
       credentials: "include",
     });
 

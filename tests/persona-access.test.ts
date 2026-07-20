@@ -205,8 +205,11 @@ describe("Module shape — Phase 0b.2 contract lock", () => {
     expect(FEATURE_MANIFEST).not.toBeNull();
   });
 
-  it("FEATURE_MANIFEST is empty in Phase 0b.2 (Phase 9 populates)", () => {
-    expect(Object.keys(FEATURE_MANIFEST).length).toBe(0);
+  it("FEATURE_MANIFEST contains the canonical Assisted Board feature catalog", () => {
+    expect(Object.keys(FEATURE_MANIFEST).length).toBeGreaterThan(0);
+    expect(FEATURE_MANIFEST["financials.reports"]).toContain("assisted-board");
+    expect(FEATURE_MANIFEST["operations.work-orders"]).not.toContain("assisted-board");
+    expect(FEATURE_MANIFEST["operations.unit-management"]).not.toContain("assisted-board");
   });
 
   it("canAccess is a function with arity 2", () => {

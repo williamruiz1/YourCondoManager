@@ -49,6 +49,7 @@ import type { AdminRole, AdminUser } from "@shared/schema";
 import { sendPlatformEmail } from "../email-provider";
 import { sendPushNotification as sendPushToEndpoint } from "../push-provider";
 import { canAccessAlert, getCriticalAlertsForFanOut } from "./index";
+import { listTogglesForAssociation } from "../pm-toggles";
 import type { AlertItem, AlertSeverity } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -131,8 +132,24 @@ export async function fanOutCriticalAlerts(opts: { now?: Date } = {}): Promise<F
     // endpoint applies — using it here keeps notification visibility in
     // lock-step with on-screen visibility.
     const permittedIds = new Set(permittedAssociations.map((a) => a.id));
+    const togglesByAssociation = admin.role === "assisted-board"
+      ? Object.fromEntries(
+          await Promise.all(
+            permittedAssociations.map(async ({ id }) => [
+              id,
+              await listTogglesForAssociation(id),
+            ] as const),
+          ),
+        )
+      : {};
     const criticalAlerts = criticalUniverse.filter(
-      (a) => permittedIds.has(a.associationId) && canAccessAlert(admin.role, a.featureDomain, {}),
+      (a) =>
+        permittedIds.has(a.associationId)
+        && canAccessAlert(
+          admin.role,
+          a.featureDomain,
+          togglesByAssociation[a.associationId] ?? {},
+        ),
     );
     if (criticalAlerts.length === 0) continue;
 
@@ -560,4 +577,3 @@ export async function __backdateFailedNotificationForTests(
       ),
     );
 }
-

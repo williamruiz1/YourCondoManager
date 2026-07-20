@@ -29,6 +29,7 @@ import { alertReadStates, associations as associationsTable } from "@shared/sche
 import type { AdminRole } from "@shared/schema";
 import type { PersonaToggleState } from "@shared/persona-access";
 import { canAccessAlert } from "./can-access-alert";
+import { listTogglesForAssociation } from "../pm-toggles";
 import { resolveMany as resolveManyOverdueWorkOrders } from "./sources/overdue-work-orders";
 import { resolveMany as resolveManyDueMaintenance } from "./sources/due-maintenance";
 import { resolveMany as resolveManyActiveElections } from "./sources/active-elections";
@@ -99,6 +100,8 @@ export interface CrossAssociationAlertsInput {
   adminUserId: string;
   adminRole: AdminRole;
   personaToggles: PersonaToggleState;
+  /** Association-specific effective toggles for multi-association personas. */
+  personaTogglesByAssociation?: Readonly<Record<string, PersonaToggleState>>;
   /** Full list of associations the persona may see (ids + names). */
   permittedAssociations: Array<{ id: string; name: string }>;
   zone?: ZoneLabel;
@@ -139,7 +142,13 @@ export async function getCrossAssociationAlerts(
   );
 
   // --- Server-side feature-domain gate (4.1 Q5) ------------------------------
-  alerts = alerts.filter((a) => canAccessAlert(input.adminRole, a.featureDomain, input.personaToggles));
+  alerts = alerts.filter((a) =>
+    canAccessAlert(
+      input.adminRole,
+      a.featureDomain,
+      input.personaTogglesByAssociation?.[a.associationId] ?? input.personaToggles,
+    ),
+  );
 
   // --- Optional zone filter (4.1 Q6 endpoint contract) -----------------------
   if (input.zone) {
@@ -389,10 +398,12 @@ export async function assertAlertMutationAuth(input: {
   if (!lookup) {
     return { status: 404, body: { message: "Alert not found", code: "ALERT_NOT_FOUND" } };
   }
-  // Feature-domain gate (server-side parity with canAccessAlert in the
-  // GET path). Wave-2 personaToggles are always {} until the toggle UI
-  // lands; we keep the same default here so the read/write paths agree.
-  if (!canAccessAlert(input.adminRole, lookup.featureDomain, {})) {
+  const personaToggles = input.adminRole === "assisted-board"
+    ? await listTogglesForAssociation(lookup.associationId)
+    : {};
+  // Feature-domain gate (server-side parity with the GET and notification
+  // paths), including association-specific Manager delegation overrides.
+  if (!canAccessAlert(input.adminRole, lookup.featureDomain, personaToggles)) {
     return {
       status: 403,
       body: {
@@ -530,4 +541,3 @@ async function lookupAssociationForRecord(
       return null;
   }
 }
-

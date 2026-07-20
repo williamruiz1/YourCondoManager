@@ -23,6 +23,7 @@ import { describe, it, expect } from "vitest";
 
 import { renderSidebar } from "./utils/sidebar-helpers";
 import { filterZonesForPersona, SIDEBAR_ZONES } from "@/components/app-sidebar-zones";
+import { createDefaultAssistedBoardAccessMatrix } from "@shared/delegated-feature-access";
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 
@@ -89,6 +90,42 @@ describe("Phase 11 — six zone-group labels (3.1 Q1)", () => {
     const labels = getZoneLabels(container);
     expect(labels.length).toBe(0);
     unmount();
+  });
+});
+
+describe("Assisted Board association-scoped feature subset", () => {
+  it("renders default View features and hides default-denied features", () => {
+    const zones = filterZonesForPersona(SIDEBAR_ZONES, {
+      role: "assisted-board",
+      boardScopedExperience: true,
+      amenitiesDisabled: true,
+      violationsManagementEnabled: true,
+      assistedBoardAccess: createDefaultAssistedBoardAccessMatrix(),
+    });
+    const urls = zones.flatMap((zone) => zone.items.map((item) => item.url));
+    expect(urls).toContain("/app/financial/reports");
+    expect(urls).toContain("/app/vendors");
+    expect(urls).not.toContain("/app/work-orders");
+    expect(urls).not.toContain("/app/units");
+  });
+
+  it("reflects Manager expansion and restriction without changing persona", () => {
+    const defaults = createDefaultAssistedBoardAccessMatrix();
+    const access = {
+      ...defaults,
+      "financials.reports": { ...defaults["financials.reports"], view: false },
+      "operations.work-orders": { ...defaults["operations.work-orders"], view: true },
+    };
+    const zones = filterZonesForPersona(SIDEBAR_ZONES, {
+      role: "assisted-board",
+      boardScopedExperience: true,
+      amenitiesDisabled: true,
+      violationsManagementEnabled: true,
+      assistedBoardAccess: access,
+    });
+    const urls = zones.flatMap((zone) => zone.items.map((item) => item.url));
+    expect(urls).not.toContain("/app/financial/reports");
+    expect(urls).toContain("/app/work-orders");
   });
 });
 

@@ -26,13 +26,13 @@ import { Calendar, CheckCircle2, XCircle, Clock, RotateCcw, Filter, History as H
 import { apiRequest } from "@/lib/queryClient";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useAdminRole } from "@/hooks/useAdminRole";
+import { useAssistedBoardAccess } from "@/hooks/use-assisted-board-access";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { WorkspacePageHeader } from "@/components/workspace-page-header";
 import { RouteGuard } from "@/components/RouteGuard";
 import { EmptyState } from "@/components/empty-state";
 import { ErrorState } from "@/components/error-state";
 import { financeSubPages } from "@/lib/sub-page-nav";
-import { usePersonaToggles } from "@shared/persona-access";
 import { t } from "@/i18n/use-strings";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -367,7 +367,11 @@ function RunHistoryTab() {
 
 function FinancialRulesInner() {
   const { role } = useAdminRole();
-  const toggles = usePersonaToggles();
+  const { activeAssociationId } = useActiveAssociation();
+  const { toggles } = useAssistedBoardAccess(
+    activeAssociationId,
+    role === "assisted-board",
+  );
   const canWrite = resolveCanWrite(role, toggles);
   const readOnly = !canWrite;
 

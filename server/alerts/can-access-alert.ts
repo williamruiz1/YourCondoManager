@@ -25,7 +25,25 @@
 
 import type { AdminRole } from "@shared/schema";
 import type { PersonaToggleState } from "@shared/persona-access";
+import {
+  assistedBoardDefaultAccess,
+  delegatedToggleKey,
+  type AssistedBoardFeatureId,
+} from "@shared/delegated-feature-access";
 import { FEATURE_DOMAINS, type FeatureDomain } from "./types";
+
+const ALERT_DOMAIN_TO_DELEGATED_FEATURE: Readonly<
+  Partial<Record<FeatureDomain, AssistedBoardFeatureId>>
+> = {
+  [FEATURE_DOMAINS.FINANCIALS_REPORTS]: "financials.reports",
+  [FEATURE_DOMAINS.FINANCIALS_DELINQUENCY]: "financials.reports",
+  [FEATURE_DOMAINS.OPERATIONS_MAINTENANCE_REQUESTS]: "operations.maintenance-requests",
+  [FEATURE_DOMAINS.OPERATIONS_WORK_ORDERS]: "operations.work-orders",
+  [FEATURE_DOMAINS.GOVERNANCE_DOCUMENTS]: "governance.documents",
+  [FEATURE_DOMAINS.GOVERNANCE_ELECTIONS]: "governance.elections",
+  [FEATURE_DOMAINS.VENDORS]: "operations.vendor-contracts",
+  [FEATURE_DOMAINS.GOVERNANCE_COMPLIANCE]: "operations.insurance",
+};
 
 // ---------------------------------------------------------------------------
 // Default feature-domain → role access table
@@ -151,12 +169,19 @@ const DEFAULT_ALERT_ACCESS: Readonly<Record<FeatureDomain, readonly AdminRole[]>
 export function canAccessAlert(
   persona: AdminRole,
   featureDomain: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   personaToggles: PersonaToggleState,
 ): boolean {
   // Platform-admin and Manager have full access by convention (0.2 §Persona 1/6).
   if (persona === "platform-admin" || persona === "manager") {
     return true;
+  }
+
+  if (persona === "assisted-board") {
+    const featureId = ALERT_DOMAIN_TO_DELEGATED_FEATURE[featureDomain as FeatureDomain];
+    if (!featureId) return false;
+    const toggleKey = delegatedToggleKey(featureId, "view");
+    return personaToggles[toggleKey]
+      ?? assistedBoardDefaultAccess(featureId, "view");
   }
 
   const allowedRoles = DEFAULT_ALERT_ACCESS[featureDomain as FeatureDomain];

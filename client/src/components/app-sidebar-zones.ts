@@ -56,6 +56,10 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import type { AdminRole } from "@shared/schema";
+import type {
+  AssistedBoardAccessMatrix,
+  AssistedBoardFeatureId,
+} from "@shared/delegated-feature-access";
 
 // ---------------------------------------------------------------------------
 // Persona-access derivation — 0.2 Persona Boundary Matrix
@@ -558,7 +562,32 @@ export interface FilterContext {
    *  Default false (flag defaults OFF) so existing callers of
    *  filterZonesForPersona that don't pass this field keep hiding the item. */
   violationsManagementEnabled?: boolean;
+  /** Effective association-scoped Assisted Board View permissions. */
+  assistedBoardAccess?: AssistedBoardAccessMatrix;
 }
+
+const ASSISTED_BOARD_ROUTE_FEATURES: Readonly<
+  Partial<Record<string, AssistedBoardFeatureId>>
+> = {
+  "/app/financial/rules": "financials.assessment-rules",
+  "/app/financial/reports": "financials.reports",
+  "/app/financial/statement": "financials.reports",
+  "/app/units": "operations.unit-management",
+  "/app/persons": "operations.owner-directory",
+  "/app/work-orders": "operations.work-orders",
+  "/app/violations": "operations.violations-appeals",
+  "/app/maintenance-schedules": "operations.maintenance-requests",
+  "/app/inspections": "operations.inspections",
+  "/app/vendors": "operations.vendor-contracts",
+  "/app/insurance": "operations.insurance",
+  "/app/resident-feedback": "operations.resident-feedback",
+  "/app/board": "governance.board",
+  "/app/documents": "governance.documents",
+  "/app/communications/inbox": "communications.inbox",
+  "/app/announcements": "communications.announcements",
+  "/app/amenities": "communications.amenities",
+  "/app/community-hub": "communications.community-hub",
+};
 
 function roleAllowsItem(role: AdminRole | null | undefined, allowed: ReadonlyArray<AdminRole>): boolean {
   if (!role) return false;
@@ -581,6 +610,15 @@ export function filterZonesForPersona(
   for (const zone of zones) {
     if (!roleAllowsItem(ctx.role, zone.roles)) continue;
     let items = zone.items.filter((item) => roleAllowsItem(ctx.role, item.roles));
+
+    if (ctx.role === "assisted-board" && zone.label !== ZONE_LABELS.HOME) {
+      items = items.filter((item) => {
+        const featureId = ASSISTED_BOARD_ROUTE_FEATURES[item.url];
+        return featureId
+          ? ctx.assistedBoardAccess?.[featureId]?.view === true
+          : false;
+      });
+    }
 
     // Board-scoped volunteers never receive portfolio-management navigation.
     if (zone.label === ZONE_LABELS.HOME && ctx.boardScopedExperience) {

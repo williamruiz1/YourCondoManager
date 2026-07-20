@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/sidebar";
 import { useActiveAssociation } from "@/hooks/use-active-association";
 import { useAdminRole } from "@/hooks/useAdminRole";
+import { useAssistedBoardAccess } from "@/hooks/use-assisted-board-access";
 import { getFeatureFlag } from "@shared/feature-flags";
 import type { AdminRole } from "@shared/schema";
 import { isBoardScopedAdminRole } from "@shared/board-role-boundaries";
@@ -194,6 +195,10 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
     useActiveAssociation();
 
   const boardScopedExperience = isBoardScopedAdminRole(adminRole);
+  const { access: assistedBoardAccess } = useAssistedBoardAccess(
+    activeAssociationId,
+    adminRole === "assisted-board",
+  );
   const amenitiesDisabled = activeAssociation?.amenitiesEnabled === 0;
   // founder-os#10569 (YCM Redesign M8) — client-bundle read of the
   // VIOLATIONS_MANAGEMENT_ENABLED flag (VITE_FEATURE_FLAG_-prefixed at build
@@ -206,6 +211,7 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
     boardScopedExperience,
     amenitiesDisabled,
     violationsManagementEnabled,
+    assistedBoardAccess,
   });
   const visibleFooterItems = filterFooterItemsForPersona(SIDEBAR_FOOTER_ITEMS, adminRole ?? null);
 
