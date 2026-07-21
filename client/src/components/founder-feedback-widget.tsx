@@ -9,6 +9,26 @@ import { useFounderFeedbackEligibility } from "@/hooks/use-founder-feedback-elig
 
 type Severity = "bug" | "idea" | "looks-wrong";
 
+type FounderFeedbackSubmissionResult = {
+  ok: true;
+  id: string;
+  githubIssueUrl: string | null;
+  dbOnly: boolean;
+};
+
+export function founderFeedbackSuccessToast(result: Pick<FounderFeedbackSubmissionResult, "dbOnly">) {
+  if (result.dbOnly) {
+    return {
+      title: "Feedback saved to YCM",
+      description: "GitHub issue filing is unavailable right now. Your note is safely stored for follow-up.",
+    };
+  }
+
+  return {
+    title: "Got it — routed to the build team.",
+  };
+}
+
 const SEVERITY_OPTIONS: Array<{ value: Severity; label: string }> = [
   { value: "bug", label: "Bug" },
   { value: "idea", label: "Idea" },
@@ -86,9 +106,8 @@ export function FounderFeedbackWidget() {
         throw new Error(text || `${res.status}`);
       }
 
-      toast({
-        title: "Got it — routed to the build team.",
-      });
+      const result = (await res.json()) as FounderFeedbackSubmissionResult;
+      toast(founderFeedbackSuccessToast(result));
       setNote("");
       setSeverity("");
       setOpen(false);

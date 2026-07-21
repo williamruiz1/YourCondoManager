@@ -782,9 +782,23 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
           pageTitle: document.title,
           viewportWidth: selectedSnapshot.viewportWidth,
           viewportHeight: selectedSnapshot.viewportHeight,
+        }).then(async (mirrorResponse) => {
+          const mirrorResult = await mirrorResponse.json() as { dbOnly?: boolean };
+          if (mirrorResult.dbOnly) {
+            toast({
+              title: "Roadmap ticket created; GitHub mirror unavailable",
+              description: "The feedback is safely stored in YCM and remains actionable from the roadmap.",
+            });
+          }
         }).catch(() => {
-          // Best-effort only — the roadmap ticket above is already created;
-          // never surface this as a submission failure.
+          // The roadmap ticket above is already durable, but the secondary
+          // mirror failure must remain visible instead of silently implying
+          // that every downstream destination succeeded.
+          toast({
+            title: "Roadmap ticket created; feedback mirror failed",
+            description: "The roadmap ticket is safe. GitHub mirroring can be retried after the integration recovers.",
+            variant: "destructive",
+          });
         });
       }
 

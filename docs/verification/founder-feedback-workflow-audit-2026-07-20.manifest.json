@@ -1,0 +1,109 @@
+{
+  "audit": {
+    "title": "William-only contextual feedback workflow audit",
+    "mode": "repair-and-certify",
+    "scope": "William-only Admin and Owner Portal/public contextual feedback",
+    "environments": ["production", "local-test"],
+    "criticality": "high",
+    "observed_at": "2026-07-21T03:30:32Z",
+    "authorities": {
+      "requirements": "YCM durable task t-1784315826-80833-11786; PocketPM task ecb4058c-e35f-4200-9c3a-1bb9331745e1",
+      "code": "williamruiz1/YourCondoManager@6751c36 plus audit branch",
+      "data": "production PostgreSQL founder_feedback",
+      "provider": "GitHub Issues REST API",
+      "deployment": "Fly yourcondomanager machine version 250"
+    },
+    "diagrams": {
+      "system_context": "docs/verification/founder-feedback-workflow-audit-2026-07-20.md#system-context"
+    }
+  },
+  "actors": [
+    {"id": "william-admin", "name": "William Admin/Board", "role": "allowlisted chcmgmt18@gmail.com"},
+    {"id": "william-owner", "name": "William Owner/general user", "role": "allowlisted yourcondomanagement@gmail.com"}
+  ],
+  "capabilities": [
+    {"id": "CAP-001", "name": "Resolve feedback eligibility", "actor_ids": ["william-admin", "william-owner"], "ui_entrypoints": ["App root on every route"], "backend_paths": ["GET /api/founder-feedback/eligible"], "workflow_ids": ["WF-001"], "reconciliation": "mapped"},
+    {"id": "CAP-002", "name": "Submit Owner/public feedback", "actor_ids": ["william-owner"], "ui_entrypoints": ["FounderFeedbackWidget"], "backend_paths": ["POST /api/founder-feedback"], "workflow_ids": ["WF-002"], "reconciliation": "mapped"},
+    {"id": "CAP-003", "name": "Submit Admin contextual feedback", "actor_ids": ["william-admin"], "ui_entrypoints": ["AdminContextualFeedbackWidget"], "backend_paths": ["POST /api/admin/contextual-feedback", "POST /api/founder-feedback"], "workflow_ids": ["WF-003"], "reconciliation": "mapped"}
+  ],
+  "workflows": [
+    {
+      "id": "WF-001",
+      "name": "Resolve William-only eligibility",
+      "actor_ids": ["william-admin", "william-owner"],
+      "risk": "high",
+      "trigger": "App root loads",
+      "entrypoints": ["all routes"],
+      "preconditions": ["optional admin, portal, or general authenticated session"],
+      "terminal_outcomes": ["eligible with feedback control", "ineligible with no control"],
+      "invariants": ["email comes only from trusted server-resolved identity", "exact allowlist is rechecked on writes"],
+      "happy_path": ["client requests eligibility", "server resolves identity", "server exact-matches allowlist", "client renders one control"],
+      "alternate_paths": ["anonymous or non-allowlisted identity renders no control"],
+      "failure_paths": ["identity-resolution error fails closed"],
+      "systems": ["React client", "Express API", "session and portal access stores"],
+      "data": {"inputs": ["credentials or portal access ID"], "writes": ["none"], "reads": ["trusted session identity"], "retention": ["not-applicable"]},
+      "process": {"sync_steps": ["identity resolution", "allowlist check"], "async_steps": ["not-applicable"], "external_dependencies": ["not-applicable"]},
+      "notifications": [{"event": "not-applicable", "audience": "not-applicable", "channel": "not-applicable", "trigger_point": "not-applicable", "template": "not-applicable", "delivery_evidence": "not-applicable", "failure_handling": "fail closed"}],
+      "controls": {"authorization": ["isFounderFeedbackEmail exact Set membership"], "validation": ["server-derived email"], "tenant_scope": ["identity-bound"], "privacy": ["ineligible response exposes no identity"], "idempotency": ["read-only"], "audit_trail": ["server errors are logged"]},
+      "observability": {"logs": ["[founder-feedback][eligible]"], "metrics": ["gap: no dedicated metric"], "alerts": ["gap: no dedicated alert"], "correlation_ids": ["Fly request ID"]},
+      "recovery": {"retry": ["client query can rerun after session change"], "compensation": ["not-applicable"], "manual_recovery": ["re-authenticate"]},
+      "continuity": {"entry": "pass", "identity_scope": "pass", "validation": "pass", "orchestration_state": "pass", "data_projection": "not-applicable", "async_idempotency": "not-applicable", "provider": "not-applicable", "notifications": "not-applicable", "user_outcome": "pass", "audit_operations": "pass", "privacy_retention": "pass"},
+      "diagrams": {"sequence": "report WF-001", "state": "not-applicable", "data_lineage": "not-applicable"},
+      "evidence": [{"id": "EV-002", "layer": "test", "claim": "allowlist and scope checks pass", "result": "pass", "locator": "19 focused tests", "environment": "local", "observed_at": "2026-07-21T03:27:21Z"}],
+      "gaps": [],
+      "status": "verified-test"
+    },
+    {
+      "id": "WF-002",
+      "name": "Submit Owner Portal or public-page feedback",
+      "actor_ids": ["william-owner"],
+      "risk": "high",
+      "trigger": "William selects Send",
+      "entrypoints": ["FounderFeedbackWidget"],
+      "preconditions": ["eligible server-resolved identity", "non-empty note"],
+      "terminal_outcomes": ["database row plus GitHub issue", "database-only durable fallback", "rejection"],
+      "invariants": ["row is written before provider call", "client email is never trusted", "result message reflects mirror truth"],
+      "happy_path": ["capture context", "authorize and validate", "insert row", "create GitHub issue", "store linkage", "confirm routing"],
+      "alternate_paths": ["database-only fallback with truthful notice"],
+      "failure_paths": ["400 invalid", "403 ineligible", "500 persistence failure", "provider failure preserves row"],
+      "systems": ["React client", "Express API", "PostgreSQL", "GitHub Issues"],
+      "data": {"inputs": ["note", "severity", "route", "title", "viewport"], "writes": ["founder_feedback", "GitHub issue"], "reads": ["API submission result"], "retention": ["not explicitly time-bounded"]},
+      "process": {"sync_steps": ["authorization", "validation", "DB insert", "provider call", "link update"], "async_steps": ["not-applicable"], "external_dependencies": ["GitHub token and Issues API"]},
+      "notifications": [{"event": "submission result", "audience": "William", "channel": "in-app toast", "trigger_point": "API response", "template": "routed or database-only", "delivery_evidence": "EV-006", "failure_handling": "destructive failure toast"}],
+      "controls": {"authorization": ["server exact allowlist"], "validation": ["Zod bounds"], "tenant_scope": ["identity-bound"], "privacy": ["no client-supplied identity"], "idempotency": ["gap: duplicate sends create separate feedback records"], "audit_trail": ["row ID and mirror link", "redacted warning"]},
+      "observability": {"logs": ["submit error and github-mirror-unavailable"], "metrics": ["DB mirrored/unmirrored aggregate"], "alerts": ["operator query/manual watchlist"], "correlation_ids": ["feedback row ID"]},
+      "recovery": {"retry": ["manual replay after provider recovery"], "compensation": ["not-applicable"], "manual_recovery": ["query unmirrored rows and persist issue linkage"]},
+      "continuity": {"entry": "pass", "identity_scope": "pass", "validation": "pass", "orchestration_state": "gated", "data_projection": "pass", "async_idempotency": "not-applicable", "provider": "gated", "notifications": "pass", "user_outcome": "pass", "audit_operations": "pass", "privacy_retention": "pass"},
+      "diagrams": {"sequence": "report WF-002", "state": "report WF-002", "data_lineage": "report system context"},
+      "evidence": [{"id": "EV-003", "layer": "data", "claim": "production table exists with no historical rows", "result": "pass", "locator": "redacted production aggregate", "environment": "production", "observed_at": "2026-07-21T03:28:00Z"}, {"id": "EV-005", "layer": "provider", "claim": "production token is absent", "result": "gated", "locator": "Fly secret-name inventory", "environment": "production", "observed_at": "2026-07-21T03:28:00Z"}, {"id": "EV-006", "layer": "test", "claim": "database-only and routed-success user messages are regression-covered", "result": "pass", "locator": "client/src/components/founder-feedback-widget.test.ts", "environment": "local", "observed_at": "2026-07-21T03:30:00Z"}],
+      "gaps": [],
+      "status": "gated"
+    },
+    {
+      "id": "WF-003",
+      "name": "Submit Admin inspected-element feedback",
+      "actor_ids": ["william-admin"],
+      "risk": "high",
+      "trigger": "William submits inspected-element feedback",
+      "entrypoints": ["AdminContextualFeedbackWidget"],
+      "preconditions": ["eligible platform-admin session", "selected element and valid description"],
+      "terminal_outcomes": ["durable roadmap task plus DB row and GitHub issue", "durable roadmap task plus disclosed secondary-mirror failure"],
+      "invariants": ["primary roadmap success is preserved if secondary mirror fails", "secondary failure is visible"],
+      "happy_path": ["create roadmap task", "persist feedback mirror", "create and link GitHub issue"],
+      "alternate_paths": ["roadmap task remains actionable when mirror is database-only"],
+      "failure_paths": ["roadmap failure blocks success", "mirror failure warns without deleting primary task"],
+      "systems": ["Admin client", "roadmap API", "feedback API", "PostgreSQL", "GitHub Issues"],
+      "data": {"inputs": ["description", "element/page context", "optional screenshot"], "writes": ["admin roadmap task", "founder_feedback", "GitHub issue"], "reads": ["roadmap and API result"], "retention": ["roadmap and feedback records retained"]},
+      "process": {"sync_steps": ["create primary roadmap task"], "async_steps": ["client secondary mirror promise"], "external_dependencies": ["GitHub token and Issues API"]},
+      "notifications": [{"event": "primary and mirror result", "audience": "William", "channel": "in-app toast", "trigger_point": "API results", "template": "ticket created and optional mirror warning", "delivery_evidence": "code and local tests", "failure_handling": "warning preserves primary truth"}],
+      "controls": {"authorization": ["platform-admin for roadmap; exact allowlist for mirror"], "validation": ["admin and founder schemas"], "tenant_scope": ["admin identity"], "privacy": ["server-derived identity"], "idempotency": ["each explicit submission is a new task"], "audit_trail": ["roadmap task ID and founder feedback row ID"]},
+      "observability": {"logs": ["mirror unavailable/error"], "metrics": ["DB mirrored/unmirrored aggregate"], "alerts": ["user warning plus operator watchlist"], "correlation_ids": ["roadmap task ID and feedback row ID"]},
+      "recovery": {"retry": ["manual replay of unmirrored row"], "compensation": ["not-applicable"], "manual_recovery": ["roadmap task remains actionable"]},
+      "continuity": {"entry": "pass", "identity_scope": "pass", "validation": "pass", "orchestration_state": "gated", "data_projection": "pass", "async_idempotency": "not-applicable", "provider": "gated", "notifications": "pass", "user_outcome": "pass", "audit_operations": "pass", "privacy_retention": "pass"},
+      "diagrams": {"sequence": "report WF-003", "state": "report WF-002 shared mirror lifecycle", "data_lineage": "report system context"},
+      "evidence": [{"id": "EV-007", "layer": "provider", "claim": "production token is absent", "result": "gated", "locator": "Fly secret-name inventory", "environment": "production", "observed_at": "2026-07-21T03:28:00Z"}, {"id": "EV-008", "layer": "test", "claim": "admin scope and route inventory controls pass focused tests", "result": "pass", "locator": "tests/auth-surface-parity.test.ts and server/routes/__tests__/route-inventory-tenant-scope.test.ts", "environment": "local", "observed_at": "2026-07-21T03:27:21Z"}],
+      "gaps": [],
+      "status": "gated"
+    }
+  ]
+}

@@ -6,7 +6,8 @@
  * public pages when he's authenticated). Two responsibilities:
  *
  *   1. The email allowlist + eligibility check. This is the ONE place the
- *      allowlist is defined — both /api/feedback/eligible and /api/feedback
+ *      allowlist is defined — both /api/founder-feedback/eligible and
+ *      /api/founder-feedback
  *      (the write path) call `isFounderFeedbackEmail` so the gate can never
  *      drift between the "should I show the button" check and the "should I
  *      accept this write" check. The allowlist is resolved SERVER-SIDE only;
@@ -27,6 +28,15 @@ const FOUNDER_FEEDBACK_ALLOWED_EMAILS = new Set(
 export function isFounderFeedbackEmail(email: string | null | undefined): boolean {
   if (!email) return false;
   return FOUNDER_FEEDBACK_ALLOWED_EMAILS.has(email.trim().toLowerCase());
+}
+
+/**
+ * Route context is useful; query strings and fragments are not. Strip them
+ * before persistence, logging, or GitHub mirroring so magic-link tokens and
+ * other sensitive URL parameters can never leave the browser via feedback.
+ */
+export function sanitizeFounderFeedbackRoute(route: string): string {
+  return route.split(/[?#]/, 1)[0] || "/";
 }
 
 const GITHUB_REPO_OWNER = "williamruiz1";

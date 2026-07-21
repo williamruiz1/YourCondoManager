@@ -2288,8 +2288,8 @@ export const roadmapTaskAttachments = pgTable("admin_roadmap_task_attachments", 
  * remains the durable record either way (DB-only fallback).
  *
  * Eligibility is resolved and re-checked SERVER-SIDE on every write (see
- * server/founder-feedback.ts + the /api/feedback/eligible and /api/feedback
- * routes) — this table intentionally carries no foreign key to admin_users
+ * server/founder-feedback.ts + the /api/founder-feedback/eligible and
+ * /api/founder-feedback routes) — this table intentionally carries no foreign key to admin_users
  * or portal_access because the identity may be resolved via an admin
  * session, a portal session, or a general authenticated session.
  */

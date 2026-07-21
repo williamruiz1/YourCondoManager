@@ -2,7 +2,7 @@
  * William-only contextual feedback (2026-07-17).
  *
  * Exercises the allowlist gate + the issue-body builders in isolation.
- * The two routes (/api/feedback/eligible, /api/feedback) both call
+ * The two routes (/api/founder-feedback/eligible, /api/founder-feedback) both call
  * `isFounderFeedbackEmail` as their ONLY gate — this test is the
  * regression guard against the allowlist ever silently widening (e.g. a
  * copy-paste that swaps `Set.has` for something case-sensitive, or an
@@ -11,9 +11,20 @@
 import { describe, it, expect } from "vitest";
 import {
   isFounderFeedbackEmail,
+  sanitizeFounderFeedbackRoute,
   buildFounderFeedbackIssueTitle,
   buildFounderFeedbackIssueBody,
 } from "../founder-feedback";
+
+describe("sanitizeFounderFeedbackRoute", () => {
+  it("keeps the useful pathname while removing query strings and fragments", () => {
+    expect(sanitizeFounderFeedbackRoute("/portal/finances?token=secret#ledger")).toBe("/portal/finances");
+  });
+
+  it("falls back to the root path when only sensitive URL context is supplied", () => {
+    expect(sanitizeFounderFeedbackRoute("?token=secret")).toBe("/");
+  });
+});
 
 describe("isFounderFeedbackEmail — allowlisted", () => {
   it("allows William's board/admin account", () => {
