@@ -353,7 +353,7 @@ import {
   requireBoardAccessReadOnly,
 } from "./portal-role-collapse";
 import { updatePaymentTransactionStatus } from "./services/payment-service";
-import { postPaymentLedgerEntry } from "./services/ledger-payment-identity";
+import { postSucceededPaymentTransactionLedgerEntry } from "./services/payment-transaction-ledger";
 import { sendPaymentReceiptEmail, getPortalReceiptList, getPaymentReceiptData } from "./services/payment-receipt-email";
 import {
   buildSpecMetadata,
@@ -6631,16 +6631,36 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return res.status(403).json({ message: "Stripe webhook timestamp outside tolerance (replay rejected)" });
         }
 
+        const txnStatus =
+          normalizedStripeEvent.status === "succeeded" ? "succeeded" as const
+          : normalizedStripeEvent.status === "failed" ? "failed" as const
+          : "pending" as const;
+        const updatedTxn = normalizedStripeEvent.transactionId || normalizedStripeEvent.gatewayReference
+          ? await updatePaymentTransactionStatus({
+              transactionId: normalizedStripeEvent.transactionId ?? undefined,
+              providerPaymentId: normalizedStripeEvent.gatewayReference ?? undefined,
+              providerIntentId: normalizedStripeEvent.gatewayReference ?? undefined,
+              status: txnStatus,
+            })
+          : null;
+
+        // Never let signed metadata for one HOA resolve a transaction owned by
+        // another HOA. The local transaction is only a fallback source after
+        // this tenant boundary check passes.
+        if (updatedTxn && updatedTxn.associationId !== normalizedStripeEvent.associationId) {
+          throw new Error("Payment transaction does not belong to webhook association");
+        }
+
         const result = await storage.processPaymentWebhookEvent({
           associationId: normalizedStripeEvent.associationId,
           provider: "stripe",
           providerEventId: normalizedStripeEvent.providerEventId || "",
           eventType: normalizedStripeEvent.eventType,
           status: normalizedStripeEvent.status,
-          amount: normalizedStripeEvent.amount,
-          currency: normalizedStripeEvent.currency,
-          personId: normalizedStripeEvent.personId,
-          unitId: normalizedStripeEvent.unitId,
+          amount: normalizedStripeEvent.amount ?? (updatedTxn ? updatedTxn.amountCents / 100 : null),
+          currency: normalizedStripeEvent.currency ?? updatedTxn?.currency ?? null,
+          personId: normalizedStripeEvent.personId ?? updatedTxn?.personId ?? null,
+          unitId: normalizedStripeEvent.unitId ?? updatedTxn?.unitId ?? null,
           paymentLinkToken: normalizedStripeEvent.paymentLinkToken,
           gatewayReference: normalizedStripeEvent.gatewayReference,
           rawPayloadJson: normalizedStripeEvent.rawPayloadJson,
@@ -6649,64 +6669,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           // assessment at face value; the fee itself books separately to
           // platform_processing_fees. Null/undefined for every payment
           // without a fee (the vast majority) — no behavior change there.
-          platformFeeCents: normalizedStripeEvent.platformFeeCents,
+          platformFeeCents: normalizedStripeEvent.platformFeeCents ?? updatedTxn?.platformFeeCents ?? null,
           feeSettlementMethod: normalizedStripeEvent.feeSettlementMethod,
         });
 
-        // Update payment_transactions if this webhook corresponds to a payment
-        if (normalizedStripeEvent.transactionId || normalizedStripeEvent.gatewayReference) {
-          try {
-            const txnStatus =
-              normalizedStripeEvent.status === "succeeded" ? "succeeded" as const
-              : normalizedStripeEvent.status === "failed" ? "failed" as const
-              : "pending" as const;
+        // Transaction-backed safety net for EVERY succeeded payment. The
+        // storage path above now receives trusted transaction fallbacks so its
+        // event audit row can complete normally; this second canonical write
+        // makes the same operation resilient across legacy/cross-path races.
+        if (updatedTxn?.status === "succeeded") {
+          await postSucceededPaymentTransactionLedgerEntry({
+            transaction: updatedTxn,
+            paymentIdentityKey: normalizedStripeEvent.gatewayReference,
+            feeSettlementMethod: normalizedStripeEvent.feeSettlementMethod,
+          });
 
-            const updatedTxn = await updatePaymentTransactionStatus({
-              transactionId: normalizedStripeEvent.transactionId ?? undefined,
-              providerPaymentId: normalizedStripeEvent.gatewayReference ?? undefined,
-              providerIntentId: normalizedStripeEvent.gatewayReference ?? undefined,
-              status: txnStatus,
-            });
-
-            // Phase 2: Create ledger entry for autopay transactions that just succeeded.
-            // A-WEBHOOK-001/002 (founder-os#10737): routed through the ONE
-            // canonical payment-ledger writer, keyed on the Stripe
-            // payment_intent id (normalizedStripeEvent.gatewayReference — the
-            // SAME value the per-HOA payment-webhook path resolves for this
-            // event, and the SAME value the synchronous autopay charge write
-            // in server/routes/autopay.ts resolves via chargeResult.intentId).
-            // This closes both: (a) a payment observed via more than one
-            // event/endpoint posts exactly once, and (b) a concurrent race
-            // between this webhook write and the synchronous autopay write
-            // can never double-insert — the DB unique index is the arbiter,
-            // not this check-then-insert.
-            if (updatedTxn && updatedTxn.source === "autopay" && txnStatus === "succeeded") {
-              await postPaymentLedgerEntry({
-                associationId: updatedTxn.associationId,
-                unitId: updatedTxn.unitId,
-                personId: updatedTxn.personId,
-                amount: -(updatedTxn.amountCents / 100),
-                postedAt: new Date(),
-                description: updatedTxn.description || "Autopay payment",
-                referenceType: "autopay_payment_transaction",
-                referenceId: updatedTxn.id,
-                paymentIdentityKey: normalizedStripeEvent.gatewayReference?.trim() || null,
-                source: "autopay-webhook",
-              });
-            }
-
-            // P0-2: Send receipt email on succeeded transactions.
-            // Fire-and-forget: email failure must not fail the webhook 200.
-            // Idempotent via receipt_email_sent_at on the transaction row.
-            if (updatedTxn && txnStatus === "succeeded") {
-              sendPaymentReceiptEmail({ transactionId: updatedTxn.id }).catch((emailErr: unknown) => {
-                const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
-                console.error("[webhook] receipt email failed:", msg);
-              });
-            }
-          } catch (txnUpdateErr) {
-            console.error("[webhook] payment_transactions update failed:", txnUpdateErr);
-          }
+          // P0-2: Fire-and-forget receipt; idempotent via the transaction row.
+          sendPaymentReceiptEmail({ transactionId: updatedTxn.id }).catch((emailErr: unknown) => {
+            const msg = emailErr instanceof Error ? emailErr.message : String(emailErr);
+            console.error("[webhook] receipt email failed:", msg);
+          });
         }
 
         return res.status(200).json(result);
