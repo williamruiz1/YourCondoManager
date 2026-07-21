@@ -12,20 +12,14 @@
  * (`computeDueNow` on the client), so the per-unit sums reconcile EXACTLY to
  * the owner-wide totals:
  *
- *   Σ dueNowDues        === owner-wide dues-due   (Σ positive charge+late-fee)
- *   Σ dueNowAssessment  === owner-wide installment-due (the upcoming
- *                            special-assessment installment(s))
+ *   Σ dueNowDues        === owner-wide current-period HOA dues, net of
+ *                            cleared current-period payments/credits
+ *   Σ dueNowAssessment  === owner-wide scheduled assessment installments
+ *                            due in the current calendar period
  *   Σ balanceTotal      === owner-wide balance
  *
- * ── Why the installment lands on ONE unit ──────────────────────────────────
- * The owner-portal endpoint computes the upcoming special-assessment
- * installment for the owner's PRIMARY unit only (`req.portalUnitId`) — the
- * installments carry no per-unit attribution and are NOT re-scoped across
- * every owned unit (doing so would change the owner-wide "due now" total,
- * which is out of scope for a read-only display change). So the installment
- * total is attributed to that primary unit; the owner's other units show $0
- * installment due now. This keeps the per-unit sums reconciled to exactly the
- * figure the owner already sees on the top card.
+ * Upcoming installments now carry unit attribution. The primary-unit fallback
+ * remains only for older/cached payloads without `unitId`.
  */
 
 export interface PerUnitByCategoryInput {
@@ -35,16 +29,27 @@ export interface PerUnitByCategoryInput {
   byCategory: Partial<Record<string, number>>;
   /** Net ledger balance for the unit (sum of all its entries). */
   total: number;
+  /** Ledger rows used to resolve the current calendar period. */
+  entries?: PeriodLedgerEntryInput[];
 }
 
 export interface UpcomingInstallmentInput {
   installmentAmount: number;
+  unitId?: string | null;
+  dueDate?: Date | string | null;
+}
+
+export interface PeriodLedgerEntryInput {
+  entryType: string;
+  amount: number;
+  postedAt: Date | string | null;
+  referenceType?: string | null;
 }
 
 export interface PerUnitBreakdown {
   unitId: string;
   unitLabel: string;
-  /** HOA dues due now = positive `charge` + `late-fee` for the unit. */
+  /** Current-period HOA dues, net of cleared current-period payments/credits. */
   dueNowDues: number;
   /** Special-assessment INSTALLMENT due now (not the full lump). */
   dueNowAssessment: number;
@@ -59,38 +64,76 @@ export interface PerUnitBreakdown {
 }
 
 /**
- * Build the per-unit breakdown from the owner-wide `byUnit` grouping + the
- * upcoming special-assessment installments + the owner's primary unit id.
+ * Build the per-unit breakdown from ledger rows + scheduled assessment
+ * installments. Full balance and current-period obligation stay independent.
  *
- * Reconciles by construction: the installment total is attributed to a single
- * unit that is present in `units`, and every other figure is a straight
- * partition of `byUnit`.
+ * Reconciles by construction: installments use their unit attribution (with a
+ * primary-unit fallback for cached legacy payloads), and balances remain a
+ * straight partition of `byUnit`.
  */
 export function buildPerUnitBreakdown(
   units: PerUnitByCategoryInput[],
   upcomingInstallments: UpcomingInstallmentInput[],
   primaryUnitId: string | null,
+  now = new Date(),
 ): PerUnitBreakdown[] {
-  const totalInstallmentDueNow = upcomingInstallments.reduce(
-    (sum, i) => sum + (i.installmentAmount ?? 0),
-    0,
-  );
+  const periodStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1);
+  const periodEnd = Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1);
+  const isInCurrentPeriod = (value: Date | string | null | undefined): boolean => {
+    if (!value) return true;
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) && timestamp >= periodStart && timestamp < periodEnd;
+  };
 
-  // Attribute the installment total to the owner's primary unit so the
-  // per-unit sums reconcile to the owner-wide "due now" total. If the primary
-  // unit has no ledger rows (so it's absent from `units`), fall back to the
-  // first (highest-balance) unit so the total is never dropped.
+  const installmentsDueThisPeriod = upcomingInstallments.filter((installment) =>
+    isInCurrentPeriod(installment.dueDate),
+  );
+  // Backward compatibility for an older installment payload with no unitId.
   const installmentUnitId =
     primaryUnitId && units.some((u) => u.unitId === primaryUnitId)
       ? primaryUnitId
       : (units[0]?.unitId ?? primaryUnitId);
 
   return units.map((u) => {
-    const dueNowDues =
-      Math.max(0, u.byCategory.charge ?? 0) +
-      Math.max(0, u.byCategory["late-fee"] ?? 0);
-    const dueNowAssessment =
-      u.unitId === installmentUnitId ? totalInstallmentDueNow : 0;
+    const currentPeriodEntries = u.entries?.filter((entry) =>
+      isInCurrentPeriod(entry.postedAt),
+    );
+    const grossDuesThisPeriod = currentPeriodEntries
+      ? currentPeriodEntries
+          .filter((entry) => entry.entryType === "charge" || entry.entryType === "late-fee")
+          .reduce((sum, entry) => sum + Math.max(0, entry.amount), 0)
+      : Math.max(0, u.byCategory.charge ?? 0) + Math.max(0, u.byCategory["late-fee"] ?? 0);
+    const clearedPaymentsThisPeriod = currentPeriodEntries
+      ? Math.abs(
+          currentPeriodEntries
+            .filter((entry) => entry.entryType === "payment" || entry.entryType === "credit")
+            .reduce((sum, entry) => sum + Math.min(0, entry.amount), 0),
+        )
+      : 0;
+    const unitInstallments = installmentsDueThisPeriod.filter((installment) =>
+      installment.unitId
+        ? installment.unitId === u.unitId
+        : u.unitId === installmentUnitId,
+    );
+    const grossAssessmentThisPeriod = unitInstallments.reduce(
+      (sum, installment) => sum + Math.max(0, installment.installmentAmount ?? 0),
+      0,
+    ) + (currentPeriodEntries
+      ? currentPeriodEntries
+          .filter(
+            (entry) =>
+              entry.entryType === "assessment" &&
+              entry.referenceType === "special_assessment_installment",
+          )
+          .reduce((sum, entry) => sum + Math.max(0, entry.amount), 0)
+      : 0);
+
+    // A cleared unit payment first satisfies this period's recurring HOA
+    // dues, then any scheduled assessment installment. Historical balances
+    // remain visible below, but never inflate "due this period".
+    const dueNowDues = Math.max(0, grossDuesThisPeriod - clearedPaymentsThisPeriod);
+    const remainingPaymentCredit = Math.max(0, clearedPaymentsThisPeriod - grossDuesThisPeriod);
+    const dueNowAssessment = Math.max(0, grossAssessmentThisPeriod - remainingPaymentCredit);
     const balanceAssessment = u.byCategory.assessment ?? 0;
     const balanceDues = u.total - balanceAssessment;
     return {
