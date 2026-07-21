@@ -52,6 +52,7 @@ function safeInvalidateAlertCache(): void {
 }
 import {
   isFounderFeedbackEmail,
+  sanitizeFounderFeedbackRoute,
   resolveAppVersion,
   fileFounderFeedbackGithubIssue,
   buildFounderFeedbackIssueTitle,
@@ -17967,6 +17968,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const appVersion = resolveAppVersion();
       const userAgent = req.header("user-agent") || null;
       const createdAt = new Date();
+      const safeRoute = sanitizeFounderFeedbackRoute(parsed.route);
 
       const [row] = await db
         .insert(founderFeedback)
@@ -17976,7 +17978,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           identityId: identity.identityId,
           note: parsed.note,
           severity: parsed.severity || null,
-          route: parsed.route,
+          route: safeRoute,
           pageTitle: parsed.pageTitle || null,
           viewportWidth: parsed.viewportWidth ?? null,
           viewportHeight: parsed.viewportHeight ?? null,
@@ -17992,7 +17994,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           severity: parsed.severity || null,
           email: identity.email,
           surface: identity.surface,
-          route: parsed.route,
+          route: safeRoute,
           pageTitle: parsed.pageTitle || null,
           viewportWidth: parsed.viewportWidth ?? null,
           viewportHeight: parsed.viewportHeight ?? null,
@@ -18007,6 +18009,12 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           .update(founderFeedback)
           .set({ githubIssueUrl: githubResult.url, githubIssueNumber: githubResult.number })
           .where(eq(founderFeedback.id, row.id));
+      } else {
+        console.warn("[founder-feedback][github-mirror-unavailable]", {
+          feedbackId: row.id,
+          surface: identity.surface,
+          route: safeRoute,
+        });
       }
 
       res.status(201).json({
