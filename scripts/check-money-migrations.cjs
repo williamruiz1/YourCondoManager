@@ -57,6 +57,13 @@ function shSafe(cmd) {
   try { return sh(cmd); } catch { return ""; }
 }
 
+// Only top-level SQL files are forward migrations consumed by migrate.cjs.
+// Operational rollback files live under migrations/rollback/ and are invoked
+// manually; scanning them as deploy inputs creates a false production block.
+function isForwardMigrationPath(file) {
+  return /^migrations\/[^/]+\.sql$/.test(file);
+}
+
 function main() {
   const head = process.env.GUARD_HEAD || process.env.GITHUB_SHA || "HEAD";
   let base = process.env.GUARD_BASE || process.env.GITHUB_EVENT_BEFORE || "";
@@ -64,8 +71,8 @@ function main() {
   if (!base || /^0{40}$/.test(base)) base = `${head}~1`;
 
   const range = `${base}..${head}`;
-  const changed = shSafe(`git diff --name-only --diff-filter=A ${range} -- 'migrations/*.sql'`)
-    .split("\n").map((s) => s.trim()).filter(Boolean);
+  const changed = shSafe(`git diff --name-only --diff-filter=A ${range} -- migrations/`)
+    .split("\n").map((s) => s.trim()).filter(isForwardMigrationPath);
 
   if (changed.length === 0) {
     console.log(`[money-migration-guard] no new migrations added in ${range} — nothing to review. PASS.`);
@@ -104,4 +111,6 @@ function main() {
   return process.exit(1);
 }
 
-main();
+if (require.main === module) main();
+
+module.exports = { destructiveHits, isForwardMigrationPath };
