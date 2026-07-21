@@ -35,7 +35,7 @@ function aggregateRouteAllowed(
 }
 
 export function delegatedWorkspaceRouteAllowed(
-  role: AdminRole,
+  role: AdminRole | null,
   route: string,
   access: AssistedBoardAccessMatrix,
 ): boolean {
