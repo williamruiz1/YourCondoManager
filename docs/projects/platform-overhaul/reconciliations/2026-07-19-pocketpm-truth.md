@@ -8,7 +8,7 @@ This is an audit record, not a replacement feature map. Live PocketPM remains th
 
 ## Verified baseline
 
-- GitHub `main`: `137a3c5` (`Fix fail-closed tenant isolation and IDORs`, PR #460).
+- GitHub `main` at the original reconciliation: `137a3c5` (`Fix fail-closed tenant isolation and IDORs`, PR #460).
 - Phase 11 Sidebar + Routes: merged via PR #89 / `fac69a5`.
 - Phase 12 Financials role-gating: merged via PR #93 / `34cb782`.
 - Current Platform Overhaul frontier: **Phase 13 Operations**.
@@ -60,9 +60,8 @@ Superseded or duplicate cards should be approved or rejected with the successor 
 - #401 — core queue/permission ladder superseded by merged #400; extract only unique owner-FAQ work first.
 - #461 — most contents superseded; preserve only the unique hosted-runner fallback as a clean follow-up.
 
-### Active pull requests
+### Active pull requests at the original reconciliation
 
-- #535 — owner-portal faithful rebuild; rebase, fix Vitest and Playwright, then visual-review staging.
 - #528 — integer-cents ledger migration; rebase, rerun migration guard, and preserve founder ratification.
 - #505 — protected CHC balance reconciliation; keep parked until founder review.
 - #484 — Stripe client consolidation; rebase and retest.
@@ -94,3 +93,16 @@ Superseded or duplicate cards should be approved or rejected with the successor 
 `.pocketpm/CONTEXT.md` is a generated cache and was not edited.
 
 The JSON files under `docs/agent-bootstrap/` predate the current route and roadmap state. A required `npm run bootstrap:agent` refresh was attempted on 2026-07-19, but the database-backed generator could not run because no `DATABASE_URL` was available. The generator still reads the legacy Admin Roadmap tables rather than PocketPM, so the generated JSON was left untouched instead of being presented as current. `docs/agent-bootstrap/README.md` now identifies live PocketPM and this initiative index as the current authorities.
+
+## 2026-07-21 live reconciliation addendum
+
+This record was recovered from a stranded local commit and reconciled against production before publication. Current `main` is `4c63814`.
+
+- The faithful Owner Portal rebuild is no longer active work: PR #535 merged as `6ea524d` and the later payment/finance continuity repairs landed in PRs #536 and #546–#560.
+- The public Cherry Hill Community Hub redesign and authenticity pass are live through PRs #544, #545, #561, and `/community/cherryhill` plus all five public hub resolver paths return HTTP 200 in production.
+- Board, Property Manager, Assisted Board, multi-association Board Officer, and Owner workflow continuity repairs landed through PRs #548–#550 and #553–#554. Their PocketPM cards remain in `review`; PM approval is still required.
+- William-only contextual feedback truthfulness and route-redaction repairs are live through PR #562. GitHub issue delivery is still credential-gated; the durable database fallback is live and now reports that state truthfully.
+- PR #505 (protected CHC balances) remains open, review-required, and conflicting. It must stay parked for William's protected-data review.
+- PR #528 (integer-cents ledger migration) remains open, review-required, and conflicting. It must stay parked until William chooses the brief maintenance window or the two-deploy expand/contract rollout.
+
+This addendum does not auto-approve PocketPM review cards. It records implementation and deployment truth while preserving founder and PM gates.
