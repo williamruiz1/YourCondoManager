@@ -68,7 +68,10 @@ jobs:
     name: Staging deploy + smoke test (promotion gate)
     needs: money-migration-guard
     runs-on: [self-hosted, macOS, ARM64]
-    timeout-minutes: 20
+    # Fly remote builds can legitimately exceed 20 minutes while a shared
+    # builder is cold or congested. Keep a bounded ceiling, but leave enough
+    # time for the deploy to finish so the health smoke test can actually run.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master 2026-05-20
@@ -92,7 +95,9 @@ jobs:
     if: github.ref == 'refs/heads/main'
     needs: staging-gate
     runs-on: [self-hosted, macOS, ARM64]
-    timeout-minutes: 20
+    # Uses the same remote builder path as staging; keep the production job's
+    # ceiling aligned so a successful promotion is not cancelled mid-deploy.
+    timeout-minutes: 45
     concurrency: deploy-group
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
