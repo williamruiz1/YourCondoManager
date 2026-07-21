@@ -145,28 +145,36 @@ function buildUnitLabelMap(byUnit: FinanceUnitBreakdown[]): Map<string, string> 
   return new Map(byUnit.map((u) => [u.unitId, u.unitLabel]));
 }
 
-// 2026-06-30 — "What's due now" breakdown (William finding #3): separate HOA
-// dues from special-assessment installments. Dues-due = the positive `charge`
-// + `late-fee` category balances summed across units (assessments are EXCLUDED
-// here — they're shown as installments, not the lifetime lump). Installment-due
-// = the sum of the upcoming installment amounts. Total = dues + installments.
-// Pure over its inputs so it can be unit-tested without rendering.
+// Owner-wide rollup of the server-resolved per-unit current-period amounts.
+// Historical HOA charges and scheduleless assessment balances remain visible
+// in the balance cards but cannot leak into this payment-period total.
 export interface DueNowBreakdown {
   duesDue: number;
   assessmentInstallmentDue: number;
   totalDueNow: number;
 }
 export function computeDueNow(
-  byUnit: Array<{ byCategory: Partial<Record<FinanceCategoryKey, number>> }>,
-  upcomingInstallments: Array<{ installmentAmount: number }>,
+  perUnit: Array<Pick<PerUnitBreakdown, "dueNowDues" | "dueNowAssessment">>,
+  fallbackByUnit: Array<{ byCategory: Partial<Record<FinanceCategoryKey, number>> }> = [],
+  fallbackUpcomingInstallments: Array<{ installmentAmount: number }> = [],
 ): DueNowBreakdown {
-  const duesDue = byUnit.reduce(
-    (sum, u) =>
-      sum + Math.max(0, u.byCategory.charge ?? 0) + Math.max(0, u.byCategory["late-fee"] ?? 0),
-    0,
-  );
-  const assessmentInstallmentDue = upcomingInstallments.reduce(
-    (sum, i) => sum + (i.installmentAmount ?? 0),
+  if (perUnit.length === 0 && (fallbackByUnit.length > 0 || fallbackUpcomingInstallments.length > 0)) {
+    const duesDue = fallbackByUnit.reduce(
+      (sum, unit) =>
+        sum +
+        Math.max(0, unit.byCategory.charge ?? 0) +
+        Math.max(0, unit.byCategory["late-fee"] ?? 0),
+      0,
+    );
+    const assessmentInstallmentDue = fallbackUpcomingInstallments.reduce(
+      (sum, installment) => sum + Math.max(0, installment.installmentAmount ?? 0),
+      0,
+    );
+    return { duesDue, assessmentInstallmentDue, totalDueNow: duesDue + assessmentInstallmentDue };
+  }
+  const duesDue = perUnit.reduce((sum, unit) => sum + unit.dueNowDues, 0);
+  const assessmentInstallmentDue = perUnit.reduce(
+    (sum, unit) => sum + unit.dueNowAssessment,
     0,
   );
   return { duesDue, assessmentInstallmentDue, totalDueNow: duesDue + assessmentInstallmentDue };
@@ -392,6 +400,7 @@ type FinanceUnitEntry = {
   amount: number;
   postedAt: string | Date | null;
   description: string | null;
+  referenceType?: string | null;
 };
 
 type FinanceUnitBreakdown = {
@@ -1070,13 +1079,12 @@ function FinancesHubContent() {
     (unit) => unit.unitId === effectivePaymentUnitId,
   );
 
-  // 2026-06-30 — "What's due now" breakdown (William finding #3): separate HOA
-  // dues from special-assessment installments, and show the installment(s)
-  // due now — NOT the full assessment lump (an $80k driveway assessment is not
-  // all due at once). See `computeDueNow` for the pure logic.
+  // Separate current-period HOA dues from scheduled assessment installments.
+  // The server has already netted cleared payments and excluded historical
+  // balances/scheduleless assessments from these per-unit amounts.
   const { duesDue, assessmentInstallmentDue, totalDueNow } = useMemo(
-    () => computeDueNow(byUnit, upcoming),
-    [byUnit, upcoming],
+    () => computeDueNow(perUnit, byUnit, upcoming),
+    [perUnit, byUnit, upcoming],
   );
 
   // 2026-07-14 (My Finances redesign — banner overdue-logic fix) — the

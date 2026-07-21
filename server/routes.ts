@@ -15070,6 +15070,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
                 amount: e.amount,
                 postedAt: e.postedAt,
                 description: e.description,
+                referenceType: e.referenceType,
               })),
           };
         })

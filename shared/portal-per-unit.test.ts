@@ -1,85 +1,136 @@
-/**
- * Per-unit owner-finances breakdown — pure-logic tests (2026-07-03).
- *
- * The load-bearing property is RECONCILIATION: the per-unit figures must sum
- * to exactly the owner-wide totals the owner already sees. The fixture is
- * William Ruiz's real 3-unit Cherry Hill Court data (due-now $7,414.44 /
- * balance $8,582.61) so the test doubles as a reconciliation guard.
- */
 import { describe, expect, it } from "vitest";
 import { buildPerUnitBreakdown } from "./portal-per-unit";
 
-// William Ruiz — 3 Cherry Hill Court units. Primary (portal) unit = 1417-F.
 const BYUNIT = [
-  { unitId: "u-1417F", unitLabel: "1417-F", total: 2515.42, byCategory: { charge: 990, assessment: 1525.42 } },
-  { unitId: "u-1421B", unitLabel: "1421-B", total: 3111.77, byCategory: { charge: 990, assessment: 2121.77 } },
-  { unitId: "u-1421C", unitLabel: "1421-C", total: 2955.42, byCategory: { charge: 990, assessment: 1971.42, payment: -6 } },
+  {
+    unitId: "u-1417F",
+    unitLabel: "1417-F",
+    total: 2185.42,
+    byCategory: { charge: 990, assessment: 1525.42, payment: -330 },
+    entries: [
+      { entryType: "charge", amount: 330, postedAt: "2026-05-01T00:00:00.000Z" },
+      { entryType: "charge", amount: 330, postedAt: "2026-06-01T00:00:00.000Z" },
+      { entryType: "charge", amount: 330, postedAt: "2026-07-01T00:00:00.000Z" },
+      { entryType: "assessment", amount: 1525.42, postedAt: "2026-05-08T00:00:00.000Z" },
+      { entryType: "payment", amount: -330, postedAt: "2026-07-20T12:11:29.045Z" },
+    ],
+  },
+  {
+    unitId: "u-1421B",
+    unitLabel: "1421-B",
+    total: 3111.77,
+    byCategory: { charge: 990, assessment: 2121.77 },
+    entries: [
+      { entryType: "charge", amount: 330, postedAt: "2026-05-01T00:00:00.000Z" },
+      { entryType: "charge", amount: 330, postedAt: "2026-06-01T00:00:00.000Z" },
+      { entryType: "charge", amount: 330, postedAt: "2026-07-01T00:00:00.000Z" },
+      { entryType: "assessment", amount: 2121.77, postedAt: "2026-05-08T00:00:00.000Z" },
+    ],
+  },
+  {
+    unitId: "u-1421C",
+    unitLabel: "1421-C",
+    total: 2955.42,
+    byCategory: { charge: 990, assessment: 1971.42, payment: -6 },
+    entries: [
+      { entryType: "charge", amount: 330, postedAt: "2026-05-01T00:00:00.000Z" },
+      { entryType: "charge", amount: 330, postedAt: "2026-06-01T00:00:00.000Z" },
+      { entryType: "charge", amount: 330, postedAt: "2026-07-01T00:00:00.000Z" },
+      { entryType: "assessment", amount: 1971.42, postedAt: "2026-05-08T00:00:00.000Z" },
+      { entryType: "payment", amount: -6, postedAt: "2026-05-25T17:20:00.000Z" },
+    ],
+  },
 ];
-// $80k driveway assessment / 18 units / 1 installment = $4,444.44 for the primary unit.
-const UPCOMING = [{ installmentAmount: 4444.44 }];
-
+const JULY = new Date("2026-07-20T16:00:00.000Z");
+const UPCOMING = [
+  { installmentAmount: 250, unitId: "u-1417F", dueDate: "2026-07-31T00:00:00.000Z" },
+];
 const round = (n: number) => Math.round(n * 100) / 100;
 const sum = (arr: number[]) => round(arr.reduce((a, b) => a + b, 0));
 
-describe("buildPerUnitBreakdown — per-unit dues vs special assessment", () => {
-  const perUnit = buildPerUnitBreakdown(BYUNIT, UPCOMING, "u-1417F");
+describe("buildPerUnitBreakdown — current-period dues and assessment truth", () => {
+  const perUnit = buildPerUnitBreakdown(BYUNIT, UPCOMING, "u-1417F", JULY);
 
   it("returns one row per owned unit", () => {
     expect(perUnit.map((u) => u.unitLabel)).toEqual(["1417-F", "1421-B", "1421-C"]);
   });
 
-  it("splits each unit's DUE NOW into HOA dues vs special-assessment installment", () => {
+  it("uses only July HOA charges and applies July's cleared payment", () => {
     const f = perUnit.find((u) => u.unitLabel === "1417-F")!;
-    expect(f.dueNowDues).toBe(990);
-    expect(f.dueNowAssessment).toBe(4444.44); // installment lands on the primary unit
-    expect(round(f.dueNowTotal)).toBe(5434.44);
+    expect(f.dueNowDues).toBe(0);
+    expect(f.dueNowAssessment).toBe(250);
+    expect(f.dueNowTotal).toBe(250);
 
     const b = perUnit.find((u) => u.unitLabel === "1421-B")!;
-    expect(b.dueNowDues).toBe(990);
-    expect(b.dueNowAssessment).toBe(0); // non-primary units show $0 installment due now
-    expect(b.dueNowTotal).toBe(990);
+    expect(b.dueNowDues).toBe(330);
+    expect(b.dueNowAssessment).toBe(0);
   });
 
-  it("splits each unit's BALANCE into dues/other vs special assessment", () => {
+  it("keeps historical HOA and scheduleless-assessment obligations in balance only", () => {
     const c = perUnit.find((u) => u.unitLabel === "1421-C")!;
     expect(c.balanceAssessment).toBe(1971.42);
-    expect(round(c.balanceDues)).toBe(984); // 990 charge − 6 payment
+    expect(round(c.balanceDues)).toBe(984);
     expect(round(c.balanceTotal)).toBe(2955.42);
   });
 
-  it("RECONCILES: per-unit dues-due sums to the owner-wide dues-due ($2,970.00)", () => {
-    expect(sum(perUnit.map((u) => u.dueNowDues))).toBe(2970);
+  it("reconciles the owner-wide July amounts", () => {
+    expect(sum(perUnit.map((u) => u.dueNowDues))).toBe(660);
+    expect(sum(perUnit.map((u) => u.dueNowAssessment))).toBe(250);
+    expect(sum(perUnit.map((u) => u.dueNowTotal))).toBe(910);
   });
 
-  it("RECONCILES: per-unit assessment-installment sums to the owner-wide installment ($4,444.44)", () => {
-    expect(sum(perUnit.map((u) => u.dueNowAssessment))).toBe(4444.44);
+  it("reconciles the full historical balance independently", () => {
+    expect(sum(perUnit.map((u) => u.balanceTotal))).toBe(8252.61);
+    expect(sum(perUnit.map((u) => u.balanceDues + u.balanceAssessment))).toBe(8252.61);
   });
 
-  it("RECONCILES: per-unit DUE NOW sums to the owner-wide due-now total ($7,414.44)", () => {
-    expect(sum(perUnit.map((u) => u.dueNowTotal))).toBe(7414.44);
+  it("puts an unscoped current installment on the fallback unit", () => {
+    const unscoped = [{ installmentAmount: 250, dueDate: "2026-07-31T00:00:00.000Z" }];
+    const result = buildPerUnitBreakdown(BYUNIT, unscoped, "missing", JULY);
+    expect(sum(result.map((u) => u.dueNowAssessment))).toBe(250);
   });
 
-  it("RECONCILES: per-unit BALANCE sums to the owner-wide balance ($8,582.61)", () => {
-    expect(sum(perUnit.map((u) => u.balanceTotal))).toBe(8582.61);
-    // dues + assessment partition also reconciles
-    expect(sum(perUnit.map((u) => u.balanceDues + u.balanceAssessment))).toBe(8582.61);
+  it("does not count the scheduleless driveway balance as due this period", () => {
+    const result = buildPerUnitBreakdown(BYUNIT, [], "u-1417F", JULY);
+    expect(sum(result.map((u) => u.dueNowAssessment))).toBe(0);
+    expect(sum(result.map((u) => u.dueNowTotal))).toBe(660);
   });
 
-  it("never drops the installment total when the primary unit is absent", () => {
-    const pu = buildPerUnitBreakdown(BYUNIT, UPCOMING, "u-does-not-exist");
-    expect(sum(pu.map((u) => u.dueNowAssessment))).toBe(4444.44);
+  it("ignores scheduled installments outside the current period", () => {
+    const august = [
+      { installmentAmount: 250, unitId: "u-1417F", dueDate: "2026-08-01T00:00:00.000Z" },
+    ];
+    const result = buildPerUnitBreakdown(BYUNIT, august, "u-1417F", JULY);
+    expect(sum(result.map((u) => u.dueNowAssessment))).toBe(0);
   });
 
-  it("no installments → assessment-due is zero everywhere", () => {
-    const pu = buildPerUnitBreakdown(BYUNIT, [], "u-1417F");
-    expect(sum(pu.map((u) => u.dueNowAssessment))).toBe(0);
-    expect(sum(pu.map((u) => u.dueNowTotal))).toBe(2970);
+  it("includes a tracked assessment installment posted in the current period", () => {
+    const unit = {
+      ...BYUNIT[1],
+      entries: [
+        ...BYUNIT[1].entries,
+        {
+          entryType: "assessment",
+          amount: 250,
+          postedAt: "2026-07-15T00:00:00.000Z",
+          referenceType: "special_assessment_installment",
+        },
+      ],
+    };
+    const result = buildPerUnitBreakdown([unit], [], unit.unitId, JULY);
+    expect(result[0].dueNowAssessment).toBe(250);
   });
 
-  it("single-unit owner still reconciles", () => {
-    const pu = buildPerUnitBreakdown([BYUNIT[0]], UPCOMING, "u-1417F");
-    expect(pu).toHaveLength(1);
-    expect(round(pu[0].dueNowTotal)).toBe(5434.44);
-    expect(round(pu[0].balanceTotal)).toBe(2515.42);
+  it("spills payment credit above HOA dues into a scheduled assessment", () => {
+    const unit = {
+      ...BYUNIT[0],
+      entries: [
+        { entryType: "charge", amount: 330, postedAt: "2026-07-01T00:00:00.000Z" },
+        { entryType: "payment", amount: -400, postedAt: "2026-07-20T00:00:00.000Z" },
+      ],
+    };
+    const result = buildPerUnitBreakdown([unit], UPCOMING, unit.unitId, JULY);
+    expect(result[0].dueNowDues).toBe(0);
+    expect(result[0].dueNowAssessment).toBe(180);
   });
 });
