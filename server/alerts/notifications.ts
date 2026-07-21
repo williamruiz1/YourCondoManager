@@ -132,12 +132,15 @@ export async function fanOutCriticalAlerts(opts: { now?: Date } = {}): Promise<F
     // endpoint applies — using it here keeps notification visibility in
     // lock-step with on-screen visibility.
     const permittedIds = new Set(permittedAssociations.map((a) => a.id));
-    const togglesByAssociation = admin.role === "assisted-board"
+    const delegatedRole = admin.role === "assisted-board" || admin.role === "pm-assistant"
+      ? admin.role
+      : null;
+    const togglesByAssociation = delegatedRole
       ? Object.fromEntries(
           await Promise.all(
             permittedAssociations.map(async ({ id }) => [
               id,
-              await listTogglesForAssociation(id),
+              await listTogglesForAssociation(id, delegatedRole),
             ] as const),
           ),
         )

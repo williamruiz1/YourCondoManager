@@ -28,6 +28,7 @@ import {
   filterZonesForPersona,
   ZONE_LABELS,
 } from "../../client/src/components/app-sidebar-zones";
+import { createDefaultDelegatedAccessMatrix } from "../../shared/delegated-feature-access";
 
 // ---------------------------------------------------------------------------
 // Financials route catalog — every route the Phase 12 PR wraps in
@@ -96,10 +97,10 @@ const SETTINGS_BILLING_ALLOWED: ReadonlyArray<AdminRole> = [
   "platform-admin",
   "manager",
   "board-officer",
-  "pm-assistant",
 ];
 const SETTINGS_BILLING_DENIED: ReadonlyArray<AdminRole> = [
   "assisted-board",
+  "pm-assistant",
   "viewer",
 ];
 
@@ -130,7 +131,7 @@ describe("Phase 12 Tier 1 — Financials × all 6 personas (exhaustive)", () => 
     }
   });
 
-  describe(`/app/settings/billing per shipped 4-role list`, () => {
+  describe(`/app/settings/billing per non-delegable commercial-billing list`, () => {
     for (const persona of SETTINGS_BILLING_ALLOWED) {
       it(`allows ${persona} on /app/settings/billing`, () => {
         expect(canAccess(persona, SETTINGS_BILLING)).toBe(true);
@@ -201,13 +202,35 @@ describe("Phase 12 Tier 3 — sidebar SUBSET-RENDER for Financials zone", () => 
     return zones.find((z) => z.label === ZONE_LABELS.FINANCIALS);
   }
 
-  for (const persona of FINANCIALS_ALLOWED_PERSONAS) {
+  for (const persona of FINANCIALS_ALLOWED_PERSONAS.filter((role) => role !== "pm-assistant")) {
     it(`Financials zone visible in sidebar for ${persona}`, () => {
       const zone = findFinancialsZone(persona);
       expect(zone).toBeDefined();
       expect(zone!.label).toBe("Financials");
     });
   }
+
+  it("Financials zone is absent for an ungranted PM Assistant", () => {
+    expect(findFinancialsZone("pm-assistant")).toBeUndefined();
+  });
+
+  it("Financials zone becomes visible for a PM Assistant with one View grant", () => {
+    const defaults = createDefaultDelegatedAccessMatrix("pm-assistant");
+    const delegatedAccess = {
+      ...defaults,
+      "financials.owner-ledger": { view: true, write: false },
+    };
+    const zones = filterZonesForPersona(SIDEBAR_ZONES, {
+      role: "pm-assistant",
+      boardScopedExperience: false,
+      amenitiesDisabled: false,
+      delegatedAccess,
+    });
+    const zone = zones.find((candidate) => candidate.label === ZONE_LABELS.FINANCIALS);
+    expect(zone).toBeDefined();
+    expect(zone?.items.map((item) => item.url)).toContain("/app/financial/billing");
+    expect(zone?.items.map((item) => item.url)).not.toContain("/app/financial/payments");
+  });
 
   // PR #239 (commit 381f261, ratified 2026-06-02) granted platform-admin
   // financials access, so the Financials sidebar zone now renders for

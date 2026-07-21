@@ -31,12 +31,13 @@ import {
 import type { AdminRole } from "../shared/schema";
 import {
   ASSISTED_BOARD_FEATURES,
-  assistedBoardDefaultAccess,
-  createDefaultAssistedBoardAccessMatrix,
+  createDefaultDelegatedAccessMatrix,
+  delegatedDefaultAccess,
   delegatedToggleKey,
   type AssistedBoardAccessMatrix,
   type AssistedBoardFeatureId,
   type DelegatedPermission,
+  type DelegatedTargetRole,
 } from "../shared/delegated-feature-access";
 
 const CACHE_TTL_MS = 30_000;
@@ -48,12 +49,20 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
-function cacheKey(associationId: string, toggleKey: PmToggleKey): string {
-  return `${associationId}::${toggleKey}`;
+function cacheKey(
+  associationId: string,
+  targetRole: DelegatedTargetRole,
+  toggleKey: PmToggleKey,
+): string {
+  return `${associationId}::${targetRole}::${toggleKey}`;
 }
 
-function invalidate(associationId: string, toggleKey: PmToggleKey): void {
-  cache.delete(cacheKey(associationId, toggleKey));
+function invalidate(
+  associationId: string,
+  targetRole: DelegatedTargetRole,
+  toggleKey: PmToggleKey,
+): void {
+  cache.delete(cacheKey(associationId, targetRole, toggleKey));
 }
 
 /**
@@ -62,15 +71,17 @@ function invalidate(associationId: string, toggleKey: PmToggleKey): void {
 export async function isToggleEnabled(
   associationId: string,
   toggleKey: PmToggleKey,
+  targetRole: DelegatedTargetRole = "assisted-board",
 ): Promise<boolean> {
-  return (await readToggleOverride(associationId, toggleKey)) ?? false;
+  return (await readToggleOverride(associationId, toggleKey, targetRole)) ?? false;
 }
 
 async function readToggleOverride(
   associationId: string,
   toggleKey: PmToggleKey,
+  targetRole: DelegatedTargetRole,
 ): Promise<boolean | undefined> {
-  const key = cacheKey(associationId, toggleKey);
+  const key = cacheKey(associationId, targetRole, toggleKey);
   const hit = cache.get(key);
   const now = Date.now();
   if (hit && hit.expiresAt > now) {
@@ -80,7 +91,11 @@ async function readToggleOverride(
   const [row] = await db
     .select({ enabled: pmToggles.enabled })
     .from(pmToggles)
-    .where(and(eq(pmToggles.associationId, associationId), eq(pmToggles.toggleKey, toggleKey)))
+    .where(and(
+      eq(pmToggles.associationId, associationId),
+      eq(pmToggles.targetRole, targetRole),
+      eq(pmToggles.toggleKey, toggleKey),
+    ))
     .limit(1);
 
   const value = row ? row.enabled === 1 : undefined;
@@ -91,28 +106,32 @@ async function readToggleOverride(
 async function resolveToggleValue(
   associationId: string,
   toggleKey: PmToggleKey,
+  targetRole: DelegatedTargetRole,
 ): Promise<boolean> {
-  const override = await readToggleOverride(associationId, toggleKey);
+  const override = await readToggleOverride(associationId, toggleKey, targetRole);
   if (override !== undefined) return override;
 
   for (const feature of ASSISTED_BOARD_FEATURES) {
     if (delegatedToggleKey(feature.id, "view") === toggleKey) {
-      return feature.defaultView;
+      return delegatedDefaultAccess(targetRole, feature.id, "view");
     }
     if (delegatedToggleKey(feature.id, "write") === toggleKey) {
-      return feature.defaultWrite;
+      return delegatedDefaultAccess(targetRole, feature.id, "write");
     }
   }
   return false;
 }
 
-function defaultToggleValue(toggleKey: PmToggleKey): boolean {
+function defaultToggleValue(
+  targetRole: DelegatedTargetRole,
+  toggleKey: PmToggleKey,
+): boolean {
   for (const feature of ASSISTED_BOARD_FEATURES) {
     if (delegatedToggleKey(feature.id, "view") === toggleKey) {
-      return feature.defaultView;
+      return delegatedDefaultAccess(targetRole, feature.id, "view");
     }
     if (delegatedToggleKey(feature.id, "write") === toggleKey) {
-      return feature.defaultWrite;
+      return delegatedDefaultAccess(targetRole, feature.id, "write");
     }
   }
   return false;
@@ -127,18 +146,24 @@ export async function setToggle(
   toggleKey: PmToggleKey,
   enabled: boolean,
   adminUserId: string,
+  targetRole: DelegatedTargetRole = "assisted-board",
 ): Promise<void> {
-  const before = await resolveToggleValue(associationId, toggleKey);
+  const before = await resolveToggleValue(associationId, toggleKey, targetRole);
   const enabledInt = enabled ? 1 : 0;
   const existing = await db
     .select({ id: pmToggles.id })
     .from(pmToggles)
-    .where(and(eq(pmToggles.associationId, associationId), eq(pmToggles.toggleKey, toggleKey)))
+    .where(and(
+      eq(pmToggles.associationId, associationId),
+      eq(pmToggles.targetRole, targetRole),
+      eq(pmToggles.toggleKey, toggleKey),
+    ))
     .limit(1);
 
   if (existing.length === 0) {
     await db.insert(pmToggles).values({
       associationId,
+      targetRole,
       toggleKey,
       enabled: enabledInt,
       updatedBy: adminUserId,
@@ -150,7 +175,7 @@ export async function setToggle(
       .where(eq(pmToggles.id, existing[0].id));
   }
 
-  invalidate(associationId, toggleKey);
+  invalidate(associationId, targetRole, toggleKey);
 
   const [actor] = await db
     .select({ email: adminUsers.email })
@@ -159,12 +184,12 @@ export async function setToggle(
     .limit(1);
   await db.insert(auditLogs).values({
     actorEmail: actor?.email ?? "unknown-admin",
-    action: "assisted-board-delegation.updated",
+    action: "delegated-access.updated",
     entityType: "pm-toggle",
     entityId: toggleKey,
     associationId,
-    beforeJson: { enabled: before },
-    afterJson: { enabled },
+    beforeJson: { targetRole, enabled: before },
+    afterJson: { targetRole, enabled },
   });
 }
 
@@ -175,11 +200,15 @@ export async function setToggle(
  */
 export async function listTogglesForAssociation(
   associationId: string,
+  targetRole: DelegatedTargetRole = "assisted-board",
 ): Promise<Record<PmToggleKey, boolean>> {
   const rows = await db
     .select({ toggleKey: pmToggles.toggleKey, enabled: pmToggles.enabled })
     .from(pmToggles)
-    .where(eq(pmToggles.associationId, associationId));
+    .where(and(
+      eq(pmToggles.associationId, associationId),
+      eq(pmToggles.targetRole, targetRole),
+    ));
 
   const result: Record<PmToggleKey, boolean> = {} as Record<PmToggleKey, boolean>;
   const overrides = new Map<PmToggleKey, boolean>();
@@ -189,9 +218,9 @@ export async function listTogglesForAssociation(
     }
   }
   for (const key of PM_TOGGLE_KEYS) {
-    const value = overrides.get(key) ?? defaultToggleValue(key);
+    const value = overrides.get(key) ?? defaultToggleValue(targetRole, key);
     result[key] = value;
-    cache.set(cacheKey(associationId, key), {
+    cache.set(cacheKey(associationId, targetRole, key), {
       value: overrides.has(key) ? value : undefined,
       expiresAt: Date.now() + CACHE_TTL_MS,
     });
@@ -207,8 +236,21 @@ export async function listAssistedBoardAccessMatrix(
   associationId: string,
   effectiveToggles?: Record<PmToggleKey, boolean>,
 ): Promise<AssistedBoardAccessMatrix> {
-  const matrix = createDefaultAssistedBoardAccessMatrix();
-  const toggles = effectiveToggles ?? await listTogglesForAssociation(associationId);
+  return listDelegatedAccessMatrix(
+    associationId,
+    "assisted-board",
+    effectiveToggles,
+  );
+}
+
+export async function listDelegatedAccessMatrix(
+  associationId: string,
+  targetRole: DelegatedTargetRole,
+  effectiveToggles?: Record<PmToggleKey, boolean>,
+): Promise<AssistedBoardAccessMatrix> {
+  const matrix = createDefaultDelegatedAccessMatrix(targetRole);
+  const toggles = effectiveToggles
+    ?? await listTogglesForAssociation(associationId, targetRole);
   const mutable = Object.fromEntries(
     Object.entries(matrix).map(([featureId, permissions]) => [
       featureId,
@@ -234,10 +276,10 @@ export async function canDelegatedFeatureAccess(
   featureId: AssistedBoardFeatureId,
   permission: DelegatedPermission,
 ): Promise<boolean> {
-  if (role !== "assisted-board") return true;
+  if (role !== "assisted-board" && role !== "pm-assistant") return true;
   const key = delegatedToggleKey(featureId, permission);
-  const override = await readToggleOverride(associationId, key);
-  return override ?? assistedBoardDefaultAccess(featureId, permission);
+  const override = await readToggleOverride(associationId, key, role);
+  return override ?? delegatedDefaultAccess(role, featureId, permission);
 }
 
 /**
@@ -258,8 +300,14 @@ export async function canAssessmentRulesWrite(
     case "platform-admin":
     case "manager":
     case "board-officer":
-    case "pm-assistant":
       return true;
+    case "pm-assistant":
+      return canDelegatedFeatureAccess(
+        role,
+        associationId,
+        "financials.assessment-rules",
+        "write",
+      );
     case "assisted-board":
       return canDelegatedFeatureAccess(
         role,

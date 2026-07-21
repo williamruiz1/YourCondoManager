@@ -12,7 +12,52 @@
 
 export type DelegatedPermission = "view" | "write";
 
+/**
+ * Personas whose access can be delegated by a Property Manager. The value is
+ * persisted with every grant so one persona's envelope can never widen the
+ * other persona's access.
+ */
+export const DELEGATED_TARGET_ROLES = ["assisted-board", "pm-assistant"] as const;
+export type DelegatedTargetRole = (typeof DELEGATED_TARGET_ROLES)[number];
+
+export function isDelegatedTargetRole(value: unknown): value is DelegatedTargetRole {
+  return typeof value === "string"
+    && (DELEGATED_TARGET_ROLES as readonly string[]).includes(value);
+}
+
 export const ASSISTED_BOARD_FEATURES = [
+  {
+    id: "financials.accounting-foundation",
+    label: "Accounting foundation",
+    zone: "Financials",
+    description: "Review or maintain the chart of accounts and accounting setup.",
+    defaultView: false,
+    defaultWrite: false,
+  },
+  {
+    id: "financials.owner-ledger",
+    label: "Owner ledger",
+    zone: "Financials",
+    description: "Review or operate owner billing, charges, and ledger records.",
+    defaultView: false,
+    defaultWrite: false,
+  },
+  {
+    id: "financials.payments-reconciliation",
+    label: "Payments & reconciliation",
+    zone: "Financials",
+    description: "Review payments, bank feeds, deposits, and reconciliation records.",
+    defaultView: false,
+    defaultWrite: false,
+  },
+  {
+    id: "financials.expenses-disbursements",
+    label: "Expenses & disbursements",
+    zone: "Financials",
+    description: "Review expenses, invoices, and authorized disbursement actions.",
+    defaultView: false,
+    defaultWrite: false,
+  },
   {
     id: "financials.reports",
     label: "Financial reports & statements",
@@ -255,6 +300,19 @@ export function assistedBoardDefaultAccess(
   return permission === "view" ? feature.defaultView : feature.defaultWrite;
 }
 
+/**
+ * Missing PM Assistant grants always deny. Assisted Board retains the locked
+ * defaults that existed before target-role delegation was introduced.
+ */
+export function delegatedDefaultAccess(
+  targetRole: DelegatedTargetRole,
+  featureId: AssistedBoardFeatureId,
+  permission: DelegatedPermission,
+): boolean {
+  if (targetRole === "pm-assistant") return false;
+  return assistedBoardDefaultAccess(featureId, permission);
+}
+
 export type AssistedBoardAccessMatrix = Readonly<
   Record<AssistedBoardFeatureId, Readonly<Record<DelegatedPermission, boolean>>>
 >;
@@ -269,4 +327,74 @@ export function createDefaultAssistedBoardAccessMatrix(): AssistedBoardAccessMat
       },
     ]),
   ) as AssistedBoardAccessMatrix;
+}
+
+export function createDefaultDelegatedAccessMatrix(
+  targetRole: DelegatedTargetRole,
+): AssistedBoardAccessMatrix {
+  if (targetRole === "assisted-board") {
+    return createDefaultAssistedBoardAccessMatrix();
+  }
+  return Object.fromEntries(
+    ASSISTED_BOARD_FEATURES.map((feature) => [
+      feature.id,
+      { view: false, write: false },
+    ]),
+  ) as AssistedBoardAccessMatrix;
+}
+
+/** Canonical page-to-feature map used by both RouteGuard and navigation. */
+export const DELEGATED_ROUTE_FEATURES: Readonly<
+  Partial<Record<string, AssistedBoardFeatureId>>
+> = {
+  "/app/financial/foundation": "financials.accounting-foundation",
+  "/app/financial/bank-connections": "financials.payments-reconciliation",
+  "/app/financial/rules": "financials.assessment-rules",
+  "/app/financial/billing": "financials.owner-ledger",
+  "/app/financial/payments": "financials.payments-reconciliation",
+  "/app/financial/expenses": "financials.expenses-disbursements",
+  "/app/financial/reports": "financials.reports",
+  "/app/financial/statements": "financials.reports",
+  "/app/financial/ar-aging": "financials.reports",
+  "/app/financial/statement": "financials.reports",
+  "/app/units": "operations.unit-management",
+  "/app/persons": "operations.owner-directory",
+  "/app/work-orders": "operations.work-orders",
+  "/app/violations": "operations.violations-appeals",
+  "/app/maintenance-schedules": "operations.maintenance-requests",
+  "/app/inspections": "operations.inspections",
+  "/app/vendors": "operations.vendor-contracts",
+  "/app/insurance": "operations.insurance",
+  "/app/resident-feedback": "operations.resident-feedback",
+  "/app/board": "governance.board",
+  "/app/governance": "governance.meetings-minutes",
+  "/app/documents": "governance.documents",
+  "/app/communications": "communications.inbox",
+  "/app/communications/inbox": "communications.inbox",
+  "/app/announcements": "communications.announcements",
+  "/app/amenities": "communications.amenities",
+  "/app/community-hub": "communications.community-hub",
+};
+
+export function delegatedFeatureForRoute(
+  route: string,
+): AssistedBoardFeatureId | null {
+  const exact = DELEGATED_ROUTE_FEATURES[route];
+  if (exact) return exact;
+  if (route.startsWith("/app/governance/elections/")) return "governance.elections";
+  if (route.startsWith("/app/financial/statement/")) return "financials.reports";
+  return null;
+}
+
+export function hasAnyDelegatedView(access: AssistedBoardAccessMatrix): boolean {
+  return Object.values(access).some((permissions) => permissions.view);
+}
+
+export function hasDelegatedViewInZone(
+  access: AssistedBoardAccessMatrix,
+  zone: (typeof ASSISTED_BOARD_FEATURES)[number]["zone"],
+): boolean {
+  return ASSISTED_BOARD_FEATURES.some(
+    (feature) => feature.zone === zone && access[feature.id].view,
+  );
 }

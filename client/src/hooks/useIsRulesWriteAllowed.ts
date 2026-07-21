@@ -6,8 +6,9 @@
  * per-association `assessment_rules_write` PM toggle.
  *
  * Matrix (mirrors `canAssessmentRulesWrite` on the server):
- *   - Manager / Board Officer / PM Assistant / Platform Admin → always ON.
- *   - Assisted Board → ON only when the PM toggle is ON for this association.
+ *   - Manager / Board Officer / Platform Admin → always ON.
+ *   - Assisted Board / PM Assistant → ON only when their role-specific PM
+ *     toggle is ON for this association.
  *   - Viewer → always OFF.
  *
  * The hook falls back to `false` (deny) while loading or on error so UI
@@ -15,13 +16,8 @@
  * this hook is strictly presentational.
  */
 
-import { useQuery } from "@tanstack/react-query";
-
 import { useAdminRole } from "./useAdminRole";
-
-interface PmTogglesResponse {
-  toggles: { assessment_rules_write: boolean };
-}
+import { useAssistedBoardAccess } from "./use-assisted-board-access";
 
 export function useIsRulesWriteAllowed(
   associationId: string | null | undefined,
@@ -36,23 +32,22 @@ export function useIsRulesWriteAllowed(
   const unconditionalWriteRole =
     role === "platform-admin" ||
     role === "manager" ||
-    role === "board-officer" ||
-    role === "pm-assistant";
+    role === "board-officer";
 
   // Roles with never-write — short-circuit to deny.
   const unconditionalDenyRole = role === "viewer" || role == null;
 
-  // Only Assisted Board hits the toggle endpoint.
+  // Delegated personas hit their role-specific toggle endpoint.
   const shouldQueryToggle =
-    role === "assisted-board" &&
+    (role === "assisted-board" || role === "pm-assistant") &&
     typeof associationId === "string" &&
     associationId.length > 0;
 
-  const { data, isLoading: toggleLoading } = useQuery<PmTogglesResponse>({
-    queryKey: ["pm-toggles", associationId ?? null],
-    enabled: shouldQueryToggle,
-    staleTime: 30_000,
-  });
+  const { access, isLoading: toggleLoading } = useAssistedBoardAccess(
+    associationId,
+    role === "pm-assistant" ? "pm-assistant" : "assisted-board",
+    shouldQueryToggle,
+  );
 
   if (adminLoading) {
     return { allowed: false, isLoading: true };
@@ -66,7 +61,7 @@ export function useIsRulesWriteAllowed(
     return { allowed: false, isLoading: false };
   }
 
-  // Assisted Board path.
+  // Delegated-persona path.
   if (!shouldQueryToggle) {
     return { allowed: false, isLoading: false };
   }
@@ -76,7 +71,7 @@ export function useIsRulesWriteAllowed(
   }
 
   return {
-    allowed: data?.toggles?.assessment_rules_write === true,
+    allowed: access["financials.assessment-rules"].write,
     isLoading: false,
   };
 }

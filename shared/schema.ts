@@ -903,11 +903,11 @@ export const paymentWebhookEvents = pgTable("payment_webhook_events", {
   paymentLinkId: varchar("payment_link_id").references(() => ownerPaymentLinks.id),
   unitId: varchar("unit_id").references(() => units.id),
   personId: varchar("person_id").references(() => persons.id),
-  // A-LEDGER-005 (founder-os#10755): money stored as double precision (float8) — interim
-  // fix off single-precision float4 (~7 sig digits) whose absolute error can exceed
-  // $0.005 near ~$40k, causing cent-recovery off-by-a-cent. Full integer-cents migration
-  // tracked as a follow-up. Always round each term to cents before summing.
+  // Expand/contract Release A: legacy dollars remain authoritative until the
+  // backfill and 24-hour drift gate pass. A database trigger keeps this column
+  // and amountCents compatible for both old and new writers.
   amount: doublePrecision("amount"),
+  amountCents: integer("amount_cents"),
   currency: text("currency").default("USD"),
   status: paymentEventStatusEnum("status").notNull().default("received"),
   eventType: text("event_type"),
@@ -970,11 +970,11 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   // unitId, not personId (see buildUnitAccountStatement).
   personId: varchar("person_id").notNull().references(() => persons.id),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull(),
-  // A-LEDGER-005 (founder-os#10755): double precision (float8) — interim fix off float4
-  // (see payment_webhook_events.amount). Callers recover cents via
-  // Math.round(Math.abs(amount) * 100) and MUST round each term to cents before summing.
-  // Full integer-cents migration tracked as a follow-up.
+  // Expand/contract Release A: legacy dollars remain available while exact
+  // integer cents are backfilled and observed. The compatibility trigger dual
+  // writes both representations; Release B will switch reads only after zero drift.
   amount: doublePrecision("amount").notNull(),
+  amountCents: integer("amount_cents"),
   postedAt: timestamp("posted_at").notNull(),
   description: text("description"),
   referenceType: text("reference_type"),
@@ -1755,12 +1755,17 @@ export const onboardingSubmissions = pgTable("onboarding_submissions", {
 export const pmToggles = pgTable("pm_toggles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   associationId: varchar("association_id").notNull().references(() => associations.id),
+  targetRole: text("target_role").notNull().default("assisted-board"),
   toggleKey: text("toggle_key").notNull(),
   enabled: integer("enabled").notNull().default(0),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   updatedBy: varchar("updated_by").references(() => adminUsers.id),
 }, (table) => ({
-  uniquePmToggleAssociationKey: uniqueIndex("pm_toggles_association_key_uq").on(table.associationId, table.toggleKey),
+  uniquePmToggleAssociationRoleKey: uniqueIndex("pm_toggles_association_role_key_uq").on(
+    table.associationId,
+    table.targetRole,
+    table.toggleKey,
+  ),
 }));
 
 export const PM_TOGGLE_KEYS = ASSISTED_BOARD_TOGGLE_KEYS;
@@ -2306,16 +2311,26 @@ export const founderFeedback = pgTable("founder_feedback", {
   viewportHeight: integer("viewport_height"),
   appVersion: text("app_version"),
   userAgent: text("user_agent"),
+  dedupeKey: text("dedupe_key"),
   githubIssueUrl: text("github_issue_url"),
   githubIssueNumber: integer("github_issue_number"),
+  githubDeliveryStatus: text("github_delivery_status").notNull().default("pending"),
+  githubAttempts: integer("github_attempts").notNull().default(0),
+  githubLastError: text("github_last_error"),
+  githubLastAttemptAt: timestamp("github_last_attempt_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const insertFounderFeedbackSchema = createInsertSchema(founderFeedback).omit({
   id: true,
   createdAt: true,
+  dedupeKey: true,
   githubIssueUrl: true,
   githubIssueNumber: true,
+  githubDeliveryStatus: true,
+  githubAttempts: true,
+  githubLastError: true,
+  githubLastAttemptAt: true,
 });
 export type FounderFeedback = typeof founderFeedback.$inferSelect;
 export type InsertFounderFeedback = z.infer<typeof insertFounderFeedbackSchema>;

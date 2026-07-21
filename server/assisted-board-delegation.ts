@@ -1,11 +1,10 @@
 /**
- * Fail-closed Assisted Board mutation envelope.
+ * Fail-closed delegated-persona request envelope.
  *
- * Every authenticated admin mutation passes through this guard from
- * `requireAdmin`. Roles other than Assisted Board keep their existing route
- * authorization. Assisted Board mutations must map to a canonical feature,
- * resolve one association inside the caller's scope, and pass the effective
- * per-association Write permission.
+ * Every authenticated admin request passes through this guard from
+ * `requireAdmin`. Assisted Board keeps its existing default envelope. PM
+ * Assistant starts denied and needs an explicit Manager grant for the active
+ * association, feature, and View/Write action.
  *
  * An unmapped mutation is denied. That invariant prevents a newly-added route
  * from silently inheriting Assisted Board write authority merely because its
@@ -31,6 +30,13 @@ const MUTATION_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
 const USER_STATE_MUTATION_ALLOWLIST = [
   /^\/api\/alerts\/[^/]+\/(?:read|dismiss|restore)$/,
+] as const;
+
+const DELEGATED_PERSONAL_REQUEST_ALLOWLIST = [
+  /^\/api\/associations$/,
+  /^\/api\/alerts\/cross-association$/,
+  /^\/api\/associations\/[^/]+\/pm-toggles$/,
+  /^\/api\/(?:user-settings|admin-notification-preferences)(?:\/|$)/,
 ] as const;
 
 interface MutationRouteRule {
@@ -74,6 +80,22 @@ const MUTATION_ROUTE_RULES: readonly MutationRouteRule[] = [
   {
     featureId: "financials.reports",
     pattern: /^\/api\/financial\/(?:reports|statements|ar-aging|owner-ledger\/statement)(?:\/|$)/,
+  },
+  {
+    featureId: "financials.accounting-foundation",
+    pattern: /^\/api\/financial\/(?:accounts|categories|approvals)(?:\/|$)/,
+  },
+  {
+    featureId: "financials.owner-ledger",
+    pattern: /^\/api\/financial\/(?:owner-ledger|assessment-run-log|late-fee|collections|delinquency|payment-plans|payment-instructions)(?:\/|$)/,
+  },
+  {
+    featureId: "financials.payments-reconciliation",
+    pattern: /^\/api\/(?:admin\/(?:payment-events|payment-transactions|payments|reconciliation)|financial\/(?:autopay|owner-payment-links|partial-payment-rules|payment-activity|payment-exceptions|payment-gateway|payment-methods|stripe-connect|reconciliation)|plaid|bank-feed|webhooks\/payments)(?:\/|$)/,
+  },
+  {
+    featureId: "financials.expenses-disbursements",
+    pattern: /^\/api\/(?:financial\/(?:expenses|invoices|utilities|expense-attachments)|admin\/disbursements)(?:\/|$)/,
   },
   {
     featureId: "financials.budget-approval",
@@ -217,23 +239,23 @@ async function resolveDelegatedAssociationForRequest(
   return resolveDelegatedAssociationId(req);
 }
 
-export type AssistedBoardMutationDecision =
+export type DelegatedAccessDecision =
   | { allowed: true; associationId?: string; featureId?: AssistedBoardFeatureId }
   | {
       allowed: false;
       code:
-        | "ASSISTED_BOARD_MUTATION_UNMAPPED"
-        | "ASSISTED_BOARD_VIEW_NOT_DELEGATED"
-        | "ASSISTED_BOARD_WRITE_NOT_DELEGATED";
+        | "DELEGATED_REQUEST_UNMAPPED"
+        | "DELEGATED_VIEW_NOT_GRANTED"
+        | "DELEGATED_WRITE_NOT_GRANTED";
       detail: string;
       associationId?: string;
       featureId?: AssistedBoardFeatureId;
     };
 
-export async function evaluateAssistedBoardMutation(
+export async function evaluateDelegatedAccess(
   req: DelegatedAdminRequest,
-): Promise<AssistedBoardMutationDecision> {
-  if (req.adminRole !== "assisted-board") {
+): Promise<DelegatedAccessDecision> {
+  if (req.adminRole !== "assisted-board" && req.adminRole !== "pm-assistant") {
     return { allowed: true };
   }
 
@@ -244,13 +266,22 @@ export async function evaluateAssistedBoardMutation(
     return { allowed: true };
   }
 
+  if (
+    !isMutation
+    && DELEGATED_PERSONAL_REQUEST_ALLOWLIST.some((pattern) => pattern.test(req.path))
+  ) {
+    return { allowed: true };
+  }
+
   const featureId = resolveAssistedBoardRequestFeature(req.path);
   if (!featureId) {
-    if (!isMutation) return { allowed: true };
+    // Preserve all existing Assisted Board read behavior. PM Assistant is a
+    // configured subset of Manager, so any unmapped request fails closed.
+    if (!isMutation && req.adminRole === "assisted-board") return { allowed: true };
     return {
       allowed: false,
-      code: "ASSISTED_BOARD_MUTATION_UNMAPPED",
-      detail: "This mutation is outside the Manager-configured Assisted Board feature envelope.",
+      code: "DELEGATED_REQUEST_UNMAPPED",
+      detail: "This request is outside the Manager-configured delegated feature envelope.",
     };
   }
 
@@ -265,9 +296,9 @@ export async function evaluateAssistedBoardMutation(
     return {
       allowed: false,
       code: isMutation
-        ? "ASSISTED_BOARD_WRITE_NOT_DELEGATED"
-        : "ASSISTED_BOARD_VIEW_NOT_DELEGATED",
-      detail: `${isMutation ? "Write" : "View"} access is not delegated for ${featureId}.`,
+        ? "DELEGATED_WRITE_NOT_GRANTED"
+        : "DELEGATED_VIEW_NOT_GRANTED",
+      detail: `${isMutation ? "Write" : "View"} access is not granted for ${featureId}.`,
       associationId,
       featureId,
     };
@@ -275,3 +306,8 @@ export async function evaluateAssistedBoardMutation(
 
   return { allowed: true, associationId, featureId };
 }
+
+// Backward-compatible exports used by the shipped Assisted Board regression
+// suite and older imports. New code should use the delegated names above.
+export type AssistedBoardMutationDecision = DelegatedAccessDecision;
+export const evaluateAssistedBoardMutation = evaluateDelegatedAccess;
