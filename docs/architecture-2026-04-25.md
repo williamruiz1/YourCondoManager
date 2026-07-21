@@ -1,5 +1,7 @@
 # YCM Architecture — 2026-04-25
 
+> **Historical architecture snapshot.** For current execution status, use `docs/projects/platform-overhaul/00-index.md` and live PocketPM.
+
 **Snapshot date:** 2026-04-25 (initial publication post-Wave-19; appended Wave-35b catch-up after Waves 22–33).
 **Context:** post-Wave-19 (perf + Layer 5 polish) and pre-Wave-20 docs backfill. 22+ PRs merged in the Wave-19 session across Layers 0–5 of the Platform Overhaul. **Wave 35b appended:** Wave 25 (axe + visual regression), Wave 30 (CI pipeline), Wave 32 (Tier 3 alert notifications), Wave 33 (background job queue) — see § 3.6–3.9 below.
 **Audience:** new contributors, future agents, and reviewers needing a one-page mental model of the platform.
