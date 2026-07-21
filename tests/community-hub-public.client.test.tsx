@@ -101,4 +101,17 @@ describe("public Community Hub authenticity controls", () => {
     expect(screen.getByRole("link", { name: "Contact the association" }).getAttribute("href"))
       .toContain("mailto:support@yourcondomanager.org?");
   });
+
+  it("renders the approved community-front-door hierarchy with truthful portal and document paths", async () => {
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Welcome to Cherry Hill Court Condominiums" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Clear information for owners and the professionals who support them." })).toBeInTheDocument();
+    expect(screen.getByText("Self-managed")).toBeInTheDocument();
+    expect(screen.getByText("Dues & payments")).toBeInTheDocument();
+    expect(screen.getByText("Service requests")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Need official association documents?" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Request documents" }).getAttribute("href"))
+      .toContain("mailto:support@yourcondomanager.org?");
+  });
 });

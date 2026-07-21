@@ -7,7 +7,6 @@ import {
   associationInsurancePolicies, inspectionRecords,
   maintenanceScheduleTemplates, maintenanceScheduleInstances,
   governanceMeetings,
-  communityAnnouncements,
   budgets, budgetVersions, budgetLines,
   ownerLedgerEntries,
   lateFeeRules, lateFeeEvents,
@@ -2569,63 +2568,6 @@ export async function seedDatabase() {
       log("[seed] governance meetings :: 4 Cherry Hill meetings inserted", "seed");
     } else {
       log("[seed] governance meetings :: already exist, skipping", "seed");
-    }
-  });
-
-
-  await runBlock("community-announcements", async () => {
-    // ── Community Announcements ─────────────────────────────────────────────────
-    const [existingAnnouncement] = await db
-      .select()
-      .from(communityAnnouncements)
-      .where(eq(communityAnnouncements.id, "ann00001-0000-4000-8000-000000000001"));
-    if (!existingAnnouncement) {
-      const announcementRows = [
-        {
-          id: "ann00001-0000-4000-8000-000000000001",
-          associationId: CHERRY_HILL_CONDO_ID,
-          title: "Annual Meeting Reminder",
-          body: "This is a reminder that the Annual Meeting of Cherry Hill Court Homeowners Association will be held on January 28, 2026 at 6:30 PM in the Community Room. All homeowners are encouraged to attend. The agenda includes election of board members, budget approval for 2026, and open resident forum.",
-          priority: "normal" as const,
-          noticeCategory: "general",
-          isPublished: 1,
-          isDraft: 0,
-          publishedAt: new Date("2026-01-10T12:00:00Z"),
-          authorName: "Board of Directors",
-          targetAudience: "all",
-        },
-        {
-          id: "ann00001-0000-4000-8000-000000000004",
-          associationId: CHERRY_HILL_CONDO_ID,
-          title: "Pool Opening — Memorial Day Weekend",
-          body: "We are excited to announce that the community pool will open for the season on Memorial Day Weekend, May 23, 2026. Pool hours will be 8:00 AM – 9:00 PM daily. Resident pool key fobs will be reactivated automatically. Guest passes (limit 2 per visit) are available from the management office. A pool safety orientation will be posted at the entrance.",
-          priority: "normal" as const,
-          noticeCategory: "community",
-          isPublished: 0,
-          isDraft: 1,
-          publishedAt: null,
-          scheduledPublishAt: new Date("2026-05-01T08:00:00Z"),
-          authorName: "Amenities Committee",
-          targetAudience: "all",
-        },
-        {
-          id: "ann00001-0000-4000-8000-000000000005",
-          associationId: CHERRY_HILL_CONDO_ID,
-          title: "Emergency Water Shutoff Notice",
-          body: "URGENT: Due to an emergency repair to the main water supply line, water service to all units will be shut off on March 14, 2026 from 8:00 AM to approximately 2:00 PM. Please store sufficient water for drinking and essential needs before 8:00 AM. We apologize for the inconvenience and will provide updates via email if the timeline changes. Contact the management office at (203) 555-0100 with questions.",
-          priority: "urgent" as const,
-          noticeCategory: "urgent",
-          isPublished: 1,
-          isDraft: 0,
-          publishedAt: new Date("2026-03-13T17:00:00Z"),
-          authorName: "Property Management",
-          targetAudience: "all",
-        },
-      ];
-      await db.insert(communityAnnouncements).values(announcementRows).onConflictDoNothing();
-      log("[seed] community announcements :: 5 Cherry Hill announcements inserted", "seed");
-    } else {
-      log("[seed] community announcements :: already exist, skipping", "seed");
     }
   });
 
