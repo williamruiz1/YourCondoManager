@@ -8,7 +8,7 @@ import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { t } from "@/i18n/use-strings";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bell, ExternalLink, Info, ChevronRight, Building2, MapPin, Calendar, FileText, Download, Mail, KeyRound, Home, ShieldCheck, Users, Landmark } from "lucide-react";
+import { Bell, ExternalLink, Info, ChevronRight, Building2, MapPin, Calendar, FileText, Download, Mail, KeyRound, Home, ShieldCheck, Users, Landmark, WalletCards, Wrench, BookOpen } from "lucide-react";
 import CommunityMapView from "@/components/community-map-view";
 import { Pill, type PillTone } from "@/components/redesign";
 // The Pill/Tile primitives pull in the canonical @ycm/design-system stylesheet
@@ -107,6 +107,7 @@ const CATEGORY_ICONS: Record<string, typeof Info> = {
 // Headings use Inter Tight — the canonical @ycm/design-system (F1,
 // founder-os#10187) heading typeface, already loaded in client/index.html.
 const BRAND_FONT = '"Inter Tight", Inter, system-ui, sans-serif';
+const DISPLAY_FONT = '"Source Serif 4", Georgia, serif';
 // Palette is the exact @ycm/design-system token set (client/src/styles/
 // redesign-kit.css --ds-*) — same hex values, kept as local constants so the
 // per-community `themeColor` override composes cleanly with the fixed
@@ -290,212 +291,212 @@ export default function CommunityHubPublicPage() {
     contacts: () => <ContactsSection association={association} boardContacts={boardContacts} themeColor={themeColor} />,
   };
 
+  const professionalInquiryHref = association
+    ? `mailto:support@yourcondomanager.org?subject=${encodeURIComponent(`${association.name}: official document request`)}`
+    : "mailto:support@yourcondomanager.org?subject=Official%20document%20request";
+
   return (
-    <div className="min-h-screen" style={{ backgroundColor: V4.pageBg }}>
-      {/* Brand nav — a slim top accent rule (the same teal→accent gradient
-          used across every DS surface), the real BrandMark + the
-          YourCondoManager wordmark spelled out (not just an icon), and the
-          community name — so the page is unmistakably a YourCondoManager
-          product from the first pixel, not a footer-only brand touch. */}
-      <nav className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm" style={{ borderBottom: `1px solid ${V4.line}` }}>
-        <div className="h-[3px] w-full" style={{ background: `linear-gradient(90deg, ${V4.teal}, ${V4.accent})` }} aria-hidden="true" />
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 min-w-0">
-            <BrandMark className="h-7 w-7 shrink-0" />
+    <div className="min-h-screen" style={{ backgroundColor: V4.pageBg, fontFamily: BRAND_FONT }}>
+      <nav className="sticky top-0 z-40 border-b bg-white/95 backdrop-blur-md" style={{ borderColor: V4.line }}>
+        <div className="mx-auto flex h-[72px] max-w-6xl items-center justify-between gap-5 px-5 sm:px-6">
+          <a href="#main-content" className="flex min-w-0 items-center gap-3" aria-label={`${association?.name || "Community"} home`}>
+            <BrandMark className="h-8 w-8 shrink-0" />
             <div className="min-w-0 leading-tight">
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.09em] truncate" style={{ color: V4.accent }}>
-                YourCondoManager
-              </p>
-              <p className="font-semibold text-sm truncate" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>
-                {association?.name || "Community Hub"}
-              </p>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.12em]" style={{ color: V4.accent }}>YourCondoManager</p>
+              <p className="truncate text-[15px] font-semibold" style={{ color: V4.ink }}>{association?.name || "Community Hub"}</p>
             </div>
+          </a>
+          <div className="hidden items-center gap-6 text-[13px] font-semibold lg:flex" style={{ color: V4.muted }}>
+            <a href="#about" className="transition-colors hover:text-[#014d4a]">About</a>
+            <a href="#updates" className="transition-colors hover:text-[#014d4a]">Community</a>
+            <a href="#board" className="transition-colors hover:text-[#014d4a]">Board</a>
+            <a href="#documents" className="transition-colors hover:text-[#014d4a]">Documents</a>
+            <a href="#contact" className="transition-colors hover:text-[#014d4a]">Contact</a>
           </div>
-          <a
-            href="/portal"
-            className={`${BTN_V4} shrink-0 hover:bg-[var(--nav-cta-hover)]`}
-            style={{ backgroundColor: themeColor, ["--nav-cta-hover" as any]: V4.teal700 }}
-          >
+          <a href="/portal" className={`${BTN_V4} shrink-0 px-5 py-2.5`} style={{ backgroundColor: themeColor }}>
             <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
             Owner Portal
           </a>
         </div>
       </nav>
 
-      {/* Hero Banner */}
       <header
-        className="relative overflow-hidden"
+        className="relative overflow-hidden text-white"
         style={{
           background: config.bannerImageUrl
-            ? `linear-gradient(rgba(1,77,74,0.55), rgba(1,77,74,0.78)), url(${config.bannerImageUrl}) center/cover`
-            : `linear-gradient(135deg, ${themeColor} 0%, ${themeColor} 45%, ${themeColor}cc 100%)`,
+            ? `linear-gradient(110deg, rgba(0,52,50,.96), rgba(1,77,74,.78)), url(${config.bannerImageUrl}) center/cover`
+            : `linear-gradient(122deg, #003432 0%, ${themeColor} 62%, #075f5a 100%)`,
         }}
       >
-        {/* soft accent glow for depth */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full blur-3xl opacity-30"
-          style={{ background: "#15A39C" }}
-        />
-        <div className="relative max-w-5xl mx-auto px-4 py-12 sm:py-20">
-          <div className="grid gap-9 lg:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)] lg:items-center">
-            <div>
-              <p className="text-white/70 text-[11px] font-bold uppercase tracking-[0.14em] mb-4 flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
-                Official community page
+        <div className="pointer-events-none absolute -right-24 -top-28 h-96 w-96 rounded-full bg-[#2DBDB0]/25 blur-[100px]" aria-hidden="true" />
+        <div className="relative mx-auto grid max-w-6xl gap-12 px-5 py-16 sm:px-6 sm:py-20 lg:grid-cols-[1.08fr_.92fr] lg:items-center lg:py-24">
+          <div>
+            <p className="mb-5 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-white/65">
+              <ShieldCheck className="h-4 w-4" aria-hidden="true" /> Official community page
+            </p>
+            <h1 className="max-w-3xl text-[42px] font-semibold leading-[.98] tracking-[-0.035em] sm:text-[58px]" style={{ fontFamily: DISPLAY_FONT }}>
+              Welcome to {association?.name || "our community"}
+            </h1>
+            {association && (
+              <p className="mt-5 flex items-center gap-2 text-sm font-medium text-white/75">
+                <MapPin className="h-4 w-4" aria-hidden="true" /> {association.city}, {association.state}{totalUnits > 0 ? ` · ${totalUnits} residences` : ""}
               </p>
-              <div className="flex items-center gap-4 mb-5">
-                {config.logoUrl && (
-                  <img
-                    src={config.logoUrl}
-                    alt={association?.name || "Community"}
-                    className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl object-cover bg-white/95 p-1.5 shrink-0 shadow-lg ring-1 ring-white/30"
-                  />
-                )}
-                <div className="min-w-0">
-                  <h1
-                    className="text-3xl sm:text-5xl font-bold text-white tracking-[-0.035em] leading-[1.03]"
-                    style={{ fontFamily: BRAND_FONT }}
-                  >
-                    {association?.name || "Community Hub"}
-                  </h1>
-                  {association && (
-                    <p className="text-white/85 text-sm sm:text-base mt-2 flex items-center gap-1.5">
-                      <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      {association.city}, {association.state}
-                    </p>
-                  )}
-                </div>
-              </div>
-              {config.communityDescription && (
-                <p className="text-white/90 max-w-2xl text-sm sm:text-lg leading-relaxed">
-                  {config.communityDescription}
-                </p>
-              )}
-            </div>
-
-            <aside className="rounded-2xl border border-white/20 bg-white/10 p-5 text-white shadow-2xl backdrop-blur-sm">
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-white/65">
-                Community at a glance
-              </p>
-              <dl className="mt-4 divide-y divide-white/15">
-                {association && (
-                  <div className="flex items-center justify-between gap-4 py-3 first:pt-0">
-                    <dt className="text-sm text-white/70">Location</dt>
-                    <dd className="text-sm font-bold text-right">{association.city}, {association.state}</dd>
-                  </div>
-                )}
-                {publicBuildings.length > 0 && (
-                  <div className="flex items-center justify-between gap-4 py-3">
-                    <dt className="text-sm text-white/70">Buildings</dt>
-                    <dd className="text-sm font-bold">{publicBuildings.length}</dd>
-                  </div>
-                )}
-                {totalUnits > 0 && (
-                  <div className="flex items-center justify-between gap-4 py-3">
-                    <dt className="text-sm text-white/70">Residences</dt>
-                    <dd className="text-sm font-bold">{totalUnits}</dd>
-                  </div>
-                )}
-                <div className="flex items-center justify-between gap-4 py-3">
-                  <dt className="text-sm text-white/70">Management</dt>
-                  <dd className="text-sm font-bold">Owner portal</dd>
-                </div>
-              </dl>
-              <a
-                href="/portal"
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold transition-colors hover:bg-white/90"
-                style={{ color: themeColor }}
-              >
-                Open the owner portal
-                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+            )}
+            <p className="mt-6 max-w-2xl text-[16px] leading-7 text-white/78 sm:text-[17px]">
+              A self-managed residential community where owners can stay informed and handle dues, documents, and requests through one secure portal.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <a href="/portal" className="inline-flex items-center gap-2 rounded-lg bg-[#2DBDB0] px-6 py-3.5 text-sm font-bold text-[#003432] shadow-lg transition-transform hover:-translate-y-0.5">
+                Open Owner Portal <ChevronRight className="h-4 w-4" aria-hidden="true" />
               </a>
-            </aside>
+              <a href="#board" className="inline-flex items-center rounded-lg border border-white/30 px-6 py-3.5 text-sm font-bold text-white transition-colors hover:bg-white/10">
+                Contact the board
+              </a>
+            </div>
           </div>
+
+          <aside className="relative rounded-2xl border border-white/30 bg-white p-6 text-[#13201e] shadow-[0_26px_70px_rgba(0,0,0,.28)] sm:p-7">
+            <div className="mb-6 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <BrandMark decorative className="h-7 w-7" />
+                <p className="font-semibold text-[#014D4A]" style={{ fontFamily: DISPLAY_FONT }}>Owner Portal</p>
+              </div>
+              <span className="text-[11px] font-semibold uppercase tracking-[.12em] text-[#6b817e]">Secure access</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <PortalPreviewItem icon={WalletCards} label="Dues & payments" />
+              <PortalPreviewItem icon={Wrench} label="Service requests" />
+              <PortalPreviewItem icon={BookOpen} label="Documents" />
+              <PortalPreviewItem icon={Bell} label="Community notices" />
+            </div>
+            <div className="mt-4 flex items-center justify-between rounded-xl border border-[#e3edeb] bg-[#f8fbfa] p-4">
+              <div>
+                <p className="text-sm font-semibold text-[#13201e]">Your association account</p>
+                <p className="mt-0.5 text-xs text-[#5c726f]">Private, unit-specific information</p>
+              </div>
+              <span className="rounded-full bg-[#dff4f1] px-3 py-1.5 text-xs font-bold text-[#014D4A]">Sign in</span>
+            </div>
+          </aside>
         </div>
-        {/* base accent rule */}
-        <div className="h-1 w-full" style={{ background: "#15A39C" }} aria-hidden="true" />
+        <div className="h-1 bg-[#2DBDB0]" aria-hidden="true" />
       </header>
 
-      <main id="main-content" tabIndex={-1} className="max-w-5xl mx-auto px-4 pb-8 pt-8 sm:pt-10">
-        {/* Welcome Mode */}
-        {config.welcomeModeEnabled === 1 && config.welcomeHeadline && (
-          <Card className={`${CARD_V4} border`} style={{ borderColor: `${themeColor}33`, background: `linear-gradient(180deg, ${themeColor}0a, transparent)` }}>
-            <CardContent className="pt-6 pb-5 px-6">
-              <h2 className="text-xl font-semibold mb-3 tracking-tight" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>{config.welcomeHeadline}</h2>
-              {Array.isArray(config.welcomeHighlights) && config.welcomeHighlights.length > 0 && (
-                <ul className="space-y-2.5">
-                  {config.welcomeHighlights.map((highlight: string, i: number) => (
-                    <li key={i} className="flex items-start gap-2.5 text-sm" style={{ color: V4.muted }}>
-                      <ChevronRight className="h-4 w-4 mt-0.5 shrink-0" style={{ color: themeColor }} />
-                      {highlight}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* The configured order remains authoritative, while the 12-column
-            editorial grid gives notices, resources, maps, and contacts a
-            deliberate hierarchy instead of one long stack. */}
-        <div className="grid gap-7 lg:grid-cols-12 lg:gap-8">
-          {sectionOrder
-            .filter((section) => enabledSections.includes(section))
-            .map((section) => {
-              const renderer = sectionRenderers[section];
-              if (!renderer) return null;
-              const content = renderer();
-              if (!content) return null;
-              return (
-                <div key={section} className={sectionSpan[section] || "lg:col-span-12"}>
-                  {content}
-                </div>
-              );
-            })}
-        </div>
-
-        {/* Empty state when no sections have content */}
-        {sectionOrder.filter(s => enabledSections.includes(s)).every(s => {
-          if (s === "notices" && notices.length === 0) return true;
-          if (s === "quick-actions" && actionLinks.length === 0) return true;
-          if (s === "info-blocks" && infoBlocks.length === 0) return true;
-          if (s === "events" && meetings.length === 0) return true;
-          if (s === "documents" && docs.length === 0) return true;
-          if (s === "buildings" && publicBuildings.length === 0) return true;
-          if (s === "map") return false; // static map always renders (shows placeholder on error)
-          if (s === "contacts") return false;
-          return false;
-        }) && (
-          <Card className={CARD_V4} style={cardBorder}>
-            <CardContent className="py-12 text-center">
-              <Building2 className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
-              <p className="text-muted-foreground">This community hub is being set up. Check back soon for updates.</p>
-            </CardContent>
-          </Card>
-        )}
-
-      </main>
-
-      {/* Footer — full brand lockup + legal links, so the page reads as a
-          real product surface end-to-end, not a one-line "powered by". */}
-      <footer className="border-t bg-white py-8 mt-10" style={{ borderColor: V4.line }}>
-        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <BrandMark decorative className="h-7 w-7" />
-            <div className="leading-tight">
-              <p className="font-semibold text-sm" style={{ fontFamily: BRAND_FONT, color: V4.ink }}>YourCondoManager</p>
-              <p className="text-xs" style={{ color: V4.muted }}>Community management, handled in one place.</p>
+      <main id="main-content" tabIndex={-1}>
+        <section id="about" className="bg-white py-16 sm:py-20">
+          <div className="mx-auto grid max-w-6xl gap-10 px-5 sm:px-6 lg:grid-cols-[1.25fr_.75fr] lg:items-start">
+            <div>
+              <p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-[#15A39C]">About the community</p>
+              <h2 className="mt-3 max-w-2xl text-3xl font-semibold leading-tight text-[#014D4A] sm:text-4xl" style={{ fontFamily: DISPLAY_FONT }}>
+                Clear information for owners and the professionals who support them.
+              </h2>
+              <div className="mt-6 space-y-4 text-[15px] leading-7 text-[#33514d]">
+                <p>{config.communityDescription || `${association?.name || "This community"} is a residential condominium community.`}</p>
+                <p>Owners use the secure Owner Portal for account balances, payments, governing documents, and service requests. Lenders, insurers, buyers, and closing professionals can use the official inquiry paths below.</p>
+                <p>This public page is the association’s front door. Private owner and unit information remains inside the Owner Portal.</p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-[#e3edeb] bg-[#f8fbfa] p-7">
+              <p className="text-[11px] font-extrabold uppercase tracking-[.16em] text-[#014D4A]">Community facts</p>
+              <dl className="mt-5 divide-y divide-[#dfe9e7]">
+                {totalUnits > 0 && <FactRow label="Residences" value={String(totalUnits)} />}
+                {publicBuildings.length > 0 && <FactRow label="Buildings" value={String(publicBuildings.length)} />}
+                {association && <FactRow label="Location" value={`${association.city}, ${association.state}`} />}
+                <FactRow label="Management" value="Self-managed" />
+              </dl>
             </div>
           </div>
-          <div className="flex items-center gap-4 text-xs" style={{ color: V4.muted }}>
-            <a href="/privacy" className="hover:underline" style={{ color: V4.muted }}>Privacy</a>
-            <a href="/terms" className="hover:underline" style={{ color: V4.muted }}>Terms</a>
+        </section>
+
+        <section id="updates" className="scroll-mt-20 py-16 sm:py-20">
+          <div className="mx-auto max-w-6xl px-5 sm:px-6">
+            {config.welcomeModeEnabled === 1 && config.welcomeHeadline && (
+              <Card className={`${CARD_V4} mb-8 border`} style={{ borderColor: `${themeColor}33`, background: `linear-gradient(180deg, ${themeColor}0a, transparent)` }}>
+                <CardContent className="px-6 pb-5 pt-6">
+                  <h2 className="mb-3 text-xl font-semibold tracking-tight" style={{ fontFamily: DISPLAY_FONT, color: V4.ink }}>{config.welcomeHeadline}</h2>
+                  {Array.isArray(config.welcomeHighlights) && config.welcomeHighlights.length > 0 && (
+                    <ul className="space-y-2.5">
+                      {config.welcomeHighlights.map((highlight: string, i: number) => (
+                        <li key={i} className="flex items-start gap-2.5 text-sm" style={{ color: V4.muted }}>
+                          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0" style={{ color: themeColor }} />{highlight}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+            <div className="grid gap-8 lg:grid-cols-12">
+              {sectionOrder
+                .filter((section) => section !== "contacts" && enabledSections.includes(section))
+                .map((section) => {
+                  const renderer = sectionRenderers[section];
+                  if (!renderer) return null;
+                  const content = renderer();
+                  if (!content) return null;
+                  return <div key={section} className={sectionSpan[section] || "lg:col-span-12"}>{content}</div>;
+                })}
+            </div>
+          </div>
+        </section>
+
+        <section id="board" className="scroll-mt-20 border-y border-[#e3edeb] bg-white py-16 sm:py-20">
+          <div className="mx-auto max-w-6xl px-5 sm:px-6">
+            <p className="mb-3 text-center text-[11px] font-extrabold uppercase tracking-[.16em] text-[#15A39C]">Board & association contacts</p>
+            {association && <ContactsSection association={association} boardContacts={boardContacts} themeColor={themeColor} />}
+          </div>
+        </section>
+
+        <section id="documents" className="scroll-mt-20 py-16 sm:py-20">
+          <div className="mx-auto max-w-6xl px-5 sm:px-6">
+            <div className="grid gap-8 overflow-hidden rounded-[28px] bg-[#003432] p-8 text-white shadow-[0_20px_55px_rgba(0,52,50,.16)] sm:p-11 lg:grid-cols-[1fr_auto] lg:items-center">
+              <div>
+                <p className="flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[.16em] text-[#2DBDB0]"><ShieldCheck className="h-4 w-4" /> For lenders, insurers & closings</p>
+                <h2 className="mt-3 text-3xl font-semibold" style={{ fontFamily: DISPLAY_FONT }}>Need official association documents?</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70">Request resale information, questionnaires, governing records, or insurance documentation through the association’s official channel. Account-specific records are never posted publicly.</p>
+              </div>
+              <a href={professionalInquiryHref} className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-7 py-4 text-sm font-bold text-[#014D4A] shadow-lg transition-transform hover:-translate-y-0.5">
+                Request documents <Mail className="h-4 w-4" aria-hidden="true" />
+              </a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer id="contact" className="border-t bg-white py-9" style={{ borderColor: V4.line }}>
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-5 sm:px-6 md:flex-row">
+          <div className="flex items-center gap-3">
+            <BrandMark decorative className="h-8 w-8" />
+            <div className="leading-tight">
+              <p className="font-semibold text-[#014D4A]" style={{ fontFamily: DISPLAY_FONT }}>{association?.name || "YourCondoManager"}</p>
+              <p className="mt-1 text-xs text-[#5b7572]">{association ? `${association.city}, ${association.state} · Self-managed · Powered by YourCondoManager` : "Community management, handled in one place."}</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-5 text-xs font-semibold text-[#5b7572]">
+            <a href="mailto:support@yourcondomanager.org" className="hover:text-[#014D4A]">Contact</a>
+            <a href="/privacy" className="hover:text-[#014D4A]">Privacy</a>
+            <a href="/terms" className="hover:text-[#014D4A]">Terms</a>
             <span>© {new Date().getFullYear()} YourCondoManager</span>
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function PortalPreviewItem({ icon: Icon, label }: { icon: typeof Info; label: string }) {
+  return (
+    <div className="rounded-xl bg-[#e9f6f4] p-4">
+      <Icon className="h-5 w-5 text-[#014D4A]" aria-hidden="true" />
+      <p className="mt-3 text-xs font-semibold text-[#33514d]">{label}</p>
+    </div>
+  );
+}
+
+function FactRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0">
+      <dt className="text-sm text-[#5b7572]">{label}</dt>
+      <dd className="text-right text-sm font-bold text-[#014D4A]">{value}</dd>
     </div>
   );
 }
