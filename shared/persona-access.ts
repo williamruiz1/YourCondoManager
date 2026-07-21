@@ -106,7 +106,6 @@ const SETTINGS_BILLING_ROLES: readonly AdminRole[] = [
   "platform-admin",
   "manager",
   "board-officer",
-  "pm-assistant",
 ];
 
 /**
@@ -121,7 +120,7 @@ export const ROUTE_MANIFEST: RouteManifest = {
   // association context in the header and remain Board-scoped.
   "/app/associations": ["platform-admin", "manager", "pm-assistant", "viewer"],
   "/app/portfolio": ["platform-admin", "manager", "pm-assistant", "viewer"],
-  "/app/association-context": ["platform-admin", "manager"],
+  "/app/association-context": ["platform-admin", "manager", "pm-assistant"],
   "/app/new-association": ["platform-admin", "manager", "board-officer"],
 
   // Board Officer owns self-managed settings; Assisted Board does not own the

@@ -60,11 +60,20 @@ describe("canAccessAlert", () => {
     ).toBe(true);
   });
 
-  it("Tier 2 feature domains resolve for Board Officer, PM Assistant, Manager, Platform Admin", () => {
-    for (const role of ["board-officer", "pm-assistant", "manager", "platform-admin"] as const) {
+  it("Tier 2 feature domains resolve for Board Officer, Manager, and Platform Admin", () => {
+    for (const role of ["board-officer", "manager", "platform-admin"] as const) {
       expect(canAccessAlert(role, FEATURE_DOMAINS.VENDORS, EMPTY_TOGGLES)).toBe(true);
       expect(canAccessAlert(role, FEATURE_DOMAINS.GOVERNANCE_COMPLIANCE, EMPTY_TOGGLES)).toBe(true);
     }
+  });
+
+  it("PM Assistant alerts start denied and follow the association View grant", () => {
+    expect(canAccessAlert("pm-assistant", FEATURE_DOMAINS.VENDORS, EMPTY_TOGGLES)).toBe(false);
+    expect(
+      canAccessAlert("pm-assistant", FEATURE_DOMAINS.VENDORS, {
+        "operations.vendor-contracts.view": true,
+      }),
+    ).toBe(true);
   });
 
   it("Viewer can see governance-compliance (view-only row) but NOT vendors", () => {

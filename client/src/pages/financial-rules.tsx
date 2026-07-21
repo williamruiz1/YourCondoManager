@@ -78,10 +78,10 @@ function resolveCanWrite(
 ): boolean {
   if (!role) return false;
   if (role === "viewer") return false;
-  if (role === "assisted-board") {
+  if (role === "assisted-board" || role === "pm-assistant") {
     return toggles["assessment_rules_write"] === true;
   }
-  // manager, board-officer, pm-assistant, platform-admin
+  // manager, board-officer, platform-admin
   return true;
 }
 
@@ -370,7 +370,8 @@ function FinancialRulesInner() {
   const { activeAssociationId } = useActiveAssociation();
   const { toggles } = useAssistedBoardAccess(
     activeAssociationId,
-    role === "assisted-board",
+    role === "pm-assistant" ? "pm-assistant" : "assisted-board",
+    role === "assisted-board" || role === "pm-assistant",
   );
   const canWrite = resolveCanWrite(role, toggles);
   const readOnly = !canWrite;

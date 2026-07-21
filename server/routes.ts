@@ -57,8 +57,12 @@ import {
   fileFounderFeedbackGithubIssue,
   buildFounderFeedbackIssueTitle,
   buildFounderFeedbackIssueBody,
+  buildFounderFeedbackDedupeKey,
+  cleanupSyntheticFounderFeedbackIssues,
+  founderFeedbackIssueMarker,
+  redactFounderFeedbackText,
 } from "./founder-feedback";
-import { founderFeedback } from "@shared/schema";
+import { founderFeedback, type FounderFeedback } from "@shared/schema";
 import { createAuthRestoreToken, getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import { revokePortalAccess as revokePortalAccessForOwnership } from "./de-provisioning";
 import { sendDemoRequestConfirmation } from "./demo-request-confirmation";
@@ -302,14 +306,17 @@ import type { MeterPoster } from "./services/stripe-meter-reporting";
 import {
   listTogglesForAssociation,
   listAssistedBoardAccessMatrix,
+  listDelegatedAccessMatrix,
   setToggle,
   canAssessmentRulesWrite,
 } from "./pm-toggles";
-import { evaluateAssistedBoardMutation } from "./assisted-board-delegation";
+import { evaluateDelegatedAccess } from "./assisted-board-delegation";
 import {
   ASSISTED_BOARD_FEATURES,
   delegatedToggleDescriptor,
   delegatedToggleKey,
+  isDelegatedTargetRole,
+  type DelegatedTargetRole,
 } from "@shared/delegated-feature-access";
 import {
   ADMIN_CONTEXTUAL_FEEDBACK_INBOX_WORKSTREAM_TITLE,
@@ -1239,9 +1246,9 @@ function evaluateAiIngestionRollout(input: {
 async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction) {
   if (await tryHydrateAdminFromSession(req)) {
     try {
-      const delegatedDecision = await evaluateAssistedBoardMutation(req);
+      const delegatedDecision = await evaluateDelegatedAccess(req);
       if (!delegatedDecision.allowed) {
-        console.warn("[assisted-board-delegation][denied]", {
+        console.warn("[delegated-access][denied]", {
           code: delegatedDecision.code,
           path: req.path,
           method: req.method,
@@ -1259,7 +1266,7 @@ async function requireAdmin(req: AdminRequest, res: Response, next: NextFunction
     } catch (error) {
       return res.status(403).json({
         message: "Insufficient delegated access",
-        code: "ASSISTED_BOARD_SCOPE_REQUIRED",
+          code: "DELEGATED_ACCESS_SCOPE_REQUIRED",
         detail: error instanceof Error ? error.message : "Association scope could not be resolved.",
       });
     }
@@ -2125,11 +2132,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           adminScopedAssociationIds: req.adminScopedAssociationIds ?? [],
         });
         const personaTogglesByAssociation = req.adminRole === "assisted-board"
+          || req.adminRole === "pm-assistant"
           ? Object.fromEntries(
               await Promise.all(
                 permittedAssociations.map(async ({ id }) => [
                   id,
-                  await listTogglesForAssociation(id),
+                  await listTogglesForAssociation(
+                    id,
+                    req.adminRole as DelegatedTargetRole,
+                  ),
                 ] as const),
               ),
             )
@@ -2838,23 +2849,43 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ---------------------------------------------------------------------------
   // 4.3 Q6 — PM toggle management (per-association boolean overrides)
   //
-  // Managers configure `pmToggles`; Assisted Board may read its effective
-  // envelope. Other roles are 403 and no platform/admin authority is
-  // delegable.
+  // Managers configure target-role envelopes. Assisted Board and PM
+  // Assistant may read only their own effective envelope. Other roles are
+  // 403 and no platform/admin authority is delegable.
   // Valid keys are enumerated by `PM_TOGGLE_KEYS` in shared/schema.ts; unknown
   // keys return 400 on write.
   // ---------------------------------------------------------------------------
   app.get(
     "/api/associations/:id/pm-toggles",
     requireAdmin,
-    requireAdminRole(["manager", "assisted-board"]),
+    requireAdminRole(["manager", "assisted-board", "pm-assistant"]),
     async (req: AdminRequest, res) => {
       try {
         const associationId = getParam(req.params.id);
         assertAssociationScope(req, associationId);
-        const toggles = await listTogglesForAssociation(associationId);
-        const access = await listAssistedBoardAccessMatrix(associationId, toggles);
+        const requestedRole = typeof req.query.targetRole === "string"
+          ? req.query.targetRole
+          : req.adminRole === "pm-assistant"
+            ? "pm-assistant"
+            : "assisted-board";
+        if (!isDelegatedTargetRole(requestedRole)) {
+          return res.status(400).json({
+            message: "Unknown delegated target role",
+            code: "DELEGATED_TARGET_ROLE_UNKNOWN",
+          });
+        }
+        if (req.adminRole !== "manager" && req.adminRole !== requestedRole) {
+          return res.status(403).json({
+            message: "Delegated users may read only their own access envelope",
+            code: "DELEGATED_TARGET_ROLE_FORBIDDEN",
+          });
+        }
+        const toggles = await listTogglesForAssociation(associationId, requestedRole);
+        const access = requestedRole === "assisted-board"
+          ? await listAssistedBoardAccessMatrix(associationId, toggles)
+          : await listDelegatedAccessMatrix(associationId, requestedRole, toggles);
         res.json({
+          targetRole: requestedRole,
           toggles,
           access,
           features: ASSISTED_BOARD_FEATURES,
@@ -2896,6 +2927,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
         }
 
+        const targetRole = req.body?.targetRole ?? "assisted-board";
+        if (!isDelegatedTargetRole(targetRole)) {
+          return res.status(400).json({
+            message: "Body targetRole must be assisted-board or pm-assistant",
+            code: "DELEGATED_TARGET_ROLE_UNKNOWN",
+          });
+        }
+
         const adminUserId = req.adminUserId!;
         const descriptor = delegatedToggleDescriptor(toggleKey);
         if (descriptor?.permission === "write" && enabled) {
@@ -2904,6 +2943,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             delegatedToggleKey(descriptor.featureId, "view"),
             true,
             adminUserId,
+            targetRole,
           );
         }
         if (descriptor?.permission === "view" && !enabled) {
@@ -2912,11 +2952,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             delegatedToggleKey(descriptor.featureId, "write"),
             false,
             adminUserId,
+            targetRole,
           );
         }
-        await setToggle(associationId, toggleKey, enabled, adminUserId);
-        const access = await listAssistedBoardAccessMatrix(associationId);
-        res.json({ toggleKey, enabled, access });
+        await setToggle(
+          associationId,
+          toggleKey,
+          enabled,
+          adminUserId,
+          targetRole,
+        );
+        const access = await listDelegatedAccessMatrix(associationId, targetRole);
+        res.json({ targetRole, toggleKey, enabled, access });
       } catch (error: any) {
         const status = error?.status ?? 403;
         res.status(status).json({
@@ -16965,7 +17012,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   // 4.4 Q6 (Wave 13) — return_url updated from /app/platform/controls
   // (Platform Admin only per 0.2) to /app/settings/billing (Manager +
   // Board Officer surface locked in 3.2 amendment 2026-04-21).
-  app.post("/api/admin/billing/portal-session", requireAdmin, requireAdminRole(["platform-admin", "manager", "board-officer", "pm-assistant"]), async (req: AdminRequest, res) => {
+  app.post("/api/admin/billing/portal-session", requireAdmin, requireAdminRole(["platform-admin", "manager", "board-officer"]), async (req: AdminRequest, res) => {
     try {
       const requestedAssociationId =
         typeof req.body?.associationId === "string" ? req.body.associationId : undefined;
@@ -17957,6 +18004,39 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     viewportHeight: z.number().int().positive().optional(),
   });
 
+  async function mirrorFounderFeedbackRow(row: FounderFeedback) {
+    const result = await fileFounderFeedbackGithubIssue({
+      title: buildFounderFeedbackIssueTitle(row.note),
+      body: buildFounderFeedbackIssueBody({
+        note: row.note,
+        severity: row.severity,
+        email: row.email,
+        surface: row.surface,
+        route: row.route,
+        pageTitle: row.pageTitle,
+        viewportWidth: row.viewportWidth,
+        viewportHeight: row.viewportHeight,
+        appVersion: row.appVersion || "unknown",
+        userAgent: row.userAgent,
+        createdAt: row.createdAt,
+      }),
+    }, founderFeedbackIssueMarker(row.id));
+
+    const delivered = result.status === "delivered";
+    await db
+      .update(founderFeedback)
+      .set({
+        githubIssueUrl: delivered ? result.url : null,
+        githubIssueNumber: delivered ? result.number : null,
+        githubDeliveryStatus: result.status,
+        githubAttempts: sql`${founderFeedback.githubAttempts} + 1`,
+        githubLastError: delivered ? null : result.error,
+        githubLastAttemptAt: new Date(),
+      })
+      .where(eq(founderFeedback.id, row.id));
+    return result;
+  }
+
   app.post("/api/founder-feedback", async (req: AdminRequest & PortalRequest, res) => {
     try {
       const identity = await resolveFounderFeedbackIdentity(req);
@@ -17966,9 +18046,34 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
       const parsed = founderFeedbackSubmitSchema.parse(req.body);
       const appVersion = resolveAppVersion();
-      const userAgent = req.header("user-agent") || null;
+      const userAgent = redactFounderFeedbackText(req.header("user-agent")) || null;
       const createdAt = new Date();
       const safeRoute = sanitizeFounderFeedbackRoute(parsed.route);
+      const safeNote = redactFounderFeedbackText(parsed.note) || "[REDACTED]";
+      const safePageTitle = redactFounderFeedbackText(parsed.pageTitle) || null;
+      const dedupeKey = buildFounderFeedbackDedupeKey({
+        email: identity.email,
+        route: safeRoute,
+        severity: parsed.severity || null,
+        note: safeNote,
+        createdAt,
+      });
+
+      const [duplicate] = await db
+        .select()
+        .from(founderFeedback)
+        .where(eq(founderFeedback.dedupeKey, dedupeKey))
+        .limit(1);
+      if (duplicate) {
+        return res.status(200).json({
+          ok: true,
+          id: duplicate.id,
+          duplicate: true,
+          githubIssueUrl: duplicate.githubIssueUrl,
+          mirrorStatus: duplicate.githubDeliveryStatus,
+          dbOnly: duplicate.githubDeliveryStatus !== "delivered",
+        });
+      }
 
       const [row] = await db
         .insert(founderFeedback)
@@ -17976,52 +18081,54 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           email: identity.email,
           surface: identity.surface,
           identityId: identity.identityId,
-          note: parsed.note,
+          note: safeNote,
           severity: parsed.severity || null,
           route: safeRoute,
-          pageTitle: parsed.pageTitle || null,
+          pageTitle: safePageTitle,
           viewportWidth: parsed.viewportWidth ?? null,
           viewportHeight: parsed.viewportHeight ?? null,
           appVersion,
           userAgent,
+          dedupeKey,
         })
+        .onConflictDoNothing()
         .returning();
 
-      const githubResult = await fileFounderFeedbackGithubIssue({
-        title: buildFounderFeedbackIssueTitle(parsed.note),
-        body: buildFounderFeedbackIssueBody({
-          note: parsed.note,
-          severity: parsed.severity || null,
-          email: identity.email,
-          surface: identity.surface,
-          route: safeRoute,
-          pageTitle: parsed.pageTitle || null,
-          viewportWidth: parsed.viewportWidth ?? null,
-          viewportHeight: parsed.viewportHeight ?? null,
-          appVersion,
-          userAgent,
-          createdAt,
-        }),
-      });
+      if (!row) {
+        const [racedDuplicate] = await db
+          .select()
+          .from(founderFeedback)
+          .where(eq(founderFeedback.dedupeKey, dedupeKey))
+          .limit(1);
+        if (!racedDuplicate) throw new Error("Feedback duplicate resolution failed");
+        return res.status(200).json({
+          ok: true,
+          id: racedDuplicate.id,
+          duplicate: true,
+          githubIssueUrl: racedDuplicate.githubIssueUrl,
+          mirrorStatus: racedDuplicate.githubDeliveryStatus,
+          dbOnly: racedDuplicate.githubDeliveryStatus !== "delivered",
+        });
+      }
 
-      if (githubResult) {
-        await db
-          .update(founderFeedback)
-          .set({ githubIssueUrl: githubResult.url, githubIssueNumber: githubResult.number })
-          .where(eq(founderFeedback.id, row.id));
-      } else {
+      const githubResult = await mirrorFounderFeedbackRow(row);
+      if (githubResult.status !== "delivered") {
         console.warn("[founder-feedback][github-mirror-unavailable]", {
           feedbackId: row.id,
           surface: identity.surface,
           route: safeRoute,
+          status: githubResult.status,
+          reason: githubResult.error,
         });
       }
 
       res.status(201).json({
         ok: true,
         id: row.id,
-        githubIssueUrl: githubResult?.url || null,
-        dbOnly: !githubResult,
+        duplicate: false,
+        githubIssueUrl: githubResult.status === "delivered" ? githubResult.url : null,
+        mirrorStatus: githubResult.status,
+        dbOnly: githubResult.status !== "delivered",
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -18031,6 +18138,46 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       res.status(500).json({ message: error?.message || "Failed to submit feedback" });
     }
   });
+
+  app.post(
+    "/api/internal/founder-feedback/replay",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const limit = z.coerce.number().int().min(1).max(50).default(25).parse(req.body?.limit);
+        const rows = await db
+          .select()
+          .from(founderFeedback)
+          .where(and(
+            isNull(founderFeedback.githubIssueNumber),
+            inArray(founderFeedback.githubDeliveryStatus, ["pending", "failed", "unavailable"]),
+          ))
+          .orderBy(founderFeedback.createdAt)
+          .limit(limit);
+        const results = [];
+        for (const row of rows) {
+          const result = await mirrorFounderFeedbackRow(row);
+          results.push({ id: row.id, status: result.status });
+        }
+        res.json({ ok: true, attempted: rows.length, results });
+      } catch (error: any) {
+        console.error("[founder-feedback][replay] error", error?.message);
+        res.status(500).json({ message: "Feedback replay failed" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/internal/founder-feedback/cleanup-synthetic",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (_req: AdminRequest, res) => {
+      const result = await cleanupSyntheticFounderFeedbackIssues();
+      const code = result.status === "failed" ? 502 : result.status === "unavailable" ? 503 : 200;
+      res.status(code).json(result);
+    },
+  );
 
   app.get("/api/admin/roadmap", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager"]), async (_req, res) => {
     try {

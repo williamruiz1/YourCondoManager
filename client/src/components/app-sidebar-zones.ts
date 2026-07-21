@@ -58,7 +58,11 @@ import {
 import type { AdminRole } from "@shared/schema";
 import type {
   AssistedBoardAccessMatrix,
-  AssistedBoardFeatureId,
+} from "@shared/delegated-feature-access";
+import {
+  createDefaultAssistedBoardAccessMatrix,
+  DELEGATED_ROUTE_FEATURES,
+  hasAnyDelegatedView,
 } from "@shared/delegated-feature-access";
 
 // ---------------------------------------------------------------------------
@@ -564,30 +568,9 @@ export interface FilterContext {
   violationsManagementEnabled?: boolean;
   /** Effective association-scoped Assisted Board View permissions. */
   assistedBoardAccess?: AssistedBoardAccessMatrix;
+  /** Effective association-scoped access for either delegated persona. */
+  delegatedAccess?: AssistedBoardAccessMatrix;
 }
-
-const ASSISTED_BOARD_ROUTE_FEATURES: Readonly<
-  Partial<Record<string, AssistedBoardFeatureId>>
-> = {
-  "/app/financial/rules": "financials.assessment-rules",
-  "/app/financial/reports": "financials.reports",
-  "/app/financial/statement": "financials.reports",
-  "/app/units": "operations.unit-management",
-  "/app/persons": "operations.owner-directory",
-  "/app/work-orders": "operations.work-orders",
-  "/app/violations": "operations.violations-appeals",
-  "/app/maintenance-schedules": "operations.maintenance-requests",
-  "/app/inspections": "operations.inspections",
-  "/app/vendors": "operations.vendor-contracts",
-  "/app/insurance": "operations.insurance",
-  "/app/resident-feedback": "operations.resident-feedback",
-  "/app/board": "governance.board",
-  "/app/documents": "governance.documents",
-  "/app/communications/inbox": "communications.inbox",
-  "/app/announcements": "communications.announcements",
-  "/app/amenities": "communications.amenities",
-  "/app/community-hub": "communications.community-hub",
-};
 
 function roleAllowsItem(role: AdminRole | null | undefined, allowed: ReadonlyArray<AdminRole>): boolean {
   if (!role) return false;
@@ -611,13 +594,27 @@ export function filterZonesForPersona(
     if (!roleAllowsItem(ctx.role, zone.roles)) continue;
     let items = zone.items.filter((item) => roleAllowsItem(ctx.role, item.roles));
 
-    if (ctx.role === "assisted-board" && zone.label !== ZONE_LABELS.HOME) {
+    if (
+      (ctx.role === "assisted-board" || ctx.role === "pm-assistant")
+      && zone.label !== ZONE_LABELS.HOME
+    ) {
+      const delegatedAccess = ctx.delegatedAccess
+        ?? ctx.assistedBoardAccess
+        ?? (ctx.role === "assisted-board" ? createDefaultAssistedBoardAccessMatrix() : undefined);
       items = items.filter((item) => {
-        const featureId = ASSISTED_BOARD_ROUTE_FEATURES[item.url];
+        const featureId = DELEGATED_ROUTE_FEATURES[item.url];
         return featureId
-          ? ctx.assistedBoardAccess?.[featureId]?.view === true
+          ? delegatedAccess?.[featureId]?.view === true
           : false;
       });
+      if (items.length === 0) continue;
+    }
+
+    if (ctx.role === "pm-assistant" && zone.label === ZONE_LABELS.HOME) {
+      const delegatedAccess = ctx.delegatedAccess ?? ctx.assistedBoardAccess;
+      if (!delegatedAccess || !hasAnyDelegatedView(delegatedAccess)) {
+        items = [];
+      }
     }
 
     // Board-scoped volunteers never receive portfolio-management navigation.

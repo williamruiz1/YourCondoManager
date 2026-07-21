@@ -26,7 +26,7 @@
 import type { AdminRole } from "@shared/schema";
 import type { PersonaToggleState } from "@shared/persona-access";
 import {
-  assistedBoardDefaultAccess,
+  delegatedDefaultAccess,
   delegatedToggleKey,
   type AssistedBoardFeatureId,
 } from "@shared/delegated-feature-access";
@@ -176,12 +176,12 @@ export function canAccessAlert(
     return true;
   }
 
-  if (persona === "assisted-board") {
+  if (persona === "assisted-board" || persona === "pm-assistant") {
     const featureId = ALERT_DOMAIN_TO_DELEGATED_FEATURE[featureDomain as FeatureDomain];
     if (!featureId) return false;
     const toggleKey = delegatedToggleKey(featureId, "view");
     return personaToggles[toggleKey]
-      ?? assistedBoardDefaultAccess(featureId, "view");
+      ?? delegatedDefaultAccess(persona, featureId, "view");
   }
 
   const allowedRoles = DEFAULT_ALERT_ACCESS[featureDomain as FeatureDomain];

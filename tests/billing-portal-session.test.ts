@@ -41,7 +41,7 @@ describe("Billing portal-session (4.4 Q6 Wave 13)", () => {
     expect(handler).toMatch(/app\.post\(\s*"\/api\/admin\/billing\/portal-session"\s*,\s*requireAdmin/);
   });
 
-  it("role gate permits manager + board-officer + pm-assistant + platform-admin", () => {
+  it("role gate keeps commercial billing non-delegable to PM Assistant", () => {
     // Extract the requireAdminRole call from the handler line.
     const roleGate = handler.match(/requireAdminRole\(\[([^\]]+)\]\)/);
     expect(roleGate).not.toBeNull();
@@ -49,7 +49,7 @@ describe("Billing portal-session (4.4 Q6 Wave 13)", () => {
     expect(roles).toContain("\"platform-admin\"");
     expect(roles).toContain("\"manager\"");
     expect(roles).toContain("\"board-officer\"");
-    expect(roles).toContain("\"pm-assistant\"");
+    expect(roles).not.toContain("\"pm-assistant\"");
     // Viewer must NOT be in the role list.
     expect(roles).not.toContain("\"viewer\"");
   });

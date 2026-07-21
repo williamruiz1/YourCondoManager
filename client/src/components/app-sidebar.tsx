@@ -195,9 +195,11 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
     useActiveAssociation();
 
   const boardScopedExperience = isBoardScopedAdminRole(adminRole);
-  const { access: assistedBoardAccess } = useAssistedBoardAccess(
+  const isDelegatedPersona = adminRole === "assisted-board" || adminRole === "pm-assistant";
+  const { access: delegatedAccess } = useAssistedBoardAccess(
     activeAssociationId,
-    adminRole === "assisted-board",
+    adminRole === "pm-assistant" ? "pm-assistant" : "assisted-board",
+    isDelegatedPersona,
   );
   const amenitiesDisabled = activeAssociation?.amenitiesEnabled === 0;
   // founder-os#10569 (YCM Redesign M8) — client-bundle read of the
@@ -211,7 +213,7 @@ export function AppSidebar({ adminRole: adminRoleProp }: AppSidebarProps = {}) {
     boardScopedExperience,
     amenitiesDisabled,
     violationsManagementEnabled,
-    assistedBoardAccess,
+    delegatedAccess,
   });
   const visibleFooterItems = filterFooterItemsForPersona(SIDEBAR_FOOTER_ITEMS, adminRole ?? null);
 

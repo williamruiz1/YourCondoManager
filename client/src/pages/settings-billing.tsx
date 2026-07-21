@@ -52,7 +52,7 @@ import { useAssociationContext } from "@/context/association-context";
 // so the shared `<RouteGuard>` agrees with this page-level guard. The
 // 4.4 Q6 manager-only directive vs. this 4-role behavior is filed as a
 // founder Human Task.
-const ALLOWED_ROLES = ["platform-admin", "manager", "board-officer", "pm-assistant"] as const;
+const ALLOWED_ROLES = ["platform-admin", "manager", "board-officer"] as const;
 
 type PlatformSubscription = {
   status: "trialing" | "active" | "past_due" | "canceled" | "unpaid" | "incomplete";

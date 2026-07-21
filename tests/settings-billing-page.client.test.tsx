@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 
 describe("SettingsBillingPage (4.4 Q6 Wave 13)", () => {
-  const allowedRoles = ["platform-admin", "manager", "board-officer", "pm-assistant"] as const;
+  const allowedRoles = ["platform-admin", "manager", "board-officer"] as const;
 
   for (const role of allowedRoles) {
     it(`renders subscription details for ${role} (allowed role)`, () => {
@@ -56,7 +56,7 @@ describe("SettingsBillingPage (4.4 Q6 Wave 13)", () => {
     });
   }
 
-  const deniedRoles = ["viewer"] as const;
+  const deniedRoles = ["viewer", "pm-assistant"] as const;
   for (const role of deniedRoles) {
     it(`renders null for ${role} (denied role) while redirect fires`, () => {
       const Wrapper = withQuery(

@@ -84,8 +84,8 @@ describe("4.3 Q6 — canAssessmentRulesWrite role matrix", () => {
     expect(await canAssessmentRulesWrite("board-officer", assoc)).toBe(true);
   });
 
-  it("pm-assistant → allowed", async () => {
-    expect(await canAssessmentRulesWrite("pm-assistant", assoc)).toBe(true);
+  it("pm-assistant + target-role toggle OFF → denied", async () => {
+    expect(await canAssessmentRulesWrite("pm-assistant", assoc)).toBe(false);
   });
 
   it("assisted-board + toggle OFF (default) → denied", async () => {

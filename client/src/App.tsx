@@ -37,6 +37,7 @@ import { TrialBanner } from "@/components/trial-banner";
 import { SubscriptionLockScreen } from "@/components/subscription-lock-screen";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { RouteGuard } from "@/components/RouteGuard";
+import { DelegatedWorkspaceGuard } from "@/components/delegated-workspace-guard";
 import { ConsentModal } from "@/components/ConsentModal";
 import type { AdminRole } from "@shared/schema";
 import {
@@ -378,7 +379,8 @@ function WorkspaceRouter({
   const boardSurface = mode === "board" && !advancedView;
   return (
     <Suspense fallback={<RouteFallback />}>
-      <Switch>
+      <DelegatedWorkspaceGuard>
+        <Switch>
         <Route path="/app">
           {boardSurface ? (
             <RouteRedirect to="/app/board-home" />
@@ -616,8 +618,9 @@ function WorkspaceRouter({
         <Route path="/app/settings">
           <RouteGuard route="/app/settings"><UserSettingsPage /></RouteGuard>
         </Route>
-        <Route component={NotFound} />
-      </Switch>
+          <Route component={NotFound} />
+        </Switch>
+      </DelegatedWorkspaceGuard>
     </Suspense>
   );
 }

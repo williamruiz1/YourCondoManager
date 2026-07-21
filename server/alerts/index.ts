@@ -399,7 +399,8 @@ export async function assertAlertMutationAuth(input: {
     return { status: 404, body: { message: "Alert not found", code: "ALERT_NOT_FOUND" } };
   }
   const personaToggles = input.adminRole === "assisted-board"
-    ? await listTogglesForAssociation(lookup.associationId)
+    || input.adminRole === "pm-assistant"
+    ? await listTogglesForAssociation(lookup.associationId, input.adminRole)
     : {};
   // Feature-domain gate (server-side parity with the GET and notification
   // paths), including association-specific Manager delegation overrides.

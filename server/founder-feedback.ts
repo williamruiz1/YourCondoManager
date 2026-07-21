@@ -13,13 +13,12 @@
  *      accept this write" check. The allowlist is resolved SERVER-SIDE only;
  *      nothing here trusts a client-supplied email.
  *
- *   2. Best-effort GitHub issue filing for a submitted feedback row. If no
- *      GITHUB_TOKEN/GH_TOKEN is configured in the environment, this is a
- *      silent no-op (the founder_feedback row is still the durable record —
- *      the GM can poll the table). Filing failures never throw; the caller
- *      always gets a row written to founder_feedback regardless of whether
- *      the GitHub mirror succeeded.
+ *   2. Idempotent GitHub issue delivery with explicit result state. The only
+ *      accepted credential is the restricted YCM_FEEDBACK_GITHUB_TOKEN Fly
+ *      secret. Failures never expose the token or provider response body.
  */
+
+import { createHash } from "node:crypto";
 
 const FOUNDER_FEEDBACK_ALLOWED_EMAILS = new Set(
   ["chcmgmt18@gmail.com", "yourcondomanagement@gmail.com"].map((e) => e.toLowerCase()),
@@ -44,7 +43,46 @@ const GITHUB_REPO_NAME = "YourCondoManager";
 const GITHUB_FEEDBACK_LABEL = "william-feedback";
 
 function githubToken(): string | null {
-  return process.env.GITHUB_TOKEN || process.env.GH_TOKEN || null;
+  return process.env.YCM_FEEDBACK_GITHUB_TOKEN || null;
+}
+
+const SECRET_PATTERNS: RegExp[] = [
+  /\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b/g,
+  /\b(?:sk|rk|pk)_(?:live|test)_[A-Za-z0-9]{12,}\b/g,
+  /\bBearer\s+[A-Za-z0-9._~+\/-]+=*\b/gi,
+  /\b((?:api[_-]?key|token|secret|password|authorization)\s*[:=]\s*)[^\s,;]+/gi,
+  /([?&](?:token|code|secret|key|signature|access_token)=)[^&#\s]+/gi,
+];
+
+export function redactFounderFeedbackText(value: string | null | undefined): string | null {
+  if (value == null) return null;
+  let redacted = value;
+  for (const pattern of SECRET_PATTERNS) {
+    redacted = redacted.replace(pattern, (_match, prefix?: string) => `${prefix || ""}[REDACTED]`);
+  }
+  return redacted;
+}
+
+export function buildFounderFeedbackDedupeKey(input: {
+  email: string;
+  route: string;
+  severity: string | null;
+  note: string;
+  createdAt: Date;
+}): string {
+  const tenMinuteBucket = Math.floor(input.createdAt.getTime() / 600_000);
+  const normalized = [
+    input.email.trim().toLowerCase(),
+    sanitizeFounderFeedbackRoute(input.route),
+    input.severity || "unspecified",
+    input.note.trim().replace(/\s+/g, " ").toLowerCase(),
+    tenMinuteBucket,
+  ].join("\n");
+  return createHash("sha256").update(normalized).digest("hex");
+}
+
+export function founderFeedbackIssueMarker(feedbackId: string): string {
+  return `<!-- ycm-founder-feedback-id:${feedbackId} -->`;
 }
 
 /**
@@ -89,10 +127,40 @@ export type FounderFeedbackGithubInput = {
   body: string;
 };
 
-export type FounderFeedbackGithubResult = {
-  url: string;
-  number: number;
-} | null;
+export type FounderFeedbackGithubResult =
+  | { status: "delivered"; url: string; number: number; reused: boolean }
+  | { status: "unavailable"; error: "token-not-configured" }
+  | { status: "failed"; error: string };
+
+async function findFounderFeedbackGithubIssue(
+  token: string,
+  marker: string,
+  label = GITHUB_FEEDBACK_LABEL,
+): Promise<{ url: string; number: number } | null> {
+  for (let page = 1; page <= 10; page += 1) {
+    const res = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/issues?state=all&labels=${encodeURIComponent(label)}&per_page=100&page=${page}`,
+      { headers: githubHeaders(token) },
+    );
+    if (!res.ok) return null;
+    const issues = (await res.json()) as Array<{ body?: string; html_url?: string; number?: number }>;
+    const found = issues.find((issue) => issue.body?.includes(marker));
+    if (found?.html_url && typeof found.number === "number") {
+      return { url: found.html_url, number: found.number };
+    }
+    if (issues.length < 100) break;
+  }
+  return null;
+}
+
+function githubHeaders(token: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    Accept: "application/vnd.github+json",
+    "Content-Type": "application/json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+}
 
 /**
  * Files a GitHub issue for a submitted feedback row. Returns null (never
@@ -101,42 +169,75 @@ export type FounderFeedbackGithubResult = {
  */
 export async function fileFounderFeedbackGithubIssue(
   input: FounderFeedbackGithubInput,
+  marker: string,
 ): Promise<FounderFeedbackGithubResult> {
   const token = githubToken();
-  if (!token) return null;
+  if (!token) return { status: "unavailable", error: "token-not-configured" };
 
   try {
     await ensureFeedbackLabelExists(token);
+
+    const existing = await findFounderFeedbackGithubIssue(token, marker);
+    if (existing) return { status: "delivered", ...existing, reused: true };
 
     const res = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/issues`,
       {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "Content-Type": "application/json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
+        headers: githubHeaders(token),
         body: JSON.stringify({
           title: input.title,
-          body: input.body,
+          body: `${input.body}\n\n${marker}`,
           labels: [GITHUB_FEEDBACK_LABEL],
         }),
       },
     );
 
-    if (!res.ok) return null;
+    if (!res.ok) return { status: "failed", error: `github-http-${res.status}` };
     const json = (await res.json()) as { html_url?: string; number?: number };
-    if (!json.html_url || typeof json.number !== "number") return null;
-    return { url: json.html_url, number: json.number };
-  } catch {
-    return null;
+    if (!json.html_url || typeof json.number !== "number") {
+      return { status: "failed", error: "github-invalid-response" };
+    }
+    return { status: "delivered", url: json.html_url, number: json.number, reused: false };
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "unknown";
+    return { status: "failed", error: `github-request-${name}` };
+  }
+}
+
+export async function cleanupSyntheticFounderFeedbackIssues(): Promise<{
+  status: "completed" | "unavailable" | "failed";
+  closed: number;
+  error?: string;
+}> {
+  const token = githubToken();
+  if (!token) return { status: "unavailable", closed: 0, error: "token-not-configured" };
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/issues?state=open&labels=william-feedback-synthetic&per_page=100`,
+      { headers: githubHeaders(token) },
+    );
+    if (!res.ok) return { status: "failed", closed: 0, error: `github-http-${res.status}` };
+    const issues = (await res.json()) as Array<{ number?: number }>;
+    let closed = 0;
+    for (const issue of issues) {
+      if (typeof issue.number !== "number") continue;
+      const close = await fetch(
+        `https://api.github.com/repos/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/issues/${issue.number}`,
+        { method: "PATCH", headers: githubHeaders(token), body: JSON.stringify({ state: "closed" }) },
+      );
+      if (close.ok) closed += 1;
+    }
+    return { status: "completed", closed };
+  } catch (error) {
+    const name = error instanceof Error ? error.name : "unknown";
+    return { status: "failed", closed: 0, error: `github-request-${name}` };
   }
 }
 
 export function buildFounderFeedbackIssueTitle(note: string): string {
-  const firstLine = note.trim().split("\n")[0] || note.trim();
+  const safeNote = redactFounderFeedbackText(note) || "feedback";
+  const firstLine = safeNote.trim().split("\n")[0] || safeNote.trim();
   return `[william-feedback] ${firstLine.slice(0, 60)}`;
 }
 
@@ -154,17 +255,17 @@ export function buildFounderFeedbackIssueBody(input: {
   createdAt: Date;
 }): string {
   return [
-    input.note.trim(),
+    (redactFounderFeedbackText(input.note) || "").trim(),
     "",
     "---",
     "Context",
-    `- from: ${input.email} (${input.surface})`,
+    `- from: allowlisted founder account (${input.surface})`,
     `- severity: ${input.severity || "unspecified"}`,
     `- route: ${input.route}`,
-    `- page title: ${input.pageTitle || "unknown"}`,
+    `- page title: ${redactFounderFeedbackText(input.pageTitle) || "unknown"}`,
     `- viewport: ${input.viewportWidth ?? "?"}x${input.viewportHeight ?? "?"}`,
     `- app version: ${input.appVersion}`,
-    `- user agent: ${input.userAgent || "unknown"}`,
+    `- user agent: ${redactFounderFeedbackText(input.userAgent) || "unknown"}`,
     `- submitted at: ${input.createdAt.toISOString()}`,
   ].join("\n");
 }

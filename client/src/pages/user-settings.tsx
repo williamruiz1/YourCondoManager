@@ -455,13 +455,22 @@ export default function UserSettingsPage() {
             <AmenitiesFeatureToggleCard associationId={activeAssociationId || null} />
 
             {role === "manager" ? (
-              <AssistedBoardAccessCard associationId={activeAssociationId || null} />
+              <>
+                <AssistedBoardAccessCard
+                  associationId={activeAssociationId || null}
+                  targetRole="assisted-board"
+                />
+                <AssistedBoardAccessCard
+                  associationId={activeAssociationId || null}
+                  targetRole="pm-assistant"
+                />
+              </>
             ) : null}
 
             {/* 4.4 Q6 Wave 13 — Billing entry point. The full /app/settings/billing
                 page handles role-gating; this is a discovery link for Manager /
                 Board Officer / PM Assistant / Platform Admin. Viewer is hidden. */}
-            {role && ["manager", "board-officer", "pm-assistant", "platform-admin"].includes(role) && (
+            {role && ["manager", "board-officer", "platform-admin"].includes(role) && (
               <Card data-testid="settings-billing-link-card">
                 <Link href="/app/settings/billing">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 cursor-pointer hover:bg-muted/40 transition-colors">

@@ -12,17 +12,23 @@ import {
   delegatedToggleKey,
   type AssistedBoardFeatureId,
   type DelegatedPermission,
+  type DelegatedTargetRole,
 } from "@shared/delegated-feature-access";
 
 interface AssistedBoardAccessCardProps {
   associationId: string | null;
+  targetRole?: DelegatedTargetRole;
 }
 
 export function AssistedBoardAccessCard({
   associationId,
+  targetRole = "assisted-board",
 }: AssistedBoardAccessCardProps) {
   const { toast } = useToast();
-  const { access, isLoading, isError } = useAssistedBoardAccess(associationId);
+  const { access, isLoading, isError } = useAssistedBoardAccess(
+    associationId,
+    targetRole,
+  );
   const updateAccess = useMutation({
     mutationFn: async (input: {
       featureId: AssistedBoardFeatureId;
@@ -34,22 +40,22 @@ export function AssistedBoardAccessCard({
       const response = await apiRequest(
         "PUT",
         `/api/associations/${encodeURIComponent(associationId)}/pm-toggles/${encodeURIComponent(toggleKey)}`,
-        { enabled: input.enabled },
+        { enabled: input.enabled, targetRole },
       );
       return response.json();
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
-        queryKey: ["pm-toggles", associationId],
+        queryKey: ["pm-toggles", associationId, targetRole],
       });
       toast({
-        title: "Board access updated",
-        description: "The Assisted Board envelope now applies to this association.",
+        title: "Delegated access updated",
+        description: `The ${targetRole === "pm-assistant" ? "PM Assistant" : "Assisted Board"} envelope now applies to this association.`,
       });
     },
     onError: (error) => {
       toast({
-        title: "Board access was not updated",
+        title: "Delegated access was not updated",
         description: error instanceof Error ? error.message : "An unexpected error occurred.",
         variant: "destructive",
       });
@@ -66,25 +72,28 @@ export function AssistedBoardAccessCard({
     <Card data-testid="assisted-board-access-card">
       <CardHeader>
         <div className="flex flex-wrap items-center gap-2">
-          <CardTitle className="text-lg">Assisted Board access</CardTitle>
+          <CardTitle className="text-lg">
+            {targetRole === "pm-assistant" ? "Property Manager Assistant access" : "Assisted Board access"}
+          </CardTitle>
           <Badge variant="secondary">Manager controlled</Badge>
         </div>
         <CardDescription>
-          Configure View and Write separately for board members in the active
-          PM-managed association. Platform, admin, Settings, portfolio, and
-          commercial billing authority are never delegable.
+          Configure View and Write separately for {targetRole === "pm-assistant"
+            ? "all Property Manager Assistants assigned to"
+            : "board members in"} the active PM-managed association. Platform
+          administration, AI controls, and commercial billing are never delegable.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         {!associationId ? (
           <p className="text-sm text-muted-foreground">
-            Select an association to configure its board access.
+            Select an association to configure delegated access.
           </p>
         ) : isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading board access…</p>
+          <p className="text-sm text-muted-foreground">Loading delegated access…</p>
         ) : isError ? (
           <p className="text-sm text-destructive">
-            Board access could not be loaded for this association.
+            Delegated access could not be loaded for this association.
           </p>
         ) : (
           Array.from(grouped.entries()).map(([zone, features], zoneIndex) => (

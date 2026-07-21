@@ -8,6 +8,7 @@ import {
   ASSISTED_BOARD_FEATURES,
   assistedBoardDefaultAccess,
   createDefaultAssistedBoardAccessMatrix,
+  createDefaultDelegatedAccessMatrix,
   delegatedToggleDescriptor,
   delegatedToggleKey,
 } from "../shared/delegated-feature-access";
@@ -18,6 +19,7 @@ import {
   resolveDelegatedAssociationId,
 } from "../server/assisted-board-delegation";
 import { setResourceAssociationResolver } from "../server/lib/tenant-scope";
+import { canDelegatedFeatureAccess } from "../server/pm-toggles";
 
 function request(overrides: Record<string, unknown> = {}) {
   const headers = (overrides.headers ?? {}) as Record<string, string>;
@@ -58,6 +60,18 @@ describe("Assisted Board delegation catalog", () => {
   it("does not expose platform, admin, settings, or portfolio authority", () => {
     const ids = ASSISTED_BOARD_FEATURES.map((feature) => feature.id);
     expect(ids.some((id) => /platform|admin|settings|portfolio|billing/.test(id))).toBe(false);
+  });
+
+  it("starts every PM Assistant feature denied without changing Assisted Board defaults", () => {
+    const assistant = createDefaultDelegatedAccessMatrix("pm-assistant");
+    const board = createDefaultDelegatedAccessMatrix("assisted-board");
+    for (const feature of ASSISTED_BOARD_FEATURES) {
+      expect(assistant[feature.id]).toEqual({ view: false, write: false });
+      expect(board[feature.id]).toEqual({
+        view: feature.defaultView,
+        write: feature.defaultWrite,
+      });
+    }
   });
 });
 
@@ -120,13 +134,66 @@ describe("Assisted Board server mutation envelope", () => {
       evaluateAssistedBoardMutation(request({ path: "/api/admin/users" })),
     ).resolves.toMatchObject({
       allowed: false,
-      code: "ASSISTED_BOARD_MUTATION_UNMAPPED",
+      code: "DELEGATED_REQUEST_UNMAPPED",
     });
     await expect(
       evaluateAssistedBoardMutation(
         request({ path: "/api/alerts/alert-id/read" }),
       ),
     ).resolves.toEqual({ allowed: true });
+  });
+
+
+  it("fail-closes PM Assistant reads and writes that are not in the feature map", async () => {
+    await expect(
+      evaluateAssistedBoardMutation(request({
+        method: "GET",
+        path: "/api/admin/users",
+        adminRole: "pm-assistant",
+      })),
+    ).resolves.toMatchObject({
+      allowed: false,
+      code: "DELEGATED_REQUEST_UNMAPPED",
+    });
+
+    await expect(
+      evaluateAssistedBoardMutation(request({
+        method: "POST",
+        path: "/api/admin/billing/portal-session",
+        adminRole: "pm-assistant",
+      })),
+    ).resolves.toMatchObject({
+      allowed: false,
+      code: "DELEGATED_REQUEST_UNMAPPED",
+    });
+  });
+
+  it("uses the same PM Assistant grant check for direct reads and writes", async () => {
+    const permission = vi.mocked(canDelegatedFeatureAccess);
+    permission.mockResolvedValueOnce(false);
+    await expect(
+      evaluateAssistedBoardMutation(request({
+        method: "GET",
+        path: "/api/work-orders",
+        adminRole: "pm-assistant",
+      })),
+    ).resolves.toMatchObject({
+      allowed: false,
+      code: "DELEGATED_VIEW_NOT_GRANTED",
+      featureId: "operations.work-orders",
+    });
+
+    permission.mockResolvedValueOnce(true);
+    await expect(
+      evaluateAssistedBoardMutation(request({
+        method: "POST",
+        path: "/api/work-orders",
+        adminRole: "pm-assistant",
+      })),
+    ).resolves.toMatchObject({
+      allowed: true,
+      featureId: "operations.work-orders",
+    });
   });
 
   it("evaluates record mutations against the record's canonical association", async () => {
