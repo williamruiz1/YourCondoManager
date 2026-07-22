@@ -497,6 +497,14 @@ export const SIDEBAR_ZONES: ReadonlyArray<SidebarZone> = [
         roles: PLATFORM_ADMIN_ONLY,
       },
       {
+        title: "Feedback Center",
+        url: "/app/admin/feedback",
+        icon: MessageSquare,
+        materialIcon: "feedback",
+        activePrefix: "/app/admin/feedback",
+        roles: PLATFORM_ADMIN_ONLY,
+      },
+      {
         title: "Admin Users",
         url: "/app/admin/users",
         icon: UserCog,

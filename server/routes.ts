@@ -54,15 +54,15 @@ import {
   isFounderFeedbackEmail,
   sanitizeFounderFeedbackRoute,
   resolveAppVersion,
-  fileFounderFeedbackGithubIssue,
-  buildFounderFeedbackIssueTitle,
-  buildFounderFeedbackIssueBody,
   buildFounderFeedbackDedupeKey,
-  cleanupSyntheticFounderFeedbackIssues,
-  founderFeedbackIssueMarker,
   redactFounderFeedbackText,
 } from "./founder-feedback";
-import { founderFeedback, type FounderFeedback } from "@shared/schema";
+import { founderFeedback, founderFeedbackEvents } from "@shared/schema";
+import {
+  canTransitionFounderFeedback,
+  FOUNDER_FEEDBACK_STATUSES,
+  type FounderFeedbackStatus,
+} from "@shared/founder-feedback-lifecycle";
 import { createAuthRestoreToken, getGoogleOAuthStatus, registerAuthRoutes } from "./auth";
 import { revokePortalAccess as revokePortalAccessForOwnership } from "./de-provisioning";
 import { sendDemoRequestConfirmation } from "./demo-request-confirmation";
@@ -18004,39 +18004,6 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     viewportHeight: z.number().int().positive().optional(),
   });
 
-  async function mirrorFounderFeedbackRow(row: FounderFeedback) {
-    const result = await fileFounderFeedbackGithubIssue({
-      title: buildFounderFeedbackIssueTitle(row.note),
-      body: buildFounderFeedbackIssueBody({
-        note: row.note,
-        severity: row.severity,
-        email: row.email,
-        surface: row.surface,
-        route: row.route,
-        pageTitle: row.pageTitle,
-        viewportWidth: row.viewportWidth,
-        viewportHeight: row.viewportHeight,
-        appVersion: row.appVersion || "unknown",
-        userAgent: row.userAgent,
-        createdAt: row.createdAt,
-      }),
-    }, founderFeedbackIssueMarker(row.id));
-
-    const delivered = result.status === "delivered";
-    await db
-      .update(founderFeedback)
-      .set({
-        githubIssueUrl: delivered ? result.url : null,
-        githubIssueNumber: delivered ? result.number : null,
-        githubDeliveryStatus: result.status,
-        githubAttempts: sql`${founderFeedback.githubAttempts} + 1`,
-        githubLastError: delivered ? null : result.error,
-        githubLastAttemptAt: new Date(),
-      })
-      .where(eq(founderFeedback.id, row.id));
-    return result;
-  }
-
   app.post("/api/founder-feedback", async (req: AdminRequest & PortalRequest, res) => {
     try {
       const identity = await resolveFounderFeedbackIdentity(req);
@@ -18069,9 +18036,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           ok: true,
           id: duplicate.id,
           duplicate: true,
-          githubIssueUrl: duplicate.githubIssueUrl,
-          mirrorStatus: duplicate.githubDeliveryStatus,
-          dbOnly: duplicate.githubDeliveryStatus !== "delivered",
+          destination: "feedback-center",
+          status: duplicate.status,
         });
       }
 
@@ -18090,6 +18056,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           appVersion,
           userAgent,
           dedupeKey,
+          status: "new",
+          priority: parsed.severity === "bug" ? "high" : "normal",
         })
         .onConflictDoNothing()
         .returning();
@@ -18105,30 +18073,25 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           ok: true,
           id: racedDuplicate.id,
           duplicate: true,
-          githubIssueUrl: racedDuplicate.githubIssueUrl,
-          mirrorStatus: racedDuplicate.githubDeliveryStatus,
-          dbOnly: racedDuplicate.githubDeliveryStatus !== "delivered",
+          destination: "feedback-center",
+          status: racedDuplicate.status,
         });
       }
 
-      const githubResult = await mirrorFounderFeedbackRow(row);
-      if (githubResult.status !== "delivered") {
-        console.warn("[founder-feedback][github-mirror-unavailable]", {
-          feedbackId: row.id,
-          surface: identity.surface,
-          route: safeRoute,
-          status: githubResult.status,
-          reason: githubResult.error,
-        });
-      }
+      await db.insert(founderFeedbackEvents).values({
+        feedbackId: row.id,
+        actorEmail: identity.email,
+        eventType: "submitted",
+        toStatus: "new",
+        detail: `Captured from ${identity.surface} at ${safeRoute}`,
+      });
 
       res.status(201).json({
         ok: true,
         id: row.id,
         duplicate: false,
-        githubIssueUrl: githubResult.status === "delivered" ? githubResult.url : null,
-        mirrorStatus: githubResult.status,
-        dbOnly: githubResult.status !== "delivered",
+        destination: "feedback-center",
+        status: "new",
       });
     } catch (error: any) {
       if (error instanceof z.ZodError) {
@@ -18143,28 +18106,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     "/api/internal/founder-feedback/replay",
     requireAdmin,
     requireAdminRole(["platform-admin"]),
-    async (req: AdminRequest, res) => {
-      try {
-        const limit = z.coerce.number().int().min(1).max(50).default(25).parse(req.body?.limit);
-        const rows = await db
-          .select()
-          .from(founderFeedback)
-          .where(and(
-            isNull(founderFeedback.githubIssueNumber),
-            inArray(founderFeedback.githubDeliveryStatus, ["pending", "failed", "unavailable"]),
-          ))
-          .orderBy(founderFeedback.createdAt)
-          .limit(limit);
-        const results = [];
-        for (const row of rows) {
-          const result = await mirrorFounderFeedbackRow(row);
-          results.push({ id: row.id, status: result.status });
-        }
-        res.json({ ok: true, attempted: rows.length, results });
-      } catch (error: any) {
-        console.error("[founder-feedback][replay] error", error?.message);
-        res.status(500).json({ message: "Feedback replay failed" });
-      }
+    async (_req: AdminRequest, res) => {
+      res.status(410).json({
+        message: "GitHub feedback delivery is retired. Feedback is managed in the YCM Feedback Center.",
+      });
     },
   );
 
@@ -18173,9 +18118,121 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     requireAdmin,
     requireAdminRole(["platform-admin"]),
     async (_req: AdminRequest, res) => {
-      const result = await cleanupSyntheticFounderFeedbackIssues();
-      const code = result.status === "failed" ? 502 : result.status === "unavailable" ? 503 : 200;
-      res.status(code).json(result);
+      res.status(410).json({
+        message: "GitHub feedback delivery is retired. No provider cleanup is required.",
+      });
+    },
+  );
+
+  const founderFeedbackWorkflowSchema = z.object({
+    status: z.enum(FOUNDER_FEEDBACK_STATUSES).optional(),
+    priority: z.enum(["low", "normal", "high", "critical"]).optional(),
+    assignedTo: z.string().trim().max(200).nullable().optional(),
+    adminNotes: z.string().trim().max(8000).nullable().optional(),
+    resolutionSummary: z.string().trim().max(4000).nullable().optional(),
+  }).refine((value) => Object.keys(value).length > 0, "At least one field is required");
+
+  app.get(
+    "/api/admin/founder-feedback",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (_req: AdminRequest, res) => {
+      try {
+        const [rows, events] = await Promise.all([
+          db.select().from(founderFeedback).orderBy(desc(founderFeedback.createdAt)),
+          db.select().from(founderFeedbackEvents).orderBy(desc(founderFeedbackEvents.createdAt)),
+        ]);
+        const eventsByFeedback = new Map<string, typeof events>();
+        for (const event of events) {
+          const current = eventsByFeedback.get(event.feedbackId) || [];
+          current.push(event);
+          eventsByFeedback.set(event.feedbackId, current);
+        }
+        const counts = rows.reduce<Record<string, number>>((summary, row) => {
+          summary[row.status] = (summary[row.status] || 0) + 1;
+          return summary;
+        }, {});
+        res.json({
+          items: rows.map((row) => ({ ...row, events: eventsByFeedback.get(row.id) || [] })),
+          counts,
+          openCount: rows.filter((row) => !["resolved", "dismissed"].includes(row.status)).length,
+        });
+      } catch (error: any) {
+        console.error("[founder-feedback][list] error", error?.message);
+        res.status(500).json({ message: "Failed to load the Feedback Center" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/admin/founder-feedback/:id",
+    requireAdmin,
+    requireAdminRole(["platform-admin"]),
+    async (req: AdminRequest, res) => {
+      try {
+        const parsed = founderFeedbackWorkflowSchema.parse(req.body);
+        const feedbackId = getParam(req.params.id);
+        const [existing] = await db
+          .select()
+          .from(founderFeedback)
+          .where(eq(founderFeedback.id, feedbackId))
+          .limit(1);
+        if (!existing) return res.status(404).json({ message: "Feedback item not found" });
+
+        const now = new Date();
+        const nextStatus = parsed.status || existing.status;
+        if (
+          parsed.status
+          && !canTransitionFounderFeedback(existing.status as FounderFeedbackStatus, parsed.status)
+        ) {
+          return res.status(409).json({
+            message: `Feedback cannot move directly from ${existing.status} to ${parsed.status}`,
+          });
+        }
+        const detailParts = [
+          parsed.priority && parsed.priority !== existing.priority ? `priority ${existing.priority} → ${parsed.priority}` : null,
+          parsed.assignedTo !== undefined && parsed.assignedTo !== existing.assignedTo ? `assigned to ${parsed.assignedTo || "unassigned"}` : null,
+          parsed.adminNotes !== undefined ? "internal notes updated" : null,
+          parsed.resolutionSummary !== undefined ? "resolution updated" : null,
+        ].filter(Boolean);
+
+        const updated = await db.transaction(async (tx) => {
+          const [row] = await tx
+            .update(founderFeedback)
+            .set({
+              ...parsed,
+              firstReviewedAt: existing.firstReviewedAt || (nextStatus !== "new" ? now : null),
+              resolvedAt: ["resolved", "dismissed"].includes(nextStatus) ? (existing.resolvedAt || now) : null,
+              updatedAt: now,
+            })
+            .where(eq(founderFeedback.id, existing.id))
+            .returning();
+
+          await tx.insert(founderFeedbackEvents).values({
+            feedbackId: existing.id,
+            actorAdminUserId: req.adminUserId || null,
+            actorEmail: req.adminUserEmail || "platform-admin",
+            eventType: nextStatus !== existing.status ? "status_changed" : "details_updated",
+            fromStatus: existing.status,
+            toStatus: nextStatus,
+            detail: detailParts.join("; ") || (nextStatus !== existing.status ? `${existing.status} → ${nextStatus}` : "Feedback details updated"),
+          });
+          return row;
+        });
+
+        const events = await db
+          .select()
+          .from(founderFeedbackEvents)
+          .where(eq(founderFeedbackEvents.feedbackId, existing.id))
+          .orderBy(desc(founderFeedbackEvents.createdAt));
+        res.json({ ...updated, events });
+      } catch (error: any) {
+        if (error instanceof z.ZodError) {
+          return res.status(400).json({ message: "Invalid feedback update", issues: error.issues });
+        }
+        console.error("[founder-feedback][update] error", error?.message);
+        res.status(500).json({ message: "Failed to update feedback" });
+      }
     },
   );
 

@@ -769,10 +769,10 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
         taskTitle = createdTask.task.title;
         targetWorkstreamTitle = createdTask.targetWorkstream.title;
 
-        // William-only contextual feedback (2026-07-17) — best-effort, does
-        // not block or fail the roadmap-ticket flow above. Mirrors every
-        // admin-surface submission into the surface-agnostic founder_feedback
-        // ledger + a GitHub issue, same as the portal/public-page widget.
+        // William-only contextual feedback — best-effort, does not block the
+        // roadmap-ticket flow above. Captures the same note in YCM's
+        // first-party Feedback Center so portal/public/admin feedback shares
+        // one searchable lifecycle and audit history.
         void apiRequest("POST", "/api/founder-feedback", {
           note: [`${form.type === "bug" ? "Bug" : "Enhancement"}: ${form.title.trim()}`, form.description.trim()]
             .filter(Boolean)
@@ -782,21 +782,13 @@ export function AdminContextualFeedbackWidget({ admin }: { admin: AdminIdentity 
           pageTitle: document.title,
           viewportWidth: selectedSnapshot.viewportWidth,
           viewportHeight: selectedSnapshot.viewportHeight,
-        }).then(async (mirrorResponse) => {
-          const mirrorResult = await mirrorResponse.json() as { dbOnly?: boolean };
-          if (mirrorResult.dbOnly) {
-            toast({
-              title: "Roadmap ticket created; GitHub mirror unavailable",
-              description: "The feedback is safely stored in YCM and remains actionable from the roadmap.",
-            });
-          }
         }).catch(() => {
           // The roadmap ticket above is already durable, but the secondary
-          // mirror failure must remain visible instead of silently implying
+          // intake failure must remain visible instead of silently implying
           // that every downstream destination succeeded.
           toast({
-            title: "Roadmap ticket created; feedback mirror failed",
-            description: "The roadmap ticket is safe. GitHub mirroring can be retried after the integration recovers.",
+            title: "Roadmap ticket created; Feedback Center capture failed",
+            description: "The roadmap ticket is safe. The internal feedback record can be added from the Admin Hub.",
             variant: "destructive",
           });
         });

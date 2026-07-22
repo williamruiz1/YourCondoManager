@@ -71,6 +71,7 @@ const DocumentsPage = lazyWithReload(() => import("@/pages/documents"), "@/pages
 const RecordsRequestsPage = lazyWithReload(() => import("@/pages/records-requests"), "@/pages/records-requests");
 const RoadmapPage = lazyWithReload(() => import("@/pages/roadmap"), "@/pages/roadmap");
 const AdminUsersPage = lazyWithReload(() => import("@/pages/admin-users"), "@/pages/admin-users");
+const AdminFeedbackCenterPage = lazyWithReload(() => import("@/pages/admin-feedback-center"), "@/pages/admin-feedback-center");
 const AdminAccessReviewPage = lazyWithReload(() => import("@/pages/admin-access-review"), "@/pages/admin-access-review");
 // #342 (WS3) — consent audit trail admin view.
 const AdminConsentAuditPage = lazyWithReload(() => import("@/pages/admin-consent-audit"), "@/pages/admin-consent-audit");
@@ -244,7 +245,8 @@ const workspaceSectionTabGroups: WorkspaceSectionTabGroup[] = [
     testId: "tabs-platform-inpage",
     tabs: [
       { label: "Platform Controls", href: "/app/platform/controls", roles: ["platform-admin"] },
-      { label: "Admin Roadmap", href: "/app/admin/roadmap", matchPrefixes: ["/app/admin", "/app/admin/roadmap"], roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
+      { label: "Admin Roadmap", href: "/app/admin/roadmap", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
+      { label: "Feedback Center", href: "/app/admin/feedback", roles: ["platform-admin"] },
       { label: "Executive", href: "/app/admin/executive", roles: ["platform-admin", "board-officer", "assisted-board", "pm-assistant"] },
       { label: "Admin Users", href: "/app/admin/users", roles: ["platform-admin"] },
       { label: "Access Review", href: "/app/admin/access-review", roles: ["platform-admin"] },
@@ -483,6 +485,9 @@ function WorkspaceRouter({
         </Route>
         <Route path="/app/admin/users">
           <RouteGuard route="/app/admin/users"><AdminUsersPage /></RouteGuard>
+        </Route>
+        <Route path="/app/admin/feedback">
+          {adminRole === "platform-admin" ? <ZoneBoundary zone="Platform"><AdminFeedbackCenterPage /></ZoneBoundary> : <NotFound />}
         </Route>
         <Route path="/app/admin/access-review">
           <RouteGuard route="/app/admin/access-review"><AdminAccessReviewPage /></RouteGuard>

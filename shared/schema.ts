@@ -2287,10 +2287,9 @@ export const roadmapTaskAttachments = pgTable("admin_roadmap_task_attachments", 
  * this table is the durable sink for the simple "click Feedback, type a
  * note, submit" affordance available on every surface William visits
  * (admin app, owner portal, and public pages when he's authenticated).
- * Every row is also mirrored to a GitHub issue (label `william-feedback`)
- * when a GITHUB_TOKEN/GH_TOKEN is configured server-side; `githubIssueUrl`
- * / `githubIssueNumber` stay null when no token is configured, and the row
- * remains the durable record either way (DB-only fallback).
+ * YCM is the system of record. The legacy GitHub delivery columns are retained
+ * only so historical rows remain understandable after the first-party
+ * Feedback Center replaced external issue mirroring.
  *
  * Eligibility is resolved and re-checked SERVER-SIDE on every write (see
  * server/founder-feedback.ts + the /api/founder-feedback/eligible and
@@ -2318,6 +2317,14 @@ export const founderFeedback = pgTable("founder_feedback", {
   githubAttempts: integer("github_attempts").notNull().default(0),
   githubLastError: text("github_last_error"),
   githubLastAttemptAt: timestamp("github_last_attempt_at"),
+  status: text("status").notNull().default("new"),
+  priority: text("priority").notNull().default("normal"),
+  assignedTo: text("assigned_to"),
+  adminNotes: text("admin_notes"),
+  resolutionSummary: text("resolution_summary"),
+  firstReviewedAt: timestamp("first_reviewed_at"),
+  resolvedAt: timestamp("resolved_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -2331,9 +2338,40 @@ export const insertFounderFeedbackSchema = createInsertSchema(founderFeedback).o
   githubAttempts: true,
   githubLastError: true,
   githubLastAttemptAt: true,
+  status: true,
+  priority: true,
+  assignedTo: true,
+  adminNotes: true,
+  resolutionSummary: true,
+  firstReviewedAt: true,
+  resolvedAt: true,
+  updatedAt: true,
 });
 export type FounderFeedback = typeof founderFeedback.$inferSelect;
 export type InsertFounderFeedback = z.infer<typeof insertFounderFeedbackSchema>;
+
+/**
+ * Append-only lifecycle history for the first-party Feedback Center.
+ * The current state stays on founder_feedback for fast queue reads; every
+ * administrative transition is repeated here so support can reconstruct who
+ * changed what and why without depending on an external issue tracker.
+ */
+export const founderFeedbackEvents = pgTable("founder_feedback_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  feedbackId: varchar("feedback_id").notNull().references(() => founderFeedback.id),
+  actorAdminUserId: varchar("actor_admin_user_id").references(() => adminUsers.id),
+  actorEmail: text("actor_email").notNull(),
+  eventType: text("event_type").notNull(),
+  fromStatus: text("from_status"),
+  toStatus: text("to_status"),
+  detail: text("detail"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  feedbackCreatedIdx: index("founder_feedback_events_feedback_created_idx")
+    .on(table.feedbackId, table.createdAt),
+}));
+
+export type FounderFeedbackEvent = typeof founderFeedbackEvents.$inferSelect;
 
 export const executiveUpdateStatusEnum = pgEnum("executive_update_status", ["draft", "published"]);
 export const executiveSourceTypeEnum = pgEnum("executive_source_type", ["manual", "roadmap-task", "roadmap-project"]);

@@ -1,0 +1,118 @@
+{
+  "audit": {
+    "title": "First-party YCM Feedback Center workflow audit",
+    "mode": "repair-and-certify",
+    "scope": "William-only contextual feedback intake through internal platform-admin resolution",
+    "environments": ["local-reviewed-branch"],
+    "criticality": "high",
+    "observed_at": "2026-07-22T11:34:00Z",
+    "authorities": {
+      "requirements": "William direction and PocketPM task a6d5663f-aaec-4342-aad8-3f7efa59994d",
+      "code": "codex/ycm-first-party-feedback-center-2026-07-22",
+      "data": "founder_feedback and founder_feedback_events",
+      "provider": "not-applicable: first-party YCM flow",
+      "deployment": "YCM protected deploy workflow"
+    },
+    "diagrams": {
+      "system_context": "docs/verification/first-party-feedback-center-workflow-audit-2026-07-22.md#system-context"
+    }
+  },
+  "actors": [
+    { "id": "founder", "name": "Allowlisted founder", "role": "May submit contextual feedback from authenticated YCM surfaces" },
+    { "id": "platform-admin", "name": "Platform administrator", "role": "May view and manage the internal Feedback Center" }
+  ],
+  "capabilities": [
+    { "id": "CAP-FB-01", "name": "Submit contextual feedback", "actor_ids": ["founder"], "ui_entrypoints": ["floating Feedback controls"], "backend_paths": ["POST /api/founder-feedback"], "workflow_ids": ["WF-FB-01"], "reconciliation": "mapped" },
+    { "id": "CAP-FB-02", "name": "Triage and assign feedback", "actor_ids": ["platform-admin"], "ui_entrypoints": ["/app/admin/feedback"], "backend_paths": ["GET/PATCH /api/admin/founder-feedback"], "workflow_ids": ["WF-FB-02"], "reconciliation": "mapped" },
+    { "id": "CAP-FB-03", "name": "Resolve and reopen feedback", "actor_ids": ["platform-admin"], "ui_entrypoints": ["Feedback Center lifecycle controls"], "backend_paths": ["PATCH /api/admin/founder-feedback/:id"], "workflow_ids": ["WF-FB-03"], "reconciliation": "mapped" }
+  ],
+  "workflows": [
+    {
+      "id": "WF-FB-01",
+      "name": "Capture contextual feedback",
+      "actor_ids": ["founder"],
+      "risk": "high",
+      "trigger": "Allowlisted founder submits the contextual feedback form",
+      "entrypoints": ["admin contextual feedback control", "portal/public Feedback control"],
+      "preconditions": ["authenticated server-resolved allowlisted identity"],
+      "terminal_outcomes": ["new internal Feedback Center record", "existing duplicate returned", "actionable validation/auth failure"],
+      "invariants": ["YCM is authoritative", "no external provider dependency", "secrets and URL tokens are redacted", "duplicates are idempotent"],
+      "happy_path": ["resolve identity", "validate and redact", "dedupe", "insert item", "append submitted event", "return internal status"],
+      "alternate_paths": ["ten-minute duplicate returns existing record"],
+      "failure_paths": ["ineligible identity returns 403", "invalid payload returns 400", "persistence failure returns truthful failure"],
+      "systems": ["YCM client", "YCM API", "PostgreSQL"],
+      "data": { "inputs": ["note, severity, sanitized page context"], "writes": ["founder_feedback", "founder_feedback_events"], "reads": ["dedupe key lookup"], "retention": ["internal platform record; legacy GitHub fields retained for history only"] },
+      "process": { "sync_steps": ["identity, validation, redaction, dedupe, write, confirmation"], "async_steps": ["not-applicable"], "external_dependencies": ["not-applicable"] },
+      "notifications": [{ "event": "feedback accepted", "audience": "submitting founder", "channel": "in-app toast", "trigger_point": "database and audit writes complete", "template": "Saved in YCM Feedback Center", "delivery_evidence": "EV-FB-02", "failure_handling": "failed request renders destructive toast" }],
+      "controls": { "authorization": ["server allowlist"], "validation": ["Zod payload limits"], "tenant_scope": ["founder-only product feedback scope"], "privacy": ["route stripping and secret redaction"], "idempotency": ["unique ten-minute dedupe key"], "audit_trail": ["submitted event"] },
+      "observability": { "logs": ["safe submit error log"], "metrics": ["Feedback Center counts"], "alerts": ["new queue count in Feedback Center"], "correlation_ids": ["feedback ID"] },
+      "recovery": { "retry": ["same-bucket retry returns existing item"], "compensation": ["not-applicable"], "manual_recovery": ["platform admin reviews the durable queue"] },
+      "continuity": { "entry": "pass", "identity_scope": "pass", "validation": "pass", "orchestration_state": "pass", "data_projection": "pass", "async_idempotency": "pass", "provider": "not-applicable", "notifications": "pass", "user_outcome": "pass", "audit_operations": "pass", "privacy_retention": "pass" },
+      "diagrams": { "sequence": "report#WF-FB-01", "state": "report#WF-FB-03", "data_lineage": "report#system-context" },
+      "evidence": [
+        { "id": "EV-FB-01", "layer": "code", "claim": "Submission persists internally without a GitHub call", "result": "pass", "locator": "server/routes.ts POST /api/founder-feedback", "environment": "reviewed branch", "observed_at": "2026-07-22T11:34:00Z" },
+        { "id": "EV-FB-02", "layer": "test", "claim": "First-party success confirmation is regression-covered", "result": "pass", "locator": "client/src/components/founder-feedback-widget.test.ts", "environment": "vitest", "observed_at": "2026-07-22T11:34:00Z" }
+      ],
+      "gaps": [],
+      "status": "verified-test"
+    },
+    {
+      "id": "WF-FB-02",
+      "name": "Triage and assign feedback",
+      "actor_ids": ["platform-admin"],
+      "risk": "high",
+      "trigger": "Platform administrator opens the Feedback Center and edits an item",
+      "entrypoints": ["/app/admin/feedback"],
+      "preconditions": ["authenticated platform-admin session"],
+      "terminal_outcomes": ["updated queue item with actor-attributed audit event"],
+      "invariants": ["non-platform roles fail closed", "current state and event write share a transaction", "internal notes never reach submitter APIs"],
+      "happy_path": ["load queue", "select item", "set priority/owner/notes/status", "transactional update and event", "refresh visible history"],
+      "alternate_paths": ["filter or search without mutation"],
+      "failure_paths": ["wrong role denied", "invalid update returns 400", "missing item returns 404"],
+      "systems": ["YCM Admin Hub", "YCM API", "PostgreSQL"],
+      "data": { "inputs": ["status, priority, assignment, internal notes"], "writes": ["founder_feedback current state", "founder_feedback_events"], "reads": ["Feedback Center queue and histories"], "retention": ["append-only history"] },
+      "process": { "sync_steps": ["authorize, validate, transaction, return projection"], "async_steps": ["not-applicable"], "external_dependencies": ["not-applicable"] },
+      "notifications": [{ "event": "feedback updated", "audience": "platform administrator", "channel": "in-app toast and refreshed queue", "trigger_point": "transaction committed", "template": "Feedback updated", "delivery_evidence": "EV-FB-04", "failure_handling": "destructive toast preserves unsaved form state" }],
+      "controls": { "authorization": ["requireAdmin plus platform-admin role"], "validation": ["bounded lifecycle schema"], "tenant_scope": ["platform-only global product queue"], "privacy": ["admin-only endpoint"], "idempotency": ["same-state updates allowed and logged"], "audit_trail": ["actor/time/from/to/detail"] },
+      "observability": { "logs": ["safe list/update error logs"], "metrics": ["status counts and openCount"], "alerts": ["visible open queue"], "correlation_ids": ["feedback ID and event ID"] },
+      "recovery": { "retry": ["safe PATCH retry"], "compensation": ["reopen or re-triage transition"], "manual_recovery": ["audit history supports reconstruction"] },
+      "continuity": { "entry": "pass", "identity_scope": "pass", "validation": "pass", "orchestration_state": "pass", "data_projection": "pass", "async_idempotency": "not-applicable", "provider": "not-applicable", "notifications": "pass", "user_outcome": "pass", "audit_operations": "pass", "privacy_retention": "pass" },
+      "diagrams": { "sequence": "report#WF-FB-02", "state": "report#WF-FB-03", "data_lineage": "report#system-context" },
+      "evidence": [
+        { "id": "EV-FB-03", "layer": "code", "claim": "Platform-admin list/update routes and transactional audit event exist", "result": "pass", "locator": "server/routes.ts /api/admin/founder-feedback", "environment": "reviewed branch", "observed_at": "2026-07-22T11:34:00Z" },
+        { "id": "EV-FB-04", "layer": "test", "claim": "Feedback Center compiles and production bundle is generated", "result": "pass", "locator": "npm run check; npm run build; admin-feedback-center bundle", "environment": "local build", "observed_at": "2026-07-22T11:34:00Z" }
+      ],
+      "gaps": [],
+      "status": "verified-test"
+    },
+    {
+      "id": "WF-FB-03",
+      "name": "Resolve and reopen feedback",
+      "actor_ids": ["platform-admin"],
+      "risk": "high",
+      "trigger": "Platform administrator changes lifecycle state",
+      "entrypoints": ["Feedback Center lifecycle controls"],
+      "preconditions": ["existing feedback item", "allowed predecessor state"],
+      "terminal_outcomes": ["resolved/dismissed item", "controlled reopened item", "HTTP 409 for invalid jump"],
+      "invariants": ["state transitions match the shared map", "resolution time is truthful", "history is never overwritten"],
+      "happy_path": ["select allowed next state", "server verifies transition", "update state/timestamps", "append event", "refresh timeline"],
+      "alternate_paths": ["resolved item reopens to triage or in progress", "dismissed item restores to new or triaged"],
+      "failure_paths": ["invalid direct jump returns 409 without mutation"],
+      "systems": ["Feedback Center", "YCM API", "PostgreSQL"],
+      "data": { "inputs": ["target status and optional resolution summary"], "writes": ["status/timestamps", "append-only event"], "reads": ["current predecessor state"], "retention": ["terminal and reopen decisions retained"] },
+      "process": { "sync_steps": ["guard, transaction, projection refresh"], "async_steps": ["not-applicable"], "external_dependencies": ["not-applicable"] },
+      "notifications": [{ "event": "lifecycle changed", "audience": "platform administrator", "channel": "in-app status and audit timeline", "trigger_point": "transaction committed", "template": "updated status and event detail", "delivery_evidence": "EV-FB-06", "failure_handling": "409 message shown as destructive toast" }],
+      "controls": { "authorization": ["platform-admin"], "validation": ["shared transition map"], "tenant_scope": ["platform-only"], "privacy": ["internal history"], "idempotency": ["same-state update safe"], "audit_trail": ["from/to status event"] },
+      "observability": { "logs": ["safe update error log"], "metrics": ["counts by terminal/open state"], "alerts": ["open queue remains visible after reopen"], "correlation_ids": ["feedback ID"] },
+      "recovery": { "retry": ["same-state safe retry"], "compensation": ["controlled reopen"], "manual_recovery": ["reconstruct from event history"] },
+      "continuity": { "entry": "pass", "identity_scope": "pass", "validation": "pass", "orchestration_state": "pass", "data_projection": "pass", "async_idempotency": "not-applicable", "provider": "not-applicable", "notifications": "pass", "user_outcome": "pass", "audit_operations": "pass", "privacy_retention": "pass" },
+      "diagrams": { "sequence": "report#WF-FB-02", "state": "report#WF-FB-03", "data_lineage": "report#system-context" },
+      "evidence": [
+        { "id": "EV-FB-05", "layer": "code", "claim": "Server enforces a shared lifecycle map and records resolution/reopen timestamps", "result": "pass", "locator": "shared/founder-feedback-lifecycle.ts and server/routes.ts", "environment": "reviewed branch", "observed_at": "2026-07-22T11:34:00Z" },
+        { "id": "EV-FB-06", "layer": "test", "claim": "Initial, resolution, reopen, and dismissed restore transitions are regression-covered", "result": "pass", "locator": "shared/founder-feedback-lifecycle.test.ts", "environment": "vitest", "observed_at": "2026-07-22T11:34:00Z" }
+      ],
+      "gaps": [],
+      "status": "verified-test"
+    }
+  ]
+}

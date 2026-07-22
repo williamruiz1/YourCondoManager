@@ -12,20 +12,14 @@ type Severity = "bug" | "idea" | "looks-wrong";
 type FounderFeedbackSubmissionResult = {
   ok: true;
   id: string;
-  githubIssueUrl: string | null;
-  dbOnly: boolean;
+  destination: "feedback-center";
+  status: string;
 };
 
-export function founderFeedbackSuccessToast(result: Pick<FounderFeedbackSubmissionResult, "dbOnly">) {
-  if (result.dbOnly) {
-    return {
-      title: "Feedback saved to YCM",
-      description: "GitHub issue filing is unavailable right now. Your note is safely stored for follow-up.",
-    };
-  }
-
+export function founderFeedbackSuccessToast(_result: Pick<FounderFeedbackSubmissionResult, "destination">) {
   return {
-    title: "Got it — routed to the build team.",
+    title: "Saved in YCM Feedback Center",
+    description: "Your note is in the internal review queue with its page context attached.",
   };
 }
 
@@ -47,8 +41,8 @@ function getPortalAccessId(): string {
  * heavier "inspect an element -> create a roadmap ticket" admin flow).
  * This widget is the literal "click Feedback, type a note, submit" ask:
  * a floating button, a small panel with a free-text note + optional
- * severity, auto-captured page context, and a submit that lands in the
- * founder_feedback table + files a GitHub issue (see server/founder-feedback.ts).
+ * severity, auto-captured page context, and a submit that lands in YCM's
+ * first-party Feedback Center with an auditable internal lifecycle.
  *
  * Mounted at the App root; internally gates on useFounderFeedbackEligibility
  * (server-resolved, never a client-side email check) and renders nothing
