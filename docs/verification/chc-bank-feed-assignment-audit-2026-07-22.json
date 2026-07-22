@@ -1,0 +1,378 @@
+{
+  "audit": {
+    "title": "CHC Bank Feed, Categorization, and Unit Assignment Audit",
+    "mode": "diagnose",
+    "scope": "Cherry Hill Court Condominiums production bank sync, transaction categorization, and owner-unit assignment",
+    "environments": ["production"],
+    "criticality": "critical",
+    "observed_at": "2026-07-22T16:52:34Z",
+    "authorities": {
+      "requirements": "William request and YCM finance continuity requirements",
+      "code": "YourCondoManager origin/main fef7c75",
+      "data": "aggregate-only production PostgreSQL queries scoped to CHC",
+      "provider": "Stripe Financial Connections production connection state",
+      "deployment": "Fly production machine version 254"
+    },
+    "diagrams": {
+      "system_context": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#system-context"
+    }
+  },
+  "actors": [
+    {
+      "id": "actor-chc-treasurer",
+      "name": "CHC Treasurer or Board",
+      "role": "Association-scoped financial operator and reconciliation reviewer"
+    },
+    {
+      "id": "actor-bank-sweep",
+      "name": "Automated Bank Sweep",
+      "role": "Scheduled production sync and reconciliation process"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "CAP-BANK-001",
+      "name": "Continuously sync CHC bank data",
+      "actor_ids": ["actor-bank-sweep", "actor-chc-treasurer"],
+      "ui_entrypoints": ["/app/financial/bank-connections", "scheduled sweep"],
+      "backend_paths": ["runBankFeedSweep", "server/services/bank-feed-sync.ts", "StripeFcProvider"],
+      "workflow_ids": ["WF-BANK-001"],
+      "reconciliation": "mapped"
+    },
+    {
+      "id": "CAP-BANK-002",
+      "name": "Categorize imported bank transactions",
+      "actor_ids": ["actor-chc-treasurer"],
+      "ui_entrypoints": ["reconciliation and bank transaction views"],
+      "backend_paths": ["StripeFcProvider.mapFcTransaction", "bank_transactions.category"],
+      "workflow_ids": ["WF-BANK-002"],
+      "reconciliation": "mapped"
+    },
+    {
+      "id": "CAP-BANK-003",
+      "name": "Assign incoming deposits to owner units",
+      "actor_ids": ["actor-bank-sweep", "actor-chc-treasurer"],
+      "ui_entrypoints": ["reconciliation review"],
+      "backend_paths": ["reconcileBankTransactions", "runAutoMatch", "bank_descriptor_aliases", "owner_ledger_entries.bank_transaction_id"],
+      "workflow_ids": ["WF-BANK-003"],
+      "reconciliation": "mapped"
+    }
+  ],
+  "workflows": [
+    {
+      "id": "WF-BANK-001",
+      "name": "Sync CHC bank balances and transactions",
+      "actor_ids": ["actor-bank-sweep", "actor-chc-treasurer"],
+      "risk": "critical",
+      "trigger": "Scheduled sweep, provider webhook, or manual sync",
+      "entrypoints": ["scheduled sweep", "/app/financial/bank-connections"],
+      "preconditions": ["Active association-scoped Stripe FC connection"],
+      "terminal_outcomes": ["Account snapshots, transactions, cursor, and successful sync-run record persisted"],
+      "invariants": ["CHC scope only", "provider transaction upserts are idempotent", "failed sync does not claim current state"],
+      "happy_path": ["select connection", "refresh provider account data", "upsert transaction delta", "persist cursor", "record sync outcome"],
+      "alternate_paths": ["webhook-triggered sync", "manual sync"],
+      "failure_paths": ["advisory-lock collision skips duplicate work", "reauth errors change connection status"],
+      "systems": ["YCM", "Stripe Financial Connections", "PostgreSQL", "Fly"],
+      "data": {
+        "inputs": ["Stripe FC account and transaction snapshots"],
+        "writes": ["bank_accounts", "bank_transactions", "bank_connections", "bank_feed_sync_runs"],
+        "reads": ["bank connection and reconciliation views"],
+        "retention": ["production financial audit records"]
+      },
+      "process": {
+        "sync_steps": ["upsert balances and transactions", "persist cursor and timestamps"],
+        "async_steps": ["scheduled sweep and provider webhook"],
+        "external_dependencies": ["Stripe Financial Connections"]
+      },
+      "notifications": [
+        {
+          "event": "successful periodic sync",
+          "audience": "not-applicable",
+          "channel": "not-applicable",
+          "trigger_point": "sync success",
+          "template": "not-applicable",
+          "delivery_evidence": "not-applicable",
+          "failure_handling": "connection state and sync-run error fields surface failures"
+        }
+      ],
+      "controls": {
+        "authorization": ["admin routes are role-gated"],
+        "validation": ["provider and environment guards"],
+        "tenant_scope": ["association_id on connection, accounts, transactions, and sync runs"],
+        "privacy": ["access token encrypted; audit evidence aggregate-only"],
+        "idempotency": ["provider transaction unique ID upsert and advisory lock"],
+        "audit_trail": ["bank_feed_sync_runs"]
+      },
+      "observability": {
+        "logs": ["bank-feed-sync structured log"],
+        "metrics": ["transactionsImported", "matchesMade", "unmatchedCount"],
+        "alerts": ["connection status and pressing-items fallback"],
+        "correlation_ids": ["connection ID and sync-run ID"]
+      },
+      "recovery": {
+        "retry": ["subsequent scheduled sweep or reconnect"],
+        "compensation": ["removed/void provider transactions handled without deleting consumed matches"],
+        "manual_recovery": ["reconnect or manual sync"]
+      },
+      "continuity": {
+        "entry": "pass",
+        "identity_scope": "pass",
+        "validation": "pass",
+        "orchestration_state": "pass",
+        "data_projection": "pass",
+        "async_idempotency": "pass",
+        "provider": "pass",
+        "notifications": "not-applicable",
+        "user_outcome": "pass",
+        "audit_operations": "pass",
+        "privacy_retention": "pass"
+      },
+      "diagrams": {
+        "sequence": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#wf-bank-001--sync-chc-bank-balances-and-transactions",
+        "state": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#wf-bank-001--sync-chc-bank-balances-and-transactions",
+        "data_lineage": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#system-context"
+      },
+      "evidence": [
+        {
+          "id": "EV-BANK-001",
+          "layer": "live",
+          "claim": "Active CHC Stripe FC connection and current successful sync with zero recorded sync failures",
+          "result": "pass",
+          "locator": "aggregate production queries over bank_connections and bank_feed_sync_runs",
+          "environment": "production Fly v254",
+          "observed_at": "2026-07-22T16:52:34Z"
+        },
+        {
+          "id": "EV-BANK-002",
+          "layer": "data",
+          "claim": "Two CHC accounts and 91 transaction rows are persisted",
+          "result": "pass",
+          "locator": "aggregate production queries over bank_accounts and bank_transactions",
+          "environment": "production Fly v254",
+          "observed_at": "2026-07-22T16:52:34Z"
+        },
+        {
+          "id": "EV-BANK-TEST-001",
+          "layer": "test",
+          "claim": "Bank sync and Stripe FC provider regression suites pass",
+          "result": "pass",
+          "locator": "focused Vitest run: 5 files, 79 tests",
+          "environment": "local checkout of production-relevant code",
+          "observed_at": "2026-07-22T17:01:30Z"
+        }
+      ],
+      "gaps": [],
+      "status": "verified-live"
+    },
+    {
+      "id": "WF-BANK-002",
+      "name": "Categorize imported CHC transactions",
+      "actor_ids": ["actor-chc-treasurer"],
+      "risk": "critical",
+      "trigger": "A Stripe FC transaction is imported",
+      "entrypoints": ["transaction import", "reconciliation views"],
+      "preconditions": ["Synced transaction exists"],
+      "terminal_outcomes": ["Accounting category is recorded or an explicit uncategorized review item exists"],
+      "invariants": ["Category is auditable and does not alter amount or ownership"],
+      "happy_path": ["import transaction", "derive or confirm category", "persist category", "project into reports"],
+      "alternate_paths": ["manual confirmation for uncertain classification"],
+      "failure_paths": ["no category leaves the transaction explicitly uncategorized"],
+      "systems": ["Stripe Financial Connections", "YCM", "PostgreSQL"],
+      "data": {
+        "inputs": ["transaction description and amount"],
+        "writes": ["bank_transactions.category"],
+        "reads": ["reconciliation and financial reports"],
+        "retention": ["financial classification audit history is required"]
+      },
+      "process": {
+        "sync_steps": ["map provider transaction", "classify", "persist"],
+        "async_steps": ["bank-feed import"],
+        "external_dependencies": ["Stripe FC transaction payload"]
+      },
+      "notifications": [
+        {
+          "event": "uncategorized transaction",
+          "audience": "CHC treasurer",
+          "channel": "in-app review queue",
+          "trigger_point": "classification unavailable",
+          "template": "uncategorized work item",
+          "delivery_evidence": "gated",
+          "failure_handling": "gap — no dedicated accounting categorization contract proven"
+        }
+      ],
+      "controls": {
+        "authorization": ["association financial operator"],
+        "validation": ["category must be an allowed accounting class"],
+        "tenant_scope": ["association_id"],
+        "privacy": ["do not expose raw descriptors outside authorized finance views"],
+        "idempotency": ["reclassification must be audit-safe"],
+        "audit_trail": ["gap — category confirmation history not proven"]
+      },
+      "observability": {
+        "logs": ["sync logs only"],
+        "metrics": ["gap — categorized/uncategorized counts not operationalized"],
+        "alerts": ["gap — no category-specific alert"],
+        "correlation_ids": ["bank transaction ID"]
+      },
+      "recovery": {
+        "retry": ["manual categorization"],
+        "compensation": ["reclassify through audit entry"],
+        "manual_recovery": ["treasurer review"]
+      },
+      "continuity": {
+        "entry": "pass",
+        "identity_scope": "pass",
+        "validation": "pass",
+        "orchestration_state": "fail",
+        "data_projection": "fail",
+        "async_idempotency": "pass",
+        "provider": "fail",
+        "notifications": "not-applicable",
+        "user_outcome": "fail",
+        "audit_operations": "pass",
+        "privacy_retention": "pass"
+      },
+      "diagrams": {
+        "sequence": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#wf-bank-002--categorize-imported-transactions",
+        "state": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#wf-bank-002--categorize-imported-transactions",
+        "data_lineage": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#system-context"
+      },
+      "evidence": [
+        {
+          "id": "EV-BANK-003",
+          "layer": "data",
+          "claim": "Zero of 91 CHC bank transactions have a populated category",
+          "result": "fail",
+          "locator": "aggregate production query over bank_transactions.category",
+          "environment": "production Fly v254",
+          "observed_at": "2026-07-22T16:52:34Z"
+        },
+        {
+          "id": "EV-BANK-004",
+          "layer": "code",
+          "claim": "Stripe FC transaction mapping writes category null",
+          "result": "fail",
+          "locator": "server/services/bank-feed/stripe-fc-provider.ts mapFcTransaction",
+          "environment": "origin/main fef7c75",
+          "observed_at": "2026-07-22T16:52:34Z"
+        },
+        {
+          "id": "EV-BANK-TEST-002",
+          "layer": "test",
+          "claim": "Stripe FC mapping and rendering tests pass, including the current uncategorized mapping contract",
+          "result": "pass",
+          "locator": "stripe-fc-provider and stripe-fc-statements-rendering focused Vitest suites",
+          "environment": "local checkout of production-relevant code",
+          "observed_at": "2026-07-22T17:01:30Z"
+        }
+      ],
+      "gaps": ["No automatic or audited manual accounting category is persisted for CHC bank transactions"],
+      "status": "gap"
+    },
+    {
+      "id": "WF-BANK-003",
+      "name": "Assign CHC incoming deposits to owner units",
+      "actor_ids": ["actor-bank-sweep", "actor-chc-treasurer"],
+      "risk": "critical",
+      "trigger": "A posted CHC bank credit is imported",
+      "entrypoints": ["automated reconciliation", "manual reconciliation review"],
+      "preconditions": ["Posted incoming credit", "owner/unit records", "eligible payment record or match signals"],
+      "terminal_outcomes": ["Exactly one correct owner-ledger/unit link or explicit manual-review state"],
+      "invariants": ["no cross-association link", "one deposit cannot settle two ledger entries", "ambiguous matches do not auto-post"],
+      "happy_path": ["import credit", "evaluate exact unit/payment evidence", "link ledger entry", "surface in owner history"],
+      "alternate_paths": ["manual review learns descriptor alias", "unit reference exact match"],
+      "failure_paths": ["ambiguous or unsupported credit remains unmatched"],
+      "systems": ["YCM", "PostgreSQL", "Stripe Financial Connections"],
+      "data": {
+        "inputs": ["bank credit", "payment intent", "owner/unit roster", "descriptor alias", "unit reference"],
+        "writes": ["owner_ledger_entries.bank_transaction_id", "owner_ledger_entries.settled_at", "bank_descriptor_aliases after manual confirmation"],
+        "reads": ["owner ledger", "reconciliation queue", "owner portal finances"],
+        "retention": ["immutable financial attribution evidence"]
+      },
+      "process": {
+        "sync_steps": ["narrow pay-intent reconciliation"],
+        "async_steps": ["scheduled bank-feed sweep"],
+        "external_dependencies": ["Stripe FC bank credit"]
+      },
+      "notifications": [
+        {
+          "event": "confirmed attribution",
+          "audience": "owner and CHC financial operator",
+          "channel": "ledger/history; outbound notification not required by current contract",
+          "trigger_point": "atomic match",
+          "template": "ledger status",
+          "delivery_evidence": "gated",
+          "failure_handling": "unmatched queue; no owner notification before confirmation"
+        }
+      ],
+      "controls": {
+        "authorization": ["association financial operator for manual match"],
+        "validation": ["credit sign", "exact cents for automatic narrow match", "date window"],
+        "tenant_scope": ["association_id on every query and match write"],
+        "privacy": ["authorized owner and banking data only"],
+        "idempotency": ["consumed-credit exclusion and atomic match"],
+        "audit_trail": ["sync-run match counts and ledger link"]
+      },
+      "observability": {
+        "logs": ["bank-feed sync match counts"],
+        "metrics": ["matchesMade", "unmatchedCount"],
+        "alerts": ["unidentified transaction pressing item"],
+        "correlation_ids": ["bank transaction ID and ledger entry ID"]
+      },
+      "recovery": {
+        "retry": ["subsequent sweep is idempotent"],
+        "compensation": ["manual reconciliation correction must preserve audit history"],
+        "manual_recovery": ["treasurer confirms unmatched credit"]
+      },
+      "continuity": {
+        "entry": "pass",
+        "identity_scope": "pass",
+        "validation": "pass",
+        "orchestration_state": "fail",
+        "data_projection": "fail",
+        "async_idempotency": "pass",
+        "provider": "pass",
+        "notifications": "not-applicable",
+        "user_outcome": "fail",
+        "audit_operations": "pass",
+        "privacy_retention": "pass"
+      },
+      "diagrams": {
+        "sequence": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#wf-bank-003--assign-incoming-deposits-to-owners-and-units",
+        "state": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#wf-bank-003--assign-incoming-deposits-to-owners-and-units",
+        "data_lineage": "docs/verification/chc-bank-feed-assignment-audit-2026-07-22.md#wf-bank-003--assign-incoming-deposits-to-owners-and-units"
+      },
+      "evidence": [
+        {
+          "id": "EV-BANK-005",
+          "layer": "data",
+          "claim": "Zero bank-linked owner-ledger rows and 70 posted unmatched credits exist for CHC",
+          "result": "fail",
+          "locator": "aggregate production queries over owner_ledger_entries and bank_transactions",
+          "environment": "production Fly v254",
+          "observed_at": "2026-07-22T16:52:34Z"
+        },
+        {
+          "id": "EV-BANK-006",
+          "layer": "live",
+          "claim": "CHC unit-centric mode is off, 0 of 18 units have payment references, zero aliases exist, and zero cross-association links exist",
+          "result": "fail",
+          "locator": "runtime flags and aggregate production queries",
+          "environment": "production Fly v254",
+          "observed_at": "2026-07-22T16:52:34Z"
+        },
+        {
+          "id": "EV-BANK-TEST-003",
+          "layer": "test",
+          "claim": "Narrow reconciliation and broader auto-matcher safety suites pass",
+          "result": "pass",
+          "locator": "plaid-reconciliation and reconciliation-auto-matcher focused Vitest suites",
+          "environment": "local checkout of production-relevant code",
+          "observed_at": "2026-07-22T17:01:30Z"
+        }
+      ],
+      "gaps": ["Automated bank sync has not linked any imported credit to an owner ledger or unit"],
+      "status": "gap"
+    }
+  ]
+}
