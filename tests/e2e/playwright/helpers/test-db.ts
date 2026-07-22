@@ -28,6 +28,7 @@
 // Tests insert and clear rows but never re-apply schema.
 
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -124,6 +125,28 @@ async function applySchema(connectionString: string): Promise<void> {
 }
 
 /**
+ * Drizzle's canonical schema describes columns and indexes, but it does not
+ * install the Release A compatibility trigger/functions that keep legacy
+ * dollar writers and cents-only writers synchronized. Release B readers fail
+ * closed when that database contract is missing, so the real-backend harness
+ * must replay the same money contracts as staging and production after the
+ * schema push.
+ */
+async function applyMoneyCentsContract(pglite: PGlite): Promise<void> {
+  const releaseA = readFileSync(
+    path.join(REPO_ROOT, "migrations", "0072_money_cents_expand.sql"),
+    "utf8",
+  );
+  const releaseB = readFileSync(
+    path.join(REPO_ROOT, "migrations", "0074_money_cents_read_switch.sql"),
+    "utf8",
+  );
+
+  await pglite.exec(releaseA);
+  await pglite.exec(releaseB);
+}
+
+/**
  * Spin up an ephemeral Postgres for the Playwright run. Caller is
  * responsible for calling `stop()` at teardown.
  */
@@ -135,6 +158,7 @@ export async function startTestDb(): Promise<TestDbHandle> {
   const connectionString = `postgresql://test:test@127.0.0.1:${gateway.port}/postgres`;
 
   await applySchema(connectionString);
+  await applyMoneyCentsContract(pglite);
 
   return {
     connectionString,
