@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 2,
+  "title": "YCM Redesign Verification \u2014 Owner Portal + Community Hub (founder-os#13177)",
+  "filename": "ycm-redesign-verification-13177.html",
+  "kind": "html",
+  "preview_kind": "iframe",
+  "produced_by": "YCM GM",
+  "model": "gpt-5-codex",
+  "parent_dispatch": "founder-os#13177",
+  "session_id": null,
+  "topic_slug": "ycm-redesign-verification-13177",
+  "product": "ycm",
+  "product_name": "YourCondoManager",
+  "channel": "ycm",
+  "created_at": "2026-07-22T05:52:57Z",
+  "channels": [
+    "native-app",
+    "admin-hub"
+  ],
+  "url": "https://founder-mini.taila070f1.ts.net/foscc-chat/artifact?path=product%2Fycm%2Fycm-redesign-verification-13177%2Fycm-redesign-verification-13177.html",
+  "manifest_url": "https://founder-mini.taila070f1.ts.net/foscc-chat/artifact?path=product%2Fycm%2Fycm-redesign-verification-13177%2Fycm-redesign-verification-13177.meta.json",
+  "native_path": "product/ycm/ycm-redesign-verification-13177/ycm-redesign-verification-13177.html",
+  "canonical_repo": "YourCondoManager",
+  "canonical_path": "artifacts/ycm-redesign-verification-13177/ycm-redesign-verification-13177.html",
+  "admin_hub_repo": "ycm-admin-hub",
+  "admin_hub_path": "content/ycm-redesign-verification-13177.html",
+  "branch": "main",
+  "commit_sha": "",
+  "status": "open",
+  "notes": null
+}
