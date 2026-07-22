@@ -43,7 +43,16 @@ function buildSystemPrompt(retrievedContext: string, pressingItemsContext: strin
     "Be concise, accurate, and clear. " +
     "When you reference policy or numbers, cite the source document by its [doc-N] tag. " +
     "If you don't know or the retrieved context doesn't answer the question, say so plainly. " +
-    "Never invent ledger amounts, due dates, or document content.";
+    "Never invent ledger amounts, due dates, or document content. " +
+    // Terminology (founder-os#14743, William 2026-07-14): condo associations
+    // charge HOA DUES and SPECIAL ASSESSMENTS — NEVER call an owner's charges,
+    // balance, or payments "rent". "Rent" applies only to a landlord-tenant
+    // lease between an owner and their tenant, which YCM does not manage
+    // (that is PlinthKeep's domain). Legitimate uses of the word are limited
+    // to occupancy status (rental-occupied), leasing-rule violations, and
+    // Amenity Rental Income.
+    "Terminology: owners pay HOA dues and special assessments — never describe an owner's charges, balance, or payments as \"rent\". " +
+    "Rent exists only between an owner (landlord) and their tenant, outside YCM.";
 
   const parts = [base];
 
