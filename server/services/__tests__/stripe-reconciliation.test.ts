@@ -136,7 +136,18 @@ vi.mock("../../db", () => {
       };
       const obj: Record<string, unknown> = {
         values(v: Row) {
-          stored = { ...v, id: (v.id as string) ?? nextId("row") };
+          stored = {
+            ...v,
+            ...((table as { __name?: string })?.__name === "owner_ledger_entries"
+              ? {
+                  amountCents:
+                    typeof v.amountCents === "number"
+                      ? v.amountCents
+                      : Math.round(Number(v.amount) * 100),
+                }
+              : {}),
+            id: (v.id as string) ?? nextId("row"),
+          };
           return obj;
         },
         onConflictDoNothing(config?: { target?: { _key: string }[]; where?: unknown }) {

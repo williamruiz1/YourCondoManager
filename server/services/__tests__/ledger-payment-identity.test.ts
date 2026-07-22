@@ -87,7 +87,14 @@ vi.mock("../../db", () => ({
       let conflict = false;
       const chain = {
         values(v: Record<string, unknown>) {
-          vals = { ...v, id: (v.id as string) ?? `row-${++idCounter}` } as Row;
+          vals = {
+            ...v,
+            amountCents:
+              typeof v.amountCents === "number"
+                ? v.amountCents
+                : Math.round(Number(v.amount) * 100),
+            id: (v.id as string) ?? `row-${++idCounter}`,
+          } as Row;
           return chain;
         },
         // Mirrors the REAL partial unique index: a conflict occurs iff another

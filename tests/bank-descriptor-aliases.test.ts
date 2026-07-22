@@ -41,12 +41,18 @@ vi.mock("../server/db", () => {
     const exec = () => {
       let rows: any[];
       if (pending === "credits") rows = state.credits;
-      else if (pending === "ledgerLinks") rows = state.entries;
+      else if (pending === "ledgerLinks") rows = state.entries.map((row) => ({
+        ...row,
+        amountCents: row.amountCents ?? Math.round(row.amount * 100),
+      }));
       else if (pending === "persons") rows = state.persons;
       else if (pending === "ownerships") rows = state.ownerships;
       else if (pending === "units") rows = state.units;
       else if (pending === "aliases") rows = state.aliases;
-      else rows = state.entries;
+      else rows = state.entries.map((row) => ({
+        ...row,
+        amountCents: row.amountCents ?? Math.round(row.amount * 100),
+      }));
       return rows.filter((r) => filters.every((f) => f(r)));
     };
 
@@ -115,7 +121,16 @@ vi.mock("../server/db", () => {
         return {
           values: (row: any) => ({
             returning: (_cols?: any) => {
-              const inserted = { ...row, id: `auto-${state.insertedEntries.length + 1}` };
+              const inserted = {
+                ...row,
+                amountCents:
+                  typeof row.amountCents === "number"
+                    ? row.amountCents
+                    : typeof row.amount === "number"
+                      ? Math.round(row.amount * 100)
+                      : undefined,
+                id: `auto-${state.insertedEntries.length + 1}`,
+              };
               state.insertedEntries.push(inserted);
               state.entries.push(inserted);
               return Promise.resolve([inserted]);
@@ -190,6 +205,7 @@ vi.mock("@shared/schema", () => {
       settledAt: col("settledAt"),
       bankTransactionId: col("bankTransactionId"),
       amount: col("amount"),
+      amountCents: col("amountCents"),
       postedAt: col("postedAt"),
       referenceType: col("referenceType"),
       description: col("description"),

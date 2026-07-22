@@ -26,6 +26,23 @@ passes. It validates the compatibility constraints, makes the owner-ledger cents
 column non-null, and switches application reads to `amount_cents`. The legacy
 dollar columns and synchronization triggers remain during this release.
 
+1. Capture a database snapshot and run `node scripts/money-cents-expand.cjs assert`.
+2. Deploy migration `0074_money_cents_read_switch`; it re-runs the assertion,
+   validates both compatibility constraints, and sets the owner-ledger cents
+   mirror `NOT NULL` without rewriting a financial amount.
+3. Deploy the Release B application, whose calculations read cents and derive
+   legacy v1 dollar response fields from cents.
+4. Re-run the cents assertion and all aggregate payment-continuity invariants.
+5. Exercise legacy-dollar, cents-only, and dual-value writes. Mismatched dual
+   values must fail; every successful write must be readable through cents.
+6. Observe health, cents drift, duplicate identities, unallocated payments,
+   cross-association links, notification failures, and queue failures for 24 hours.
+
+Rollback order: deploy the Release A application first, then run
+`migrations/rollback/0074_money_cents_read_switch.down.sql`. The rollback drops
+only the cents `NOT NULL` requirement; it preserves every amount, mirror, trigger,
+constraint, and audit record.
+
 ## Release C — contract
 
 Remove the legacy dollar columns and compatibility triggers only in a later
@@ -38,4 +55,3 @@ unallocated payment, failed notification assertion, or cross-association result.
 Capture the failing rows without owner-private payloads, complete root-cause
 analysis, repair, and rerun the affected workflow plus the financial regression
 suite before resuming.
-

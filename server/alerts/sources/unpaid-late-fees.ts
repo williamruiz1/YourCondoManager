@@ -39,6 +39,7 @@
 import { storage } from "../../storage";
 import type { AlertItem, AlertSeverity } from "../types";
 import { FEATURE_DOMAINS } from "../types";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 
 const PAYMENT_MATCH_WINDOW_DAYS = 30;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -82,7 +83,7 @@ export async function resolveMany(
     if (e.entryType !== "payment") continue;
     if (!nameById.has(e.associationId)) continue;
     const list = paymentsByAssoc.get(e.associationId) ?? [];
-    list.push({ postedAt: new Date(e.postedAt), amount: Math.abs(e.amount ?? 0) });
+    list.push({ postedAt: new Date(e.postedAt), amount: Math.abs(ownerLedgerAmountDollars(e)) });
     paymentsByAssoc.set(e.associationId, list);
   }
   // Single-assoc legacy mock: ledger rows may not be tagged with
@@ -96,7 +97,7 @@ export async function resolveMany(
   if (isSingleAssoc && !paymentsByAssoc.has(associations[0].id)) {
     const fallback = allLedgerEntries
       .filter((e) => e.entryType === "payment")
-      .map((e) => ({ postedAt: new Date(e.postedAt), amount: Math.abs(e.amount ?? 0) }));
+      .map((e) => ({ postedAt: new Date(e.postedAt), amount: Math.abs(ownerLedgerAmountDollars(e)) }));
     paymentsByAssoc.set(associations[0].id, fallback);
   }
 

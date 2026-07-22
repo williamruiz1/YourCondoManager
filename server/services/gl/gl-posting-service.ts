@@ -40,6 +40,7 @@ import {
   type VendorInvoiceLike,
 } from "./posting";
 import { isGlEnabledForAssociation } from "./flag";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 
 export interface GlPostingResult {
   skipped: boolean;
@@ -104,7 +105,7 @@ async function loadOwnerLedger(associationId: string): Promise<OwnerLedgerEntryL
   return rows.map((r) => ({
     id: r.id,
     entryType: r.entryType,
-    amount: r.amount,
+    amount: ownerLedgerAmountDollars(r),
     postedAt: r.postedAt,
     description: r.description,
   }));

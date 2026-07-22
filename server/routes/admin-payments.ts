@@ -50,6 +50,11 @@ import {
   markPlatformFeeCollected,
   listOwedPlatformFees,
 } from "../services/convenience-fee";
+import {
+  ownerLedgerAmountCents,
+  ownerLedgerAmountDollars,
+  ownerLedgerV1Amount,
+} from "@shared/owner-ledger-money";
 
 // ── Reusable request shape (mirrored from routes.ts) ─────────────────────────
 
@@ -449,7 +454,7 @@ async function recordSinglePayment(
     associationId: inserted.associationId,
     unitId: inserted.unitId,
     personId: inserted.personId,
-    amount: inserted.amount,
+    amount: ownerLedgerAmountDollars(inserted),
     method: input.method,
     receivedAt: inserted.postedAt,
     description: inserted.description ?? description,
@@ -527,17 +532,20 @@ async function reverseLedgerEntry(params: {
     );
 
   // Cumulative cap: sum prior reversals of THIS target (they reference it).
-  const alreadyReversed = unitEntries
+  const alreadyReversedCents = unitEntries
     .filter(
       (e) =>
         e.referenceType === "refund-reversal" &&
         e.referenceId === target.id &&
         e.entryType === "adjustment" &&
-        e.amount > 0,
+        ownerLedgerAmountCents(e) > 0,
     )
-    .reduce((s, e) => s + e.amount, 0);
-  const originalMagnitude = Math.abs(target.amount);
-  const remaining = Math.round((originalMagnitude - alreadyReversed) * 100) / 100;
+    .reduce((sum, entry) => sum + ownerLedgerAmountCents(entry), 0);
+  const originalMagnitudeCents = Math.abs(ownerLedgerAmountCents(target));
+  const remainingCents = originalMagnitudeCents - alreadyReversedCents;
+  const alreadyReversed = alreadyReversedCents / 100;
+  const originalMagnitude = originalMagnitudeCents / 100;
+  const remaining = remainingCents / 100;
   if (remaining <= 0) {
     const err: any = new Error(
       `Entry ${target.id} is already fully reversed ($${alreadyReversed.toFixed(2)} of $${originalMagnitude.toFixed(2)})`,
@@ -557,8 +565,8 @@ async function reverseLedgerEntry(params: {
   }
 
   const result = reversePayment({
-    entries: unitEntries,
-    target,
+    entries: unitEntries.map(ownerLedgerV1Amount),
+    target: ownerLedgerV1Amount(target),
     amount: requested,
     postedAt: new Date(),
     description: `Refund $${requested.toFixed(2)} — reversal of ${target.entryType} (entry ${target.id}) — ${params.reason}`,
@@ -930,7 +938,7 @@ export function registerAdminPaymentsRoutes(
               associationId: r.associationId,
               unitId: r.unitId,
               personId: r.personId,
-              amount: r.amount,
+              amount: ownerLedgerAmountDollars(r),
               postedAt: r.postedAt,
               description: r.description,
               method: method || "other",

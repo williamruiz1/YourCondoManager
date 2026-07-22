@@ -129,6 +129,7 @@ describe("scheduleless past-dated assessment (founder-os#13119)", () => {
     referenceType: null,
     referenceId: null,
     amount: 2121.77,
+    amountCents: 212177,
     postedAt: new Date("2026-05-08T00:00:00.000Z"),
   };
 

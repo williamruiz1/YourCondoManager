@@ -8,7 +8,7 @@
  *
  * Auto-match criteria (all required):
  *   1. tenant: same `association_id` (hard tenant-isolation; no cross-tenant match)
- *   2. amount: |bankTx.amountCents/100| === |ledgerEntry.amount| (cents-exact)
+ *   2. amount: |bankTx.amountCents| === |ledgerEntry.amountCents| (cents-exact)
  *   3. date  : |bankTx.date - ledgerEntry.createdAt| <= 3 days
  *   4. signs : bankTx is a CREDIT (money IN; amountCents < 0 per Plaid convention
  *              normalized in plaid-provider.ts §"positive = debit; negative = credit")
@@ -33,6 +33,10 @@ import {
   ownerLedgerEntries,
   type BankTransaction,
 } from "@shared/schema";
+import {
+  ownerLedgerAmountCents,
+  ownerLedgerAmountDollars,
+} from "@shared/owner-ledger-money";
 
 const MATCH_DATE_WINDOW_DAYS = 3;
 
@@ -150,7 +154,7 @@ export async function reconcileBankTransactions(
       const entry = pendingEntries[i];
       if (usedEntryIds.has(entry.id)) continue;
 
-      const entryAbsCents = Math.round(Math.abs(entry.amount) * 100);
+      const entryAbsCents = Math.abs(ownerLedgerAmountCents(entry));
       if (entryAbsCents !== creditAbsCents) continue;
 
       const referenceDate = entry.createdAt ?? entry.postedAt;
@@ -297,7 +301,7 @@ export async function manualMatchBankTransaction(input: {
   }
 
   const creditAbsCents = Math.abs(credit.amountCents);
-  const entryAbsCents = Math.round(Math.abs(entry.amount) * 100);
+  const entryAbsCents = Math.abs(ownerLedgerAmountCents(entry));
   const deltaCents = Math.abs(creditAbsCents - entryAbsCents);
   if (deltaCents > 100) {
     return {
@@ -357,7 +361,7 @@ export async function listPendingReconciliation(
   const pending = await db
     .select({
       id: ownerLedgerEntries.id,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       description: ownerLedgerEntries.description,
       createdAt: ownerLedgerEntries.createdAt,
     })
@@ -375,10 +379,16 @@ export async function listPendingReconciliation(
   const result = unmatchedCredits.map((credit) => {
     const creditAbsCents = Math.abs(credit.amountCents);
     const candidates = pending.filter((p) => {
-      const pAbsCents = Math.round(Math.abs(p.amount) * 100);
+      const pAbsCents = Math.abs(ownerLedgerAmountCents(p));
       return Math.abs(creditAbsCents - pAbsCents) <= 100;
     });
-    return { ...credit, candidates };
+    return {
+      ...credit,
+      candidates: candidates.map((candidate) => ({
+        ...candidate,
+        amount: ownerLedgerAmountDollars(candidate),
+      })),
+    };
   });
 
   return {
@@ -386,4 +396,3 @@ export async function listPendingReconciliation(
     pendingEntryCount: pending.length,
   };
 }
-

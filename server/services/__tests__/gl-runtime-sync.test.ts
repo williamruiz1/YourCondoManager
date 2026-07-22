@@ -74,8 +74,8 @@ const ASSOC = "assoc-1";
 
 beforeEach(() => {
   ledgerRows = [
-    { id: "e1", entryType: "charge", amount: 100, postedAt: new Date(), description: "dues" },
-    { id: "e2", entryType: "payment", amount: -100, postedAt: new Date(), description: "pay" },
+    { id: "e1", entryType: "charge", amount: 100, amountCents: 10000, postedAt: new Date(), description: "dues" },
+    { id: "e2", entryType: "payment", amount: -100, amountCents: -10000, postedAt: new Date(), description: "pay" },
   ];
   reconcileOk = true;
   syncBehavior = "ok";

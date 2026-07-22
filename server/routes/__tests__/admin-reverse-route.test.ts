@@ -96,7 +96,14 @@ vi.mock("../../db", () => ({
         const isLedger =
           vals && typeof vals === "object" && !Array.isArray(vals) && "entryType" in vals;
         if (isLedger) {
-          const row = { id: `led-${++idSeq}`, ...vals };
+          const row = {
+            id: `led-${++idSeq}`,
+            ...vals,
+            amountCents:
+              typeof vals.amountCents === "number"
+                ? vals.amountCents
+                : Math.round(Number(vals.amount) * 100),
+          };
           ledgerRows.push(row);
           const p: any = Promise.resolve();
           p.returning = () => Promise.resolve([row]);
@@ -160,13 +167,18 @@ async function post(app: express.Express, path: string, body: any) {
 }
 
 function seedPayment(over: Partial<Row> = {}): Row {
+  const amount = typeof over.amount === "number" ? over.amount : -200;
   const row: Row = {
     id: `led-${++idSeq}`,
     associationId: "a1",
     unitId: "u1",
     personId: "p1",
     entryType: "payment",
-    amount: -200,
+    amount,
+    amountCents:
+      typeof over.amountCents === "number"
+        ? over.amountCents
+        : Math.round(amount * 100),
     postedAt: new Date("2026-06-01T00:00:00Z"),
     description: "Check #1042",
     referenceType: "manual-recorded-payment",

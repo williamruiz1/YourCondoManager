@@ -25,6 +25,7 @@ import {
   persons,
   units,
 } from "@shared/schema";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 import { loadUnitPayerRoster, type UnitPayerRoster } from "./unit-payer-roster";
 import {
   computeStatement,
@@ -178,7 +179,7 @@ export async function buildAccountStatement(input: {
     .select({
       id: ownerLedgerEntries.id,
       entryType: ownerLedgerEntries.entryType,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       postedAt: ownerLedgerEntries.postedAt,
       description: ownerLedgerEntries.description,
     })
@@ -188,7 +189,7 @@ export async function buildAccountStatement(input: {
   const entries: StatementLedgerEntry[] = rows.map((r) => ({
     id: r.id,
     entryType: r.entryType,
-    amount: r.amount,
+    amount: ownerLedgerAmountDollars(r),
     postedAt: r.postedAt instanceof Date ? r.postedAt : new Date(r.postedAt),
     description: r.description,
   }));
@@ -279,7 +280,7 @@ export async function buildUnitAccountStatement(input: {
     .select({
       id: ownerLedgerEntries.id,
       entryType: ownerLedgerEntries.entryType,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       postedAt: ownerLedgerEntries.postedAt,
       description: ownerLedgerEntries.description,
     })
@@ -294,7 +295,7 @@ export async function buildUnitAccountStatement(input: {
   const entries: StatementLedgerEntry[] = rows.map((r) => ({
     id: r.id,
     entryType: r.entryType,
-    amount: r.amount,
+    amount: ownerLedgerAmountDollars(r),
     postedAt: r.postedAt instanceof Date ? r.postedAt : new Date(r.postedAt),
     description: r.description,
   }));

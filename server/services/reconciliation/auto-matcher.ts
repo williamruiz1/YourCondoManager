@@ -63,6 +63,7 @@ import {
   type BankTransaction,
   type OwnerLedgerEntry,
 } from "@shared/schema";
+import { ownerLedgerAmountCents } from "@shared/owner-ledger-money";
 import { isUnitCentricEnabledForAssociation } from "../unit-centric-flag";
 import {
   loadUnitPayerRosters,
@@ -543,7 +544,7 @@ export async function runAutoMatch(
     const refHit = unitCentric ? findReferenceInDescriptor(creditDesc, knownRefs) : null;
 
     for (const entry of pendingEntries) {
-      const entryAbsCents = Math.round(Math.abs(entry.amount) * 100);
+      const entryAbsCents = Math.abs(ownerLedgerAmountCents(entry));
       const owner = personById.get(entry.personId);
 
       const dateDelta = diffDays(creditDate, entry.postedAt);
@@ -873,9 +874,9 @@ export function scoreSuggestion(input: {
  * negative = owner has credit). Charges + assessments + late-fees count as
  * positive; payments + credits + adjustments-toward-credit count as negative.
  *
- * Open-balance convention: ledger amounts are signed (positive for charges,
+ * Open-balance convention: ledger cents are signed (positive for charges,
  * negative for payments). So the open balance for an owner is simply the sum
- * of `amount` over all unsettled ledger entries — except we want the running
+ * of `amountCents` over all unsettled ledger entries — except we want the running
  * total over ALL entries (settled or not) to capture the full picture.
  *
  * For matching purposes we use the ABSOLUTE open balance, since a positive
@@ -888,27 +889,21 @@ async function computeOpenBalancesPerOwner(
   const rows = await db
     .select({
       personId: ownerLedgerEntries.personId,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       entryType: ownerLedgerEntries.entryType,
     })
     .from(ownerLedgerEntries)
     .where(eq(ownerLedgerEntries.associationId, associationId));
 
-  const balanceByPerson = new Map<string, number>(); // dollars (cents math at output)
+  const balanceByPerson = new Map<string, number>();
   for (const r of rows) {
     // Convention: amounts for `charge|assessment|late-fee` are stored positive
     // (owner owes), `payment|credit|adjustment` are stored negative (reduces
-    // balance). Summing the signed `amount` field yields the current balance.
+    // balance). Summing signed integer cents yields the current balance.
     const prev = balanceByPerson.get(r.personId) ?? 0;
-    balanceByPerson.set(r.personId, prev + r.amount);
+    balanceByPerson.set(r.personId, prev + ownerLedgerAmountCents(r));
   }
-
-  // Convert to cents.
-  const cents = new Map<string, number>();
-  for (const [pid, dollars] of balanceByPerson) {
-    cents.set(pid, Math.round(dollars * 100));
-  }
-  return cents;
+  return balanceByPerson;
 }
 
 /**

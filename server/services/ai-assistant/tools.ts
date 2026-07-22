@@ -21,6 +21,7 @@ import {
   paymentTransactions,
   type PaymentTransaction,
 } from "@shared/schema";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 import { getOwnerBalanceSummary, getOwnerPaymentHistory } from "../payment-service";
 import type { CallerContext } from "./types";
 
@@ -218,7 +219,7 @@ export async function getNextPaymentDue(
   // The "next due" is the earliest-posted charge with a positive amount
   // that hasn't been fully paid. Phase 0 picks first-positive; Phase 1
   // adapter may compute against an offset / due-date schedule.
-  const open = entries.find((e) => (Number(e.amount) || 0) > 0);
+  const open = entries.find((e) => ownerLedgerAmountDollars(e) > 0);
 
   if (!open) {
     return {
@@ -231,7 +232,7 @@ export async function getNextPaymentDue(
     };
   }
 
-  const amount = Number(open.amount) || 0;
+  const amount = ownerLedgerAmountDollars(open);
   const dueDate = open.postedAt.toISOString().slice(0, 10);
   return {
     ownerId,

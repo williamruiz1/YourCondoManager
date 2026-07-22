@@ -32,6 +32,7 @@ import {
   recurringChargeSchedules,
   type AssessmentRunLogRow,
 } from "@shared/schema";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 
 import { db } from "./db";
 import {
@@ -94,16 +95,17 @@ interface NormalizedLedgerRow {
 function normalizeLedgerRow(row: {
   id: string;
   unitId: string;
-  amount: number;
+  amountCents: number | null;
   referenceType: string | null;
   referenceId: string | null;
 }): NormalizedLedgerRow {
+  const amount = ownerLedgerAmountDollars(row);
   if (row.referenceType === "recurring_charge_schedule") {
     return {
       ruleType: "recurring",
       ruleId: row.referenceId ?? null,
       unitId: row.unitId,
-      amount: row.amount,
+      amount,
       ledgerEntryId: row.id,
     };
   }
@@ -114,7 +116,7 @@ function normalizeLedgerRow(row: {
       ruleType: "special-assessment",
       ruleId: assessmentId,
       unitId: row.unitId,
-      amount: row.amount,
+      amount,
       ledgerEntryId: row.id,
     };
   }
@@ -122,7 +124,7 @@ function normalizeLedgerRow(row: {
     ruleType: null,
     ruleId: row.referenceId ?? null,
     unitId: row.unitId,
-    amount: row.amount,
+    amount,
     ledgerEntryId: row.id,
   };
 }
@@ -151,7 +153,7 @@ export async function compareShadowRuns(
     .select({
       id: ownerLedgerEntries.id,
       unitId: ownerLedgerEntries.unitId,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       referenceType: ownerLedgerEntries.referenceType,
       referenceId: ownerLedgerEntries.referenceId,
     })

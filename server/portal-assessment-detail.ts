@@ -29,6 +29,7 @@ import {
   type OwnerLedgerEntry,
   type SpecialAssessment,
 } from "@shared/schema";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 import { db } from "./db";
 import { SPECIAL_ASSESSMENT_REFERENCE_TYPE } from "./assessment-execution";
 import {
@@ -245,11 +246,12 @@ export async function buildAssessmentDetailForOwnerUnit(params: {
   // Build running balance across this owner's posted entries.
   let running = 0;
   const ledgerEntriesView = myLedgerEntries.map((e) => {
-    running += e.amount;
+    const amount = ownerLedgerAmountDollars(e);
+    running += amount;
     return {
       id: e.id,
       postedAt: new Date(e.postedAt).toISOString(),
-      amount: e.amount,
+      amount,
       balance: running,
     };
   });
@@ -257,7 +259,7 @@ export async function buildAssessmentDetailForOwnerUnit(params: {
   const totalPaidAbs = Math.abs(
     myLedgerEntries
       .filter((e) => e.entryType === "payment" || e.entryType === "credit")
-      .reduce((acc, e) => acc + e.amount, 0),
+      .reduce((acc, e) => acc + ownerLedgerAmountDollars(e), 0),
   );
 
   // 2026-07-12 — same LEGACY-assessment ledger-truth treatment as
@@ -306,7 +308,7 @@ export async function buildAssessmentDetailForOwnerUnit(params: {
         (e) => e.referenceType !== SPECIAL_ASSESSMENT_REFERENCE_TYPE,
       );
       legacyLedgerRemaining = round2(
-        Math.max(0, untrackedEntries.reduce((sum, e) => sum + e.amount, 0)),
+        Math.max(0, untrackedEntries.reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0)),
       );
     }
   }
@@ -593,7 +595,7 @@ export async function getAssessmentPlansForOwnerUnit(params: {
       (e) => e.referenceType !== SPECIAL_ASSESSMENT_REFERENCE_TYPE,
     );
     legacyLedgerRemaining = round2(
-      Math.max(0, untrackedEntries.reduce((sum, e) => sum + e.amount, 0)),
+      Math.max(0, untrackedEntries.reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0)),
     );
   }
 

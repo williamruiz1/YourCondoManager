@@ -970,9 +970,12 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
   // unitId, not personId (see buildUnitAccountStatement).
   personId: varchar("person_id").notNull().references(() => persons.id),
   entryType: ownerLedgerEntryTypeEnum("entry_type").notNull(),
-  // Expand/contract Release A: legacy dollars remain available while exact
-  // integer cents are backfilled and observed. The compatibility trigger dual
-  // writes both representations; Release B will switch reads only after zero drift.
+  // Expand/contract money contract: the compatibility trigger dual-writes both
+  // representations. Release B makes amount_cents NOT NULL in PostgreSQL and
+  // all canonical readers fail closed on it. This Drizzle field intentionally
+  // stays nullable during the rolling-deploy compatibility window so a Release
+  // A application instance may still omit it while the database trigger fills
+  // the exact mirror. The legacy amount column remains write-compatible only.
   amount: doublePrecision("amount").notNull(),
   amountCents: integer("amount_cents"),
   postedAt: timestamp("posted_at").notNull(),

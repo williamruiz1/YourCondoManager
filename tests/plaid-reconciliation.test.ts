@@ -32,6 +32,7 @@ type LedgerEntry = {
   id: string;
   associationId: string;
   amount: number; // negative for payment entries
+  amountCents: number;
   referenceType: string | null;
   bankTransactionId: string | null;
   settledAt: Date | null;
@@ -62,6 +63,7 @@ const state = vi.hoisted(() => ({
     id: string;
     associationId: string;
     amount: number;
+    amountCents: number;
     referenceType: string | null;
     bankTransactionId: string | null;
     settledAt: Date | null;
@@ -88,7 +90,12 @@ vi.mock("../server/db", () => {
         pendingWhereFilters = [];
         pendingLimit = null;
         const exec = () => {
-          const rows = pendingTableRef === "credits" ? state.credits : state.entries;
+          const rows = pendingTableRef === "credits"
+            ? state.credits
+            : state.entries.map((row) => ({
+                ...row,
+                amountCents: row.amountCents ?? Math.round(row.amount * 100),
+              }));
           const filtered = rows.filter((r: any) =>
             pendingWhereFilters.every((f) => f(r)),
           );
@@ -177,6 +184,7 @@ vi.mock("@shared/schema", () => {
       settledAt: col("settledAt"),
       bankTransactionId: col("bankTransactionId"),
       amount: col("amount"),
+      amountCents: col("amountCents"),
       description: col("description"),
       createdAt: col("createdAt"),
     },
@@ -203,10 +211,12 @@ function credit(over: Partial<Credit>): Credit {
 }
 
 function entry(over: Partial<LedgerEntry>): LedgerEntry {
+  const amount = over.amount ?? -250;
   return {
     id: over.id ?? "ole-1",
     associationId: over.associationId ?? ASSOC_A,
-    amount: over.amount ?? -250, // payment intent, negative per pay-intent convention
+    amount, // payment intent, negative per pay-intent convention
+    amountCents: over.amountCents ?? Math.round(amount * 100),
     referenceType: over.referenceType ?? "plaid-pay-intent",
     bankTransactionId: over.bankTransactionId ?? null,
     settledAt: over.settledAt ?? null,
