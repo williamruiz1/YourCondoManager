@@ -58,6 +58,9 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm run check
       - run: npm run lint
+      # founder-os#14743 — dues-vs-rent terminology guard: YCM charges HOA
+      # dues/assessments, never "rent" (PlinthKeep is the rent product).
+      - run: bash script/check-terminology.sh
       # CQ-001 (founder-os#10740): lint the server/shared trees (money/tenant/
       # webhook logic) that the client-only `lint` never touched. ADVISORY
       # (continue-on-error) for now — the initial finding count on 38.5k
