@@ -353,6 +353,7 @@ import { registerViolationsManagementRoutes } from "./routes/violations-manageme
 import { registerMeetingPrepRoutes } from "./routes/meeting-prep";
 import { registerReconSuggestionRoutes } from "./routes/recon-suggestion";
 import { registerAccountStatementRoutes } from "./routes/account-statement";
+import { registerBalanceConfidenceRoutes } from "./routes/balance-confidence";
 import { registerResaleCertificateRoutes } from "./routes/resale-certificate";
 import { registerStatutoryRecordsRoutes } from "./routes/statutory-records";
 import {
@@ -1702,6 +1703,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   //   GET /api/portal/statement (owner, own statement)
   //   GET /api/financial/owner-ledger/statement (admin, any owner)
   registerAccountStatementRoutes(app, {
+    requireAdmin,
+    requireAdminRole,
+    requirePortal,
+    getAssociationIdQuery,
+    assertAssociationScope,
+  });
+
+  registerBalanceConfidenceRoutes(app, {
     requireAdmin,
     requireAdminRole,
     requirePortal,

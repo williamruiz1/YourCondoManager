@@ -39,6 +39,10 @@ import {
   type PaymentReceiptData,
 } from "@/components/payment-receipt-view";
 import { PortalShell, usePortalContext } from "./portal-shell";
+import {
+  BalanceConfidenceBadge,
+  type BalanceConfidenceItem,
+} from "@/components/balance-confidence-badge";
 import { t } from "@/i18n/use-strings";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
@@ -665,6 +669,27 @@ function PerUnitTransposedTable({
   units: PerUnitBreakdown[];
   hasUpcomingInstallments?: boolean;
 }) {
+  // Per-unit balance-confidence annotations (founder-os#11196). Additive +
+  // fail-open: a fetch error or missing rows simply render no badge, and the
+  // table renders exactly as before.
+  const { portalFetch } = usePortalContext();
+  const { data: confidence } = useQuery<Record<string, BalanceConfidenceItem[]>>({
+    queryKey: ["portal/balance-confidence"],
+    queryFn: async () => {
+      const res = await portalFetch("/api/portal/balance-confidence");
+      if (!res.ok) return {};
+      const json = await res.json();
+      const items: BalanceConfidenceItem[] = Array.isArray(json?.confidence)
+        ? json.confidence
+        : [];
+      const byUnit: Record<string, BalanceConfidenceItem[]> = {};
+      for (const it of items) {
+        (byUnit[it.unitId] ??= []).push(it);
+      }
+      return byUnit;
+    },
+  });
+
   // Column-wise sums across every owned unit → the "All units" / total column.
   const across = {
     dueNowDues: units.reduce((s, u) => s + u.dueNowDues, 0),
@@ -762,7 +787,10 @@ function PerUnitTransposedTable({
                     className="whitespace-nowrap text-right"
                     data-testid={`portal-finances-transpose-col-${u.unitId}`}
                   >
-                    {u.unitLabel}
+                    <div className="flex flex-col items-end gap-1">
+                      <span>{u.unitLabel}</span>
+                      <BalanceConfidenceBadge items={confidence?.[u.unitId] ?? []} />
+                    </div>
                   </TableHead>
                 ))}
                 <TableHead

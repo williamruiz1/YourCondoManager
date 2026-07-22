@@ -1010,6 +1010,46 @@ export const ownerLedgerEntries = pgTable("owner_ledger_entries", {
     .where(sql`${table.paymentIdentityKey} is not null`),
 }));
 
+// ── Owner-balance confidence metadata (founder-os#11196 / research #832 §5) ──
+// PURELY ADDITIVE DISPLAY METADATA — this table NEVER touches the balance of
+// record. The money-of-record lives in `owner_ledger_entries` (signed sum);
+// this table only annotates a unit's balance, per category, with a confidence
+// tier + audit provenance + an optional documented dispute. The owner portal
+// LEFT-JOINs it when rendering the balance card; when absent, the card renders
+// exactly as before (fully backward-compatible, fail-open). The dispute amount
+// is board-only (see `disputeVisibleToBoardOnly`) — the owner API strips it.
+export const balanceConfidenceTierEnum = pgEnum("balance_confidence_tier", ["high", "medium", "low", "disputed"]);
+export const balanceCategoryEnum = pgEnum("balance_category", ["assessment", "dues"]);
+export const ownerBalanceConfidence = pgTable("owner_balance_confidence", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  associationId: varchar("association_id").notNull().references(() => associations.id),
+  unitId: varchar("unit_id").notNull().references(() => units.id),
+  // Which balance this annotates: "assessment" (special-assessment receivable)
+  // or "dues" (HOA common-charges arrears).
+  category: balanceCategoryEnum("category").notNull(),
+  tier: balanceConfidenceTierEnum("tier").notNull(),
+  // The balance figure this tier was assessed against (the ratified snapshot
+  // value). Display/audit only — NOT authoritative; the ledger sum is.
+  balanceAsAssessed: real("balance_as_assessed"),
+  // Documented dispute amount (e.g. CHC 1419/Tillman $606.86 opening-balance
+  // gap). BOARD-ONLY by default — the owner API must strip this when true.
+  disputeAmount: real("dispute_amount"),
+  disputeVisibleToBoardOnly: integer("dispute_visible_to_board_only").notNull().default(1),
+  // Audit provenance (research #832 §3 artifact inventory).
+  sourceArtifactId: text("source_artifact_id"),
+  preparedBy: text("prepared_by"),
+  asOfDate: timestamp("as_of_date"),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  // One confidence row per (unit, category) — upsert target.
+  uqUnitCategory: uniqueIndex("owner_balance_confidence_unit_category_uq").on(table.unitId, table.category),
+  byAssoc: index("owner_balance_confidence_assoc_idx").on(table.associationId),
+}));
+export type OwnerBalanceConfidence = typeof ownerBalanceConfidence.$inferSelect;
+export type InsertOwnerBalanceConfidence = typeof ownerBalanceConfidence.$inferInsert;
+
 export const paymentPlanStatusEnum = pgEnum("payment_plan_status", ["active", "completed", "defaulted", "cancelled"]);
 export const paymentPlans = pgTable("payment_plans", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
