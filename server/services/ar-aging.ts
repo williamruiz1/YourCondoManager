@@ -23,9 +23,9 @@
 import { and, eq, lte, or, isNull, gte } from "drizzle-orm";
 import { db } from "../db";
 import { ownerLedgerEntries, ownerships, persons, units } from "@shared/schema";
+import { ownerLedgerAmountCents } from "@shared/owner-ledger-money";
 import {
   computeArAging,
-  toCents,
   type AgingLedgerEntry,
   type AgingBuckets,
 } from "./ar-aging-math";
@@ -85,14 +85,13 @@ export async function buildArAgingReport(
   associationId: string,
   asOf: Date = new Date(),
 ): Promise<ArAgingReport> {
-  // 1. Load every ledger entry for the association (tenant-scoped). We convert
-  //    each stored `real` dollar amount to integer cents up front so all
-  //    downstream math is cent-exact.
+  // 1. Load every ledger entry for the association (tenant-scoped). Release B
+  //    reads the canonical integer-cent column directly.
   const rows = await db
     .select({
       unitId: ownerLedgerEntries.unitId,
       entryType: ownerLedgerEntries.entryType,
-      amount: ownerLedgerEntries.amount,
+      amountCents: ownerLedgerEntries.amountCents,
       postedAt: ownerLedgerEntries.postedAt,
     })
     .from(ownerLedgerEntries)
@@ -104,7 +103,7 @@ export async function buildArAgingReport(
     const list = entriesByUnit.get(r.unitId) ?? [];
     list.push({
       entryType: r.entryType,
-      amountCents: toCents(r.amount),
+      amountCents: ownerLedgerAmountCents(r),
       postedAt: r.postedAt instanceof Date ? r.postedAt : new Date(r.postedAt),
     });
     entriesByUnit.set(r.unitId, list);

@@ -20,6 +20,7 @@ interface FakeLedgerRow {
   associationId: string;
   unitId: string;
   amount: number;
+  amountCents?: number;
   referenceType: string | null;
   referenceId: string | null;
   postedAt: Date;
@@ -62,7 +63,7 @@ vi.mock("../server/db", () => {
                   fakeLedger.map((r) => ({
                     id: r.id,
                     unitId: r.unitId,
-                    amount: r.amount,
+                    amountCents: r.amountCents ?? Math.round(r.amount * 100),
                     referenceType: r.referenceType,
                     referenceId: r.referenceId,
                   })),

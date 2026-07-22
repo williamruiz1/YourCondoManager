@@ -20,6 +20,7 @@ import {
   persons,
   type PaymentTransaction,
 } from "@shared/schema";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 import {
   applyChargeMetadataToPaymentIntent,
   buildSpecMetadata,
@@ -485,7 +486,7 @@ export async function getOwnerBalanceSummary(params: {
   const creditTypes = new Set(["payment", "credit", "adjustment"]);
 
   for (const entry of ledgerEntries) {
-    const amt = Number(entry.amount) || 0;
+    const amt = ownerLedgerAmountDollars(entry);
     if (chargeTypes.has(entry.entryType)) {
       totalCharges += amt;
     } else if (creditTypes.has(entry.entryType)) {
@@ -497,11 +498,11 @@ export async function getOwnerBalanceSummary(params: {
 
   // Open charges: positive-amount charge/assessment/late-fee entries
   const openCharges = ledgerEntries
-    .filter((e) => chargeTypes.has(e.entryType) && (Number(e.amount) || 0) > 0)
+    .filter((e) => chargeTypes.has(e.entryType) && ownerLedgerAmountDollars(e) > 0)
     .map((e) => ({
       id: e.id,
       entryType: e.entryType,
-      amount: Number(e.amount) || 0,
+      amount: ownerLedgerAmountDollars(e),
       description: e.description,
       postedAt: e.postedAt.toISOString(),
       unitId: e.unitId,

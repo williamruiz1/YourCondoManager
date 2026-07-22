@@ -34,6 +34,7 @@ import { buildEstoppelCertificateDocument } from "../services/estoppel-certifica
 import { buildRecordsRequestResponse } from "../services/records-request-response-service";
 import type { ResaleCertificateLedgerEntry } from "../services/resale-certificate-service";
 import { ownerLedgerEntries } from "@shared/schema";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 import {
   intakeStatutoryRecord,
   signStatutoryRecord,
@@ -186,7 +187,7 @@ async function generateDocument(
     const ledgerRows = await db
       .select({
         entryType: ownerLedgerEntries.entryType,
-        amount: ownerLedgerEntries.amount,
+        amountCents: ownerLedgerEntries.amountCents,
         description: ownerLedgerEntries.description,
         referenceType: ownerLedgerEntries.referenceType,
       })
@@ -200,7 +201,7 @@ async function generateDocument(
       );
     const ownerLedger: ResaleCertificateLedgerEntry[] = ledgerRows.map((r) => ({
       entryType: r.entryType,
-      amount: r.amount,
+      amount: ownerLedgerAmountDollars(r),
       description: r.description,
       referenceType: r.referenceType,
     }));

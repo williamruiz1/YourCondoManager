@@ -33,19 +33,24 @@ function makeEvent(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 function makeLedgerEntry(overrides: Partial<Record<string, unknown>> = {}) {
+  const amount = typeof overrides.amount === "number" ? overrides.amount : 50;
   return {
     id: "ledger-entry",
     associationId: "assoc-1",
     unitId: "unit-1",
     personId: "person-1",
     entryType: "payment",
-    amount: 50,
+    amount,
     postedAt: new Date("2026-02-10T00:00:00Z"),
     description: null,
     referenceType: null,
     referenceId: null,
     createdAt: new Date("2026-02-10T00:00:00Z"),
     ...overrides,
+    amountCents:
+      typeof overrides.amountCents === "number"
+        ? overrides.amountCents
+        : Math.round(amount * 100),
   };
 }
 

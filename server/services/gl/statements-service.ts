@@ -47,6 +47,7 @@ import {
 } from "./statements";
 import { CHART_OF_ACCOUNTS, centsToDollars, type OwnerLedgerEntryLike } from "./posting";
 import { reconcileFromOwnerLedger, type ReconcileReport } from "./reconcile";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 
 /** Derive a budget's fund from its name (a "...Reserve..." budget is reserve). */
 function fundFromBudgetName(name: string): GlFund {
@@ -202,7 +203,7 @@ async function loadOwnerLedgerForReconcile(
   return rows.map((r) => ({
     id: r.id,
     entryType: r.entryType,
-    amount: r.amount,
+    amount: ownerLedgerAmountDollars(r),
     postedAt: r.postedAt,
     description: r.description,
   }));

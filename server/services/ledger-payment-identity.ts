@@ -43,6 +43,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db";
 import { ownerLedgerEntries, type OwnerLedgerEntry } from "@shared/schema";
 import { log } from "../logger";
+import { ownerLedgerV1Amount } from "@shared/owner-ledger-money";
 
 const AUDIT_SOURCE = "ledger-payment-identity";
 
@@ -121,7 +122,7 @@ export async function postPaymentLedgerEntry(
         `[${input.source}] wrote ledger entry id=${inserted.id} identity=${key} ref=${logRef} amount=${input.amount}`,
         AUDIT_SOURCE,
       );
-      return { created: true, entry: inserted };
+      return { created: true, entry: ownerLedgerV1Amount(inserted) };
     }
 
     // Conflict — some other event/endpoint already posted this payment_intent.
@@ -142,7 +143,7 @@ export async function postPaymentLedgerEntry(
       `[${input.source}] skip ledger write — payment identity already recorded identity=${key} existing=${existing?.id ?? "unknown"} attempted-ref=${logRef}`,
       AUDIT_SOURCE,
     );
-    return { created: false, entry: existing ?? null };
+    return { created: false, entry: existing ? ownerLedgerV1Amount(existing) : null };
   }
 
   // No canonical payment identity available. Fall back to the EXACT
@@ -160,7 +161,7 @@ export async function postPaymentLedgerEntry(
     .limit(1);
   if (existing) {
     log(`[${input.source}] skip ledger write — reference already exists ref=${logRef} id=${existing.id}`, AUDIT_SOURCE);
-    return { created: false, entry: existing };
+    return { created: false, entry: ownerLedgerV1Amount(existing) };
   }
 
   const [inserted] = await db
@@ -179,5 +180,5 @@ export async function postPaymentLedgerEntry(
     })
     .returning();
   log(`[${input.source}] wrote ledger entry id=${inserted.id} (no payment identity key) ref=${logRef} amount=${input.amount}`, AUDIT_SOURCE);
-  return { created: true, entry: inserted };
+  return { created: true, entry: ownerLedgerV1Amount(inserted) };
 }

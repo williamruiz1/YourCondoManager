@@ -519,6 +519,13 @@
 			"when": 1784646000000,
 			"tag": "0073_founder_feedback_delivery",
 			"breakpoints": true
+		},
+		{
+			"idx": 74,
+			"version": "7",
+			"when": 1784744800000,
+			"tag": "0074_money_cents_read_switch",
+			"breakpoints": true
 		}
 	]
 }

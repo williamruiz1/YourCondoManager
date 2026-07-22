@@ -305,6 +305,11 @@ import {
   type ConsentRecord,
   paymentTransactions,
 } from "@shared/schema";
+import {
+  ownerLedgerAmountCents,
+  ownerLedgerAmountDollars,
+  ownerLedgerV1Amount,
+} from "@shared/owner-ledger-money";
 import { normalizeAdminNotificationPreferences } from "@shared/admin-notification-preferences";
 import { recordPlatformProcessingFee, netLedgerCreditDollars } from "./services/convenience-fee";
 import { governanceStateTemplateLibrary } from "@shared/governance-state-template-library";
@@ -8272,14 +8277,14 @@ export class DatabaseStorage implements IStorage {
     if (!person) throw new Error("Person not found");
 
     const entries = await db
-      .select({ amount: ownerLedgerEntries.amount })
+      .select({ amountCents: ownerLedgerEntries.amountCents })
       .from(ownerLedgerEntries)
       .where(and(
         eq(ownerLedgerEntries.associationId, payload.associationId),
         eq(ownerLedgerEntries.unitId, payload.unitId),
         eq(ownerLedgerEntries.personId, payload.personId),
       ));
-    const outstandingBalance = Number(entries.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+    const outstandingBalance = entries.reduce((sum, row) => sum + ownerLedgerAmountCents(row), 0) / 100;
     if (outstandingBalance <= 0) {
       throw new Error("Owner ledger balance is not payable");
     }
@@ -8380,7 +8385,7 @@ export class DatabaseStorage implements IStorage {
       return {
         duplicate: true,
         event: existing,
-        ownerLedgerEntry,
+        ownerLedgerEntry: ownerLedgerEntry ? ownerLedgerV1Amount(ownerLedgerEntry) : null,
         message: "Webhook event already processed",
       };
     }
@@ -8716,13 +8721,15 @@ export class DatabaseStorage implements IStorage {
 
   async getOwnerLedgerEntries(associationId?: string): Promise<OwnerLedgerEntry[]> {
     if (!associationId) {
-      return db.select().from(ownerLedgerEntries).orderBy(desc(ownerLedgerEntries.postedAt));
+      const rows = await db.select().from(ownerLedgerEntries).orderBy(desc(ownerLedgerEntries.postedAt));
+      return rows.map(ownerLedgerV1Amount);
     }
-    return db
+    const rows = await db
       .select()
       .from(ownerLedgerEntries)
       .where(eq(ownerLedgerEntries.associationId, associationId))
       .orderBy(desc(ownerLedgerEntries.postedAt));
+    return rows.map(ownerLedgerV1Amount);
   }
 
   async createOwnerLedgerEntry(
@@ -8730,7 +8737,7 @@ export class DatabaseStorage implements IStorage {
     executor: DbOrTx = db,
   ): Promise<OwnerLedgerEntry> {
     const [result] = await executor.insert(ownerLedgerEntries).values(data).returning();
-    return result;
+    return ownerLedgerV1Amount(result);
   }
 
   async getOwnerLedgerSummary(associationId: string): Promise<Array<{ personId: string; unitId: string; balance: number }>> {
@@ -8739,7 +8746,7 @@ export class DatabaseStorage implements IStorage {
     for (const entry of entries) {
       const key = `${entry.personId}:${entry.unitId}`;
       const current = rollup.get(key) ?? { personId: entry.personId, unitId: entry.unitId, balance: 0 };
-      current.balance += entry.amount;
+      current.balance += ownerLedgerAmountDollars(entry);
       rollup.set(key, current);
     }
     return Array.from(rollup.values()).sort((a, b) => b.balance - a.balance);
@@ -15872,8 +15879,8 @@ export class DatabaseStorage implements IStorage {
 
     const content = sections.map((sectionKey) => {
       if (sectionKey === "financial") {
-        const receivable = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "charge" || entry.entryType === "late-fee" ? entry.amount : 0), 0);
-        const payments = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "payment" ? entry.amount : 0), 0);
+        const receivable = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "charge" || entry.entryType === "late-fee" ? ownerLedgerAmountDollars(entry) : 0), 0);
+        const payments = ledgerEntries.reduce((acc, entry) => acc + (entry.entryType === "payment" ? ownerLedgerAmountDollars(entry) : 0), 0);
         return {
           key: "financial",
           title: "Financial Summary",
@@ -16939,18 +16946,18 @@ export class DatabaseStorage implements IStorage {
       const period = `${postedAt.getUTCFullYear()}-${String(postedAt.getUTCMonth() + 1).padStart(2, "0")}`;
       const current = monthlyBuckets.get(period) ?? { charges: 0, payments: 0, credits: 0 };
       if (entry.entryType === "payment") {
-        current.payments += Math.abs(entry.amount);
+        current.payments += Math.abs(ownerLedgerAmountDollars(entry));
       } else if (entry.entryType === "credit" || entry.entryType === "adjustment") {
-        current.credits += Math.abs(entry.amount);
+        current.credits += Math.abs(ownerLedgerAmountDollars(entry));
       } else if (entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee") {
-        current.charges += Math.abs(entry.amount);
+        current.charges += Math.abs(ownerLedgerAmountDollars(entry));
       }
       monthlyBuckets.set(period, current);
     }
 
-    const totalCharges = charges.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
-    const totalPayments = payments.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
-    const totalCredits = credits.reduce((acc, entry) => acc + Math.abs(entry.amount), 0);
+    const totalCharges = charges.reduce((acc, entry) => acc + Math.abs(ownerLedgerAmountDollars(entry)), 0);
+    const totalPayments = payments.reduce((acc, entry) => acc + Math.abs(ownerLedgerAmountDollars(entry)), 0);
+    const totalCredits = credits.reduce((acc, entry) => acc + Math.abs(ownerLedgerAmountDollars(entry)), 0);
     const openBalance = Number((totalCharges - totalPayments - totalCredits).toFixed(2));
     const collectionBase = totalCharges === 0 ? 0 : ((totalPayments + totalCredits) / totalCharges) * 100;
     const monthlyTrend = Array.from(monthlyBuckets.entries())
@@ -16968,7 +16975,7 @@ export class DatabaseStorage implements IStorage {
 
     for (const entry of ledgerEntries) {
       const key = `${entry.personId}:${entry.unitId}`;
-      accountBalances.set(key, (accountBalances.get(key) ?? 0) + entry.amount);
+      accountBalances.set(key, (accountBalances.get(key) ?? 0) + ownerLedgerAmountDollars(entry));
       if (entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee") {
         const postedAt = new Date(entry.postedAt);
         const existing = accountLatestChargeAt.get(key);

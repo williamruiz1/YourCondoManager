@@ -39,6 +39,7 @@ type LedgerRow = {
   personId: string;
   entryType: string;
   amount: number;
+  amountCents: number;
   postedAt: Date;
   description: string | null;
   referenceType: string | null;
@@ -79,6 +80,10 @@ vi.mock("../../db", () => ({
             personId: String(vals["personId"]),
             entryType: String(vals["entryType"]),
             amount: Number(vals["amount"]),
+            amountCents:
+              typeof vals["amountCents"] === "number"
+                ? Number(vals["amountCents"])
+                : Math.round(Number(vals["amount"]) * 100),
             postedAt:
               vals["postedAt"] instanceof Date
                 ? vals["postedAt"]
@@ -135,6 +140,7 @@ vi.mock("@shared/schema", async () => {
     id: "id",
     settledAt: "settledAt",
     bankTransactionId: "bankTransactionId",
+    amountCents: "amountCents",
   } as unknown as Record<string, string>;
   const auditLogs = {
     __tag: "auditLogs",

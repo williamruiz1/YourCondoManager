@@ -29,6 +29,10 @@ import {
   ownerships,
 } from "@shared/schema";
 import {
+  ownerLedgerAmountCents,
+  ownerLedgerAmountDollars,
+} from "@shared/owner-ledger-money";
+import {
   findOwnerSuggestionsForUnmatchedCredits,
   CREDIT_SEARCH_WINDOW_DAYS,
 } from "./auto-matcher";
@@ -109,7 +113,7 @@ export async function buildReconciliationReport(input: {
       ),
     );
   const ledgerPaymentsCents = ledgerRows.reduce(
-    (sum, r) => sum + Math.round(Math.abs(r.amount) * 100),
+    (sum, r) => sum + Math.abs(ownerLedgerAmountCents(r)),
     0,
   );
 
@@ -162,7 +166,7 @@ export async function buildReconciliationReport(input: {
       unitId: r.unitId,
       unitNumber: unit?.unitNumber ?? null,
       postedAt: r.postedAt,
-      amount: r.amount,
+      amount: ownerLedgerAmountDollars(r),
       description: r.description,
     };
   });
@@ -177,7 +181,7 @@ export async function buildReconciliationReport(input: {
       paymentsRecordedCents: 0,
       paymentsSettledCents: 0,
     };
-    const cents = Math.round(Math.abs(r.amount) * 100);
+    const cents = Math.abs(ownerLedgerAmountCents(r));
     acc.paymentsRecordedCents += cents;
     if (r.bankTransactionId !== null && r.settledAt !== null) {
       acc.paymentsSettledCents += cents;

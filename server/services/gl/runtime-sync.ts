@@ -45,6 +45,7 @@ import { isGlEnabledForAssociation } from "./flag";
 import { reconcileFromOwnerLedger } from "./reconcile";
 import { syncAssociationGl, type GlPostingResult } from "./gl-posting-service";
 import type { OwnerLedgerEntryLike } from "./posting";
+import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
 
 export type GlSyncOutcome =
   | { posted: false; reason: "not-enabled" | "reconcile-failed" | "error"; detail?: string }
@@ -59,7 +60,7 @@ async function loadOwnerLedger(associationId: string): Promise<OwnerLedgerEntryL
   return rows.map((r) => ({
     id: r.id,
     entryType: r.entryType,
-    amount: r.amount,
+    amount: ownerLedgerAmountDollars(r),
     postedAt: r.postedAt,
     description: r.description,
   }));

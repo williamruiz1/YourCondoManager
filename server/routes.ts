@@ -289,6 +289,11 @@ import {
   paymentTransactions,
   planCatalog,
 } from "@shared/schema";
+import {
+  ownerLedgerAmountCents,
+  ownerLedgerAmountDollars,
+  ownerLedgerV1Amount,
+} from "@shared/owner-ledger-money";
 import type { AdminRole, PlanCatalog } from "@shared/schema";
 // Tenant-isolation primitives — the single shared, fail-closed authz layer
 // (A-AUTHZ-001/004). Extracted from this file so per-feature route modules can
@@ -3899,7 +3904,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Scan for large payments (>$5000)
       const entries = await db.select().from(ownerLedgerEntries).where(eq(ownerLedgerEntries.associationId, associationId));
       for (const e of entries) {
-        if (Math.abs(e.amount) > 5000 && e.entryType === "payment") {
+        const amount = ownerLedgerAmountDollars(e);
+        if (Math.abs(amount) > 5000 && e.entryType === "payment") {
           const [existing] = await db.select().from(financialAlerts)
             .where(and(eq(financialAlerts.associationId, associationId), eq(financialAlerts.entityId, e.id), eq(financialAlerts.alertType, "large_payment"))).limit(1);
           if (!existing) {
@@ -3908,10 +3914,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               alertType: "large_payment",
               severity: "warning",
               title: "Large Payment Detected",
-              message: `Payment of $${Math.abs(e.amount).toFixed(2)} exceeds $5,000 threshold. Posted: ${new Date(e.postedAt).toLocaleDateString()}.`,
+              message: `Payment of $${Math.abs(amount).toFixed(2)} exceeds $5,000 threshold. Posted: ${new Date(e.postedAt).toLocaleDateString()}.`,
               entityType: "ledger_entry",
               entityId: e.id,
-              amount: e.amount,
+              amount,
             }).returning();
             created.push(a);
           }
@@ -4694,7 +4700,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (const entry of allLedger) {
         const key = `${entry.personId}:${entry.unitId}`;
         const existing2 = balanceMap.get(key) ?? { personId: entry.personId, unitId: entry.unitId, balance: 0, oldestCharge: null };
-        existing2.balance += entry.amount;
+        existing2.balance += ownerLedgerAmountDollars(entry);
         if ((entry.entryType === "charge" || entry.entryType === "assessment") && entry.postedAt) {
           const chargeDate = new Date(entry.postedAt);
           if (!existing2.oldestCharge || chargeDate < existing2.oldestCharge) existing2.oldestCharge = chargeDate;
@@ -4937,8 +4943,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       for (const e of entries) {
         if (!e.unitId) continue;
         const cur = unitMap.get(e.unitId) ?? { charged: 0, paid: 0 };
-        if (e.amount < 0) cur.paid += Math.abs(e.amount);
-        else cur.charged += e.amount;
+        const amount = ownerLedgerAmountDollars(e);
+        if (amount < 0) cur.paid += Math.abs(amount);
+        else cur.charged += amount;
         unitMap.set(e.unitId, cur);
       }
 
@@ -4974,7 +4981,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       // Find last payment per unit
-      const paymentEntries = entries.filter(e => e.entryType === "payment" && e.amount < 0);
+      const paymentEntries = entries.filter(e => e.entryType === "payment" && ownerLedgerAmountCents(e) < 0);
       const lastPaymentByUnit = new Map<string, Date>();
       for (const e of paymentEntries) {
         if (!e.unitId) continue;
@@ -5377,7 +5384,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       overdueEntries.forEach((entry) => {
         const key = entry.personId;
         const current = balanceMap.get(key) ?? { personId: entry.personId, unitId: entry.unitId, balance: 0 };
-        current.balance += entry.amount;
+        current.balance += ownerLedgerAmountDollars(entry);
         balanceMap.set(key, current);
       });
 
@@ -5389,7 +5396,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       credits.forEach((entry) => {
         const key = entry.personId;
         const current = balanceMap.get(key);
-        if (current) current.balance += entry.amount; // payments are negative amounts
+        if (current) current.balance += ownerLedgerAmountDollars(entry); // payments are negative amounts
       });
 
       const delinquent = Array.from(balanceMap.values()).filter(b => b.balance < -(rule.minBalanceThreshold ?? 0));
@@ -6369,7 +6376,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         db.select().from(persons).where(eq(persons.id, link.personId)).then((rows) => rows[0] ?? null),
         db.select({
           id: ownerLedgerEntries.id,
-          amount: ownerLedgerEntries.amount,
+          amountCents: ownerLedgerEntries.amountCents,
           entryType: ownerLedgerEntries.entryType,
           postedAt: ownerLedgerEntries.postedAt,
         }).from(ownerLedgerEntries).where(and(
@@ -6383,7 +6390,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         throw new Error("Payment link references invalid association data");
       }
 
-      const outstandingBalance = Number(entries.reduce((sum, row) => sum + row.amount, 0).toFixed(2));
+      const outstandingBalance = entries.reduce((sum, row) => sum + ownerLedgerAmountCents(row), 0) / 100;
       const maxAllowedAmount = Number(Math.min(
         Math.max(outstandingBalance, 0),
         Math.max(link.amount, 0),
@@ -6424,9 +6431,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // (Dispatch #3 / #970) explodes the payout back across all relevant
       // entries via the `payout.paid` webhook.
       const primaryEntry = entries
-        .filter((e) => (Number(e.amount) || 0) > 0)
+        .filter((e) => ownerLedgerAmountCents(e) > 0)
         .sort((a, b) => {
-          const amtDiff = Number(b.amount) - Number(a.amount);
+          const amtDiff = ownerLedgerAmountCents(b) - ownerLedgerAmountCents(a);
           if (amtDiff !== 0) return amtDiff;
           const aTs = a.postedAt instanceof Date ? a.postedAt.getTime() : 0;
           const bTs = b.postedAt instanceof Date ? b.postedAt.getTime() : 0;
@@ -6558,7 +6565,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         db.select().from(associations).where(eq(associations.id, link.associationId)).then((rows) => rows[0] ?? null),
         db.select().from(units).where(eq(units.id, link.unitId)).then((rows) => rows[0] ?? null),
         db.select().from(persons).where(eq(persons.id, link.personId)).then((rows) => rows[0] ?? null),
-        db.select({ amount: ownerLedgerEntries.amount }).from(ownerLedgerEntries).where(and(
+        db.select({ amountCents: ownerLedgerEntries.amountCents }).from(ownerLedgerEntries).where(and(
           eq(ownerLedgerEntries.associationId, link.associationId),
           eq(ownerLedgerEntries.unitId, link.unitId),
           eq(ownerLedgerEntries.personId, link.personId),
@@ -6571,7 +6578,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(404).send("Payment link references invalid association data");
       }
 
-      const outstandingBalance = Number(Math.max(0, entries.reduce((sum, row) => sum + row.amount, 0)).toFixed(2));
+      const outstandingBalance = Math.max(0, entries.reduce((sum, row) => sum + ownerLedgerAmountCents(row), 0)) / 100;
       const amountDue = Number(Math.min(outstandingBalance || link.amount, link.amount).toFixed(2));
       const activeMethods = paymentMethods.filter((method) => method.isActive === 1);
       const manualInstructions = activeMethods.map((method) => {
@@ -6990,11 +6997,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         .orderBy(ownerLedgerEntries.postedAt)
         .limit(limit);
       // Compute summary stats
-      const totalPayments = entries.filter(e => e.entryType === "payment").reduce((s, e) => s + Math.abs(e.amount), 0);
-      const totalCredits = entries.filter(e => e.entryType === "credit").reduce((s, e) => s + Math.abs(e.amount), 0);
-      const totalAdjustments = entries.filter(e => e.entryType === "adjustment").reduce((s, e) => s + e.amount, 0);
+      const totalPayments = entries.filter(e => e.entryType === "payment").reduce((s, e) => s + Math.abs(ownerLedgerAmountDollars(e)), 0);
+      const totalCredits = entries.filter(e => e.entryType === "credit").reduce((s, e) => s + Math.abs(ownerLedgerAmountDollars(e)), 0);
+      const totalAdjustments = entries.filter(e => e.entryType === "adjustment").reduce((s, e) => s + ownerLedgerAmountDollars(e), 0);
       const last30Days = entries.filter(e => new Date(e.postedAt) >= new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
-      res.json({ entries, stats: { totalPayments, totalCredits, totalAdjustments, last30DaysCount: last30Days.length, last30DaysTotal: last30Days.reduce((s, e) => s + Math.abs(e.amount), 0) } });
+      res.json({ entries: entries.map(ownerLedgerV1Amount), stats: { totalPayments, totalCredits, totalAdjustments, last30DaysCount: last30Days.length, last30DaysTotal: last30Days.reduce((s, e) => s + Math.abs(ownerLedgerAmountDollars(e)), 0) } });
     } catch (error: any) {
       res.status(400).json({ message: error.message });
     }
@@ -7015,23 +7022,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Flag large payments (> $5000)
       for (const e of entries) {
-        if (Math.abs(e.amount) > 5000) {
-          exceptions.push({ id: `large-${e.id}`, entryId: e.id, type: "large_payment", description: `Large ${e.entryType}: $${Math.abs(e.amount).toFixed(2)}`, amount: e.amount, unitId: e.unitId, personId: e.personId, postedAt: e.postedAt });
+        const amount = ownerLedgerAmountDollars(e);
+        if (Math.abs(amount) > 5000) {
+          exceptions.push({ id: `large-${e.id}`, entryId: e.id, type: "large_payment", description: `Large ${e.entryType}: $${Math.abs(amount).toFixed(2)}`, amount, unitId: e.unitId, personId: e.personId, postedAt: e.postedAt });
         }
       }
 
       // Flag negative adjustments
-      for (const e of entries.filter(e => e.entryType === "adjustment" && e.amount < -200)) {
-        exceptions.push({ id: `negadj-${e.id}`, entryId: e.id, type: "negative_adjustment", description: `Negative adjustment: $${e.amount.toFixed(2)}`, amount: e.amount, unitId: e.unitId, personId: e.personId, postedAt: e.postedAt });
+      for (const e of entries.filter(e => e.entryType === "adjustment" && ownerLedgerAmountDollars(e) < -200)) {
+        const amount = ownerLedgerAmountDollars(e);
+        exceptions.push({ id: `negadj-${e.id}`, entryId: e.id, type: "negative_adjustment", description: `Negative adjustment: $${amount.toFixed(2)}`, amount, unitId: e.unitId, personId: e.personId, postedAt: e.postedAt });
       }
 
       // Flag duplicate same-day same-unit same-amount payments
       const seen = new Map<string, string>();
       for (const e of entries.filter(e => e.entryType === "payment")) {
         const day = new Date(e.postedAt).toDateString();
-        const key = `${e.unitId}:${day}:${e.amount}`;
+        const amount = ownerLedgerAmountDollars(e);
+        const key = `${e.unitId}:${day}:${ownerLedgerAmountCents(e)}`;
         if (seen.has(key)) {
-          exceptions.push({ id: `dup-${e.id}`, entryId: e.id, type: "duplicate_payment", description: `Possible duplicate payment on ${day}: $${Math.abs(e.amount).toFixed(2)}`, amount: e.amount, unitId: e.unitId, personId: e.personId, postedAt: e.postedAt });
+          exceptions.push({ id: `dup-${e.id}`, entryId: e.id, type: "duplicate_payment", description: `Possible duplicate payment on ${day}: $${Math.abs(amount).toFixed(2)}`, amount, unitId: e.unitId, personId: e.personId, postedAt: e.postedAt });
         } else {
           seen.set(key, e.id);
         }
@@ -7144,7 +7154,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const candidates = ledgerEntries.filter(e => {
           const eDate = new Date(e.postedAt);
           const daysDiff = Math.abs((eDate.getTime() - txDate.getTime()) / (1000 * 60 * 60 * 24));
-          const amountMatch = Math.abs(Math.abs(e.amount) - Math.abs(tx.amount)) < 0.01;
+          const amountMatch = Math.abs(Math.abs(ownerLedgerAmountCents(e)) - Math.round(Math.abs(tx.amount) * 100)) <= 1;
           return daysDiff <= 5 && amountMatch;
         });
         if (candidates.length === 1) {
@@ -7366,13 +7376,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const incomeByCategory: Record<string, number> = {};
       for (const e of incomeEntries) {
         const key = e.entryType;
-        incomeByCategory[key] = (incomeByCategory[key] ?? 0) + Math.abs(e.amount);
+        incomeByCategory[key] = (incomeByCategory[key] ?? 0) + Math.abs(ownerLedgerAmountDollars(e));
       }
 
       const expenseByCategory: Record<string, number> = {};
       for (const e of expenseEntries) {
         const key = e.entryType;
-        expenseByCategory[key] = (expenseByCategory[key] ?? 0) + Math.abs(e.amount);
+        expenseByCategory[key] = (expenseByCategory[key] ?? 0) + Math.abs(ownerLedgerAmountDollars(e));
       }
 
       const totalIncome = Object.values(incomeByCategory).reduce((s, v) => s + v, 0);
@@ -7451,13 +7461,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const unitCharges: Record<string, { amount: number; postedAt: Date }[]> = {};
       for (const e of chargeEntries) {
         if (!unitCharges[e.unitId]) unitCharges[e.unitId] = [];
-        unitCharges[e.unitId].push({ amount: e.amount, postedAt: e.postedAt });
+        unitCharges[e.unitId].push({ amount: ownerLedgerAmountDollars(e), postedAt: e.postedAt });
       }
 
       // Total payments/credits per unit
       const unitPayments: Record<string, number> = {};
       for (const e of paymentEntries) {
-        unitPayments[e.unitId] = (unitPayments[e.unitId] ?? 0) + Math.abs(e.amount);
+        unitPayments[e.unitId] = (unitPayments[e.unitId] ?? 0) + Math.abs(ownerLedgerAmountDollars(e));
       }
 
       // Buckets per unit
@@ -7564,7 +7574,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           personId: ownerLedgerEntries.personId,
           unitId: ownerLedgerEntries.unitId,
           entryType: ownerLedgerEntries.entryType,
-          amount: ownerLedgerEntries.amount,
+          amountCents: ownerLedgerEntries.amountCents,
           postedAt: ownerLedgerEntries.postedAt,
         })
         .from(ownerLedgerEntries)
@@ -7605,6 +7615,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       // Build per-(person, unit) totals + last payment date
       for (const e of ledgerEntries) {
+        const amount = ownerLedgerAmountDollars(e);
         const key = ROW_KEY(e.personId, e.unitId);
         const agg = aggregates.get(key) ?? {
           chargesTotal: 0,
@@ -7614,11 +7625,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           oldestUnpaidChargeAt: null,
           unpaidBalanceForAging: 0,
         };
-        agg.ledgerSum += e.amount;
+        agg.ledgerSum += amount;
         if (e.entryType === "charge" || e.entryType === "assessment" || e.entryType === "late-fee") {
-          agg.chargesTotal += e.amount;
+          agg.chargesTotal += amount;
         } else if (e.entryType === "payment" || e.entryType === "credit") {
-          agg.paymentsTotal += Math.abs(e.amount);
+          agg.paymentsTotal += Math.abs(amount);
           if (e.entryType === "payment") {
             const ts = new Date(e.postedAt);
             if (!agg.lastPaymentAt || ts > agg.lastPaymentAt) agg.lastPaymentAt = ts;
@@ -7694,11 +7705,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const assessmentsBilled = monthEntries
         .filter(e => e.entryType === "charge" || e.entryType === "assessment")
-        .reduce((s, e) => s + e.amount, 0);
+        .reduce((s, e) => s + ownerLedgerAmountDollars(e), 0);
 
       const paymentsReceived = monthEntries
         .filter(e => e.entryType === "payment")
-        .reduce((s, e) => s + Math.abs(e.amount), 0);
+        .reduce((s, e) => s + Math.abs(ownerLedgerAmountDollars(e)), 0);
 
       const collectionRate = assessmentsBilled > 0 ? Math.min(100, (paymentsReceived / assessmentsBilled) * 100) : 100;
       const totalOutstanding = Math.max(0, assessmentsBilled - paymentsReceived);
@@ -7707,7 +7718,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const allEntries = await db.select({
         unitId: ownerLedgerEntries.unitId,
         entryType: ownerLedgerEntries.entryType,
-        amount: ownerLedgerEntries.amount,
+        amountCents: ownerLedgerEntries.amountCents,
       }).from(ownerLedgerEntries).where(and(
         eq(ownerLedgerEntries.associationId, associationId),
         lte(ownerLedgerEntries.postedAt, periodEnd),
@@ -7715,13 +7726,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       const unitBalances: Record<string, number> = {};
       for (const e of allEntries) {
+        const amount = ownerLedgerAmountDollars(e);
         if (!unitBalances[e.unitId]) unitBalances[e.unitId] = 0;
         if (e.entryType === "charge" || e.entryType === "assessment" || e.entryType === "late-fee") {
-          unitBalances[e.unitId] += e.amount;
+          unitBalances[e.unitId] += amount;
         } else if (e.entryType === "payment" || e.entryType === "credit") {
-          unitBalances[e.unitId] -= Math.abs(e.amount);
+          unitBalances[e.unitId] -= Math.abs(amount);
         } else if (e.entryType === "adjustment") {
-          unitBalances[e.unitId] += e.amount;
+          unitBalances[e.unitId] += amount;
         }
       }
 
@@ -7823,7 +7835,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       let totalCashIn = 0;
       for (const p of paymentRows) {
-        const amt = Math.abs(p.amount);
+        const amt = Math.abs(ownerLedgerAmountDollars(p));
         totalCashIn += amt;
         bump(monthKey(p.postedAt), "cashIn", amt);
       }
@@ -14640,7 +14652,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const allEntries = await storage.getOwnerLedgerEntries(req.portalAssociationId);
       const result = unitIds.map((unitId) => {
         const entries = allEntries.filter((e) => e.personId === req.portalPersonId && e.unitId === unitId);
-        const balance = entries.reduce((sum, e) => sum + e.amount, 0);
+        const balance = entries.reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0);
         const unit = ownedUnits.find((entry) => entry.unitId === unitId);
         return {
           unitId,
@@ -14686,7 +14698,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const result = unitIds.map((unitId) => {
         const unit = unitMap.get(unitId);
         const entries = allEntries.filter((e) => e.personId === req.portalPersonId && e.unitId === unitId);
-        const balance = entries.reduce((sum, e) => sum + e.amount, 0);
+        const balance = entries.reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0);
         const unitOccupancies = allOccupancies.filter((o) => o.unitId === unitId);
         const occupants = unitOccupancies.map((o) => {
           const p = personMap.get(o.personId);
@@ -14944,7 +14956,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       }
       const allEntries = await storage.getOwnerLedgerEntries(req.portalAssociationId);
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
-      const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
+      const balance = myEntries.reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0);
       res.json({ entries: myEntries, balance });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -15041,7 +15053,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       // any existing consumer of the (previously single-unit-scoped) field.
       const assessmentPlans = assessmentPlansByUnitRaw.flatMap(({ plans }) => plans);
       const myEntries = allEntries.filter((e) => e.personId === req.portalPersonId);
-      const balance = myEntries.reduce((sum, e) => sum + e.amount, 0);
+      const balance = myEntries.reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0);
       const activePlan = paymentPlansAll.find((p) => p.status === "active") ?? null;
       // 2026-07-01 (display-only) — most-recent payment date, derived read-only
       // from the ledger. Drives the owner-portal "Paid in full on <date>" state
@@ -15095,7 +15107,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           const byCategory: Record<string, number> = {};
           for (const cat of CATEGORIES) byCategory[cat] = 0;
           for (const entry of unitEntries) {
-            byCategory[entry.entryType] = (byCategory[entry.entryType] ?? 0) + entry.amount;
+            byCategory[entry.entryType] = (byCategory[entry.entryType] ?? 0) + ownerLedgerAmountDollars(entry);
           }
           const unitMeta = unitLabelMap.get(unitId);
           return {
@@ -15103,7 +15115,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
             unitLabel: unitMeta?.label ?? "Unit",
             unitNumber: unitMeta?.unitNumber ?? null,
             building: unitMeta?.building ?? null,
-            total: unitEntries.reduce((s, e) => s + e.amount, 0),
+            total: unitEntries.reduce((s, e) => s + ownerLedgerAmountDollars(e), 0),
             byCategory,
             entries: unitEntries
               .slice()
@@ -15115,7 +15127,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
               .map((e) => ({
                 id: e.id,
                 entryType: e.entryType,
-                amount: e.amount,
+                amount: ownerLedgerAmountDollars(e),
                 postedAt: e.postedAt,
                 description: e.description,
                 referenceType: e.referenceType,
@@ -15182,11 +15194,11 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
       res.json({
         balance,
-        totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
-        totalPaid: Math.abs(myEntries.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
+        totalCharged: myEntries.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + ownerLedgerAmountDollars(e), 0),
+        totalPaid: Math.abs(myEntries.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + ownerLedgerAmountDollars(e), 0)),
         // Year-to-date fields consumed by the summary tiles on My Finances.
-        totalCharges: myEntriesYtd.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0),
-        totalPayments: Math.abs(myEntriesYtd.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + e.amount, 0)),
+        totalCharges: myEntriesYtd.filter((e) => ["charge", "assessment", "late-fee"].includes(e.entryType)).reduce((s, e) => s + ownerLedgerAmountDollars(e), 0),
+        totalPayments: Math.abs(myEntriesYtd.filter((e) => ["payment", "credit"].includes(e.entryType)).reduce((s, e) => s + ownerLedgerAmountDollars(e), 0)),
         // 2026-07-14 (My Finances redesign — Dues tab) — attribute each
         // recurring HOA-dues schedule to its unit (or "All units" when
         // `unitId` is null / association-wide), across EVERY unit this
@@ -15297,7 +15309,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           const allEntries = await db.select().from(ownerLedgerEntries).where(
             and(eq(ownerLedgerEntries.associationId, req.portalAssociationId), eq(ownerLedgerEntries.unitId, unitIdFromBody))
           );
-          const balance = allEntries.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+          const balance = allEntries.reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0);
           if (balance > 0 && Math.abs(amount - balance) > 0.01) {
             return res.status(400).json({ message: `Partial payments are not allowed. Full balance due: $${balance.toFixed(2)}` });
           }
@@ -15309,7 +15321,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           const allEntries = await db.select().from(ownerLedgerEntries).where(
             and(eq(ownerLedgerEntries.associationId, req.portalAssociationId), eq(ownerLedgerEntries.unitId, unitIdFromBody))
           );
-          const balance = allEntries.reduce((sum, e) => sum + (e.amount ?? 0), 0);
+          const balance = allEntries.reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0);
           if (balance > 0) {
             const minRequired = balance * (partialRule.minimumPaymentPercent / 100);
             if (amount < minRequired) {
@@ -15508,10 +15520,10 @@ This is an automated enquiry from the Your Condo Manager marketing site.
 
       const totalCharges = ledgerEntries
         .filter((entry) => entry.entryType === "charge" || entry.entryType === "assessment" || entry.entryType === "late-fee")
-        .reduce((sum, entry) => sum + entry.amount, 0);
+        .reduce((sum, entry) => sum + ownerLedgerAmountDollars(entry), 0);
       const totalPayments = ledgerEntries
         .filter((entry) => entry.entryType === "payment" || entry.entryType === "credit")
-        .reduce((sum, entry) => sum + Math.abs(entry.amount), 0);
+        .reduce((sum, entry) => sum + Math.abs(ownerLedgerAmountDollars(entry)), 0);
       const openBalance = Math.max(0, totalCharges - totalPayments);
       const totalInvoices = vendorInvoices.reduce((sum, invoice) => sum + invoice.amount, 0);
       const totalUtilities = utilityPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -15772,8 +15784,8 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         storage.getNoticeSends(associationId),
         storage.getBoardPackages(associationId),
       ]);
-      const totalCharges = ledgerEntries.filter((e) => e.entryType === "charge" || e.entryType === "assessment" || e.entryType === "late-fee").reduce((sum, e) => sum + e.amount, 0);
-      const totalPayments = ledgerEntries.filter((e) => e.entryType === "payment" || e.entryType === "credit").reduce((sum, e) => sum + Math.abs(e.amount), 0);
+      const totalCharges = ledgerEntries.filter((e) => e.entryType === "charge" || e.entryType === "assessment" || e.entryType === "late-fee").reduce((sum, e) => sum + ownerLedgerAmountDollars(e), 0);
+      const totalPayments = ledgerEntries.filter((e) => e.entryType === "payment" || e.entryType === "credit").reduce((sum, e) => sum + Math.abs(ownerLedgerAmountDollars(e)), 0);
       const openBalance = Math.max(0, totalCharges - totalPayments);
       const totalInvoices = vendorInvoices.reduce((sum, i) => sum + i.amount, 0);
       const totalUtilities = utilityPayments.reduce((sum, p) => sum + p.amount, 0);
@@ -19516,7 +19528,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
         events.push({
           type: "financial",
           title: entry.entryType === "payment" ? "Payment received" : `Ledger ${entry.entryType}`,
-          description: `${entry.description || entry.entryType} — $${Math.abs(entry.amount).toFixed(2)}`,
+          description: `${entry.description || entry.entryType} — $${Math.abs(ownerLedgerAmountDollars(entry)).toFixed(2)}`,
           actor: "System",
           timestamp: entry.createdAt.toISOString(),
           icon: entry.entryType === "payment" ? "payments" : "receipt_long",
@@ -19589,7 +19601,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           events.push({
             type: "financial",
             title: entry.entryType === "payment" ? "Payment received" : `Ledger ${entry.entryType}`,
-            description: `${entry.description || entry.entryType} — $${Math.abs(entry.amount).toFixed(2)}`,
+            description: `${entry.description || entry.entryType} — $${Math.abs(ownerLedgerAmountDollars(entry)).toFixed(2)}`,
             associationId: assoc.id,
             associationName: assoc.name,
             timestamp: entry.createdAt.toISOString(),
