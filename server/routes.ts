@@ -1818,6 +1818,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           journalEntries: migrations.journalEntries,
           trackedHashes: migrations.trackedHashes,
           missing: migrations.missing,
+          skipped: migrations.skipped,
           checkedAt: migrations.checkedAt,
         },
       });
@@ -1828,6 +1829,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         status: migrations.status,
         journalEntries: migrations.journalEntries,
         trackedHashes: migrations.trackedHashes,
+        // founder-os#14790 — unapplied-but-environment-allowlisted migrations.
+        // Surfaced (not hidden) so a preview-only platform gap stays visible.
+        skipped: migrations.skipped,
         checkedAt: migrations.checkedAt,
       },
     });
