@@ -85,6 +85,36 @@ jobs:
     name: build
     runs-on: [self-hosted, macOS, ARM64]
     steps:
+      - name: Host compute admit + build lane (founder-os#15437)
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Host-wide heavy-compute admission (founder-os#15437, follow-on to #15416).
+          # 2026-07-23 load1=117.31 incident: the worker fleet + another repo's Xcode
+          # build filled an 18-CPU Mac, then a product build started on top of it. A
+          # heavy product build must defer until the host has real headroom AND hold
+          # THE single build lane so two heavy product builds never overlap.
+          # No-op on GitHub-hosted runners (helper absent -> fail-open).
+          A="$HOME/.local/bin/founder-os/compute-admit.sh"
+          if [ ! -x "$A" ]; then
+            echo "::notice title=compute::compute-admit absent - proceeding (fail-open; GitHub-hosted runner)"
+            exit 0
+          fi
+          echo "host budget: $("$A" check --class build 2>&1 || true)"
+          # A REAL bounded wait is correct for a heavy build (unlike the cheap
+          # founder-os validators' advisory stagger) - deferring a multi-minute build
+          # is worth the latency. Fail-open on timeout: never block indefinitely.
+          "$A" wait --class build --timeout 600 \
+            || echo "::warning title=compute::load wait timed out (600s) - proceeding (fail-open)"
+          # Hold THE single product build lane. Bounded acquire (~5 min), then proceed
+          # fail-open; leaked leases auto-expire via TTL so there is no deadlock.
+          for i in $(seq 1 20); do
+            R="$("$A" lease ycm-build --ttl 3600 2>&1 || true)"
+            case "$R" in
+              LEASED:*|ALREADY-HELD:*) echo "build lane acquired: $R"; break ;;
+              *) echo "::notice title=compute::build lane $R - retry $i/20"; sleep 15 ;;
+            esac
+          done
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -92,6 +122,12 @@ jobs:
       - run: npm ci --legacy-peer-deps
       - run: npm run build
 
+      - name: Release host compute build lane (founder-os#15437)
+        if: always()
+        shell: bash
+        run: |
+          A="$HOME/.local/bin/founder-os/compute-admit.sh"
+          [ -x "$A" ] && "$A" release ycm-build || true
   playwright:
     name: Playwright (route-mock + real-backend + axe + visual)
     runs-on: [self-hosted, macOS, ARM64]
@@ -107,6 +143,36 @@ jobs:
       # server are fully parameterized so nothing else changes.
       PLAYWRIGHT_PORT: "5013"
     steps:
+      - name: Host compute admit + build lane (founder-os#15437)
+        shell: bash
+        run: |
+          set -uo pipefail
+          # Host-wide heavy-compute admission (founder-os#15437, follow-on to #15416).
+          # 2026-07-23 load1=117.31 incident: the worker fleet + another repo's Xcode
+          # build filled an 18-CPU Mac, then a product build started on top of it. A
+          # heavy product build must defer until the host has real headroom AND hold
+          # THE single build lane so two heavy product builds never overlap.
+          # No-op on GitHub-hosted runners (helper absent -> fail-open).
+          A="$HOME/.local/bin/founder-os/compute-admit.sh"
+          if [ ! -x "$A" ]; then
+            echo "::notice title=compute::compute-admit absent - proceeding (fail-open; GitHub-hosted runner)"
+            exit 0
+          fi
+          echo "host budget: $("$A" check --class build 2>&1 || true)"
+          # A REAL bounded wait is correct for a heavy build (unlike the cheap
+          # founder-os validators' advisory stagger) - deferring a multi-minute build
+          # is worth the latency. Fail-open on timeout: never block indefinitely.
+          "$A" wait --class build --timeout 600 \
+            || echo "::warning title=compute::load wait timed out (600s) - proceeding (fail-open)"
+          # Hold THE single product build lane. Bounded acquire (~5 min), then proceed
+          # fail-open; leaked leases auto-expire via TTL so there is no deadlock.
+          for i in $(seq 1 20); do
+            R="$("$A" lease ycm-playwright --ttl 3600 2>&1 || true)"
+            case "$R" in
+              LEASED:*|ALREADY-HELD:*) echo "build lane acquired: $R"; break ;;
+              *) echo "::notice title=compute::build lane $R - retry $i/20"; sleep 15 ;;
+            esac
+          done
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -213,3 +279,9 @@ jobs:
             test-results/
             playwright-report/
           retention-days: 7
+      - name: Release host compute build lane (founder-os#15437)
+        if: always()
+        shell: bash
+        run: |
+          A="$HOME/.local/bin/founder-os/compute-admit.sh"
+          [ -x "$A" ] && "$A" release ycm-playwright || true
