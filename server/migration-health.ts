@@ -35,6 +35,12 @@ export interface MigrationHealth {
   journalEntries: number;
   trackedHashes: number;
   missing: string[]; // tags of migrations in journal but not in drizzle.__drizzle_migrations
+  /**
+   * Tags that are unapplied but explicitly allowlisted as skippable on THIS
+   * environment via MIGRATION_HEALTH_SKIPPABLE_TAGS. Reported so the gap stays
+   * VISIBLE even though it does not flip status to "stale". Never hidden.
+   */
+  skipped: string[];
   errorMessage?: string;
 }
 
@@ -44,14 +50,58 @@ const initialHealth: MigrationHealth = {
   journalEntries: 0,
   trackedHashes: 0,
   missing: [],
+  skipped: [],
 };
+
+/**
+ * Environment-specific skippable migrations (founder-os#14790).
+ *
+ * WHY THIS EXISTS — the preview environment runs a DIFFERENT database platform
+ * than prod/staging. Prod and staging are on Neon (migrated there by
+ * founder-os#2470 after the 2026-05-25 SEV-1, see
+ * docs/incidents/2026-05-25-fly-postgres-down.md); Neon ships `pgvector`.
+ * `yourcondomanager-redesign-preview-db` is an unmanaged Fly `postgres-flex`
+ * instance whose image has NO `vector` extension available at all, so
+ * `0034_pgvector_extension` (CREATE EXTENSION vector) and its dependant
+ * `0035_document_embeddings` can never apply there.
+ *
+ * Without this allowlist those two permanently-unappliable migrations make
+ * getMigrationHealth() report "stale", which makes /api/health return 503,
+ * which makes the Fly proxy health check fail — taking down EVERY route on the
+ * preview app over an AI-Assistant feature that is not reviewable there anyway.
+ *
+ * SAFETY — this is opt-in and default-OFF:
+ *   - Unset/empty (prod, staging, dev, CI) → behaviour is byte-for-byte the
+ *     pre-existing OP #2476 guarantee: ANY unapplied migration ⇒ "stale" ⇒ 503.
+ *   - Set ONLY in fly.redesign-preview.toml, and only to the exact two tags.
+ *   - Allowlisted-but-unapplied tags are still reported under `skipped`, so the
+ *     divergence is visible on /api/health rather than silently swallowed.
+ *   - A tag that is allowlisted but HAS applied simply never appears anywhere —
+ *     the allowlist can only ever excuse a genuine gap, never mask a real one.
+ *
+ * This is a bridge, not the destination: the real fix is putting preview on the
+ * same platform as prod/staging. Tracked separately.
+ */
+function skippableTags(): Set<string> {
+  const raw = process.env.MIGRATION_HEALTH_SKIPPABLE_TAGS ?? "";
+  return new Set(
+    raw
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0),
+  );
+}
 
 const state = {
   current: { ...initialHealth },
 };
 
 export function getMigrationHealth(): MigrationHealth {
-  return { ...state.current, missing: [...state.current.missing] };
+  return {
+    ...state.current,
+    missing: [...state.current.missing],
+    skipped: [...(state.current.skipped ?? [])],
+  };
 }
 
 /**
@@ -102,6 +152,7 @@ export async function runMigrationHealthCheck(pool: pg.Pool): Promise<MigrationH
       journalEntries: 0,
       trackedHashes: 0,
       missing: [],
+      skipped: [],
       errorMessage: "journal file not found on disk",
     };
     log("migration health: journal not found on disk; marking status=unknown", "startup");
@@ -119,6 +170,7 @@ export async function runMigrationHealthCheck(pool: pg.Pool): Promise<MigrationH
       journalEntries: 0,
       trackedHashes: 0,
       missing: [],
+      skipped: [],
       errorMessage: `journal parse error: ${msg}`,
     };
     log(`migration health: failed to parse journal — ${msg}`, "startup");
@@ -132,6 +184,7 @@ export async function runMigrationHealthCheck(pool: pg.Pool): Promise<MigrationH
       journalEntries: 0,
       trackedHashes: 0,
       missing: [],
+      skipped: [],
       errorMessage: "journal contains no entries",
     };
     log("migration health: journal has no entries", "startup");
@@ -160,6 +213,7 @@ export async function runMigrationHealthCheck(pool: pg.Pool): Promise<MigrationH
         journalEntries: journal.entries.length,
         trackedHashes: 0,
         missing: [],
+      skipped: [],
         errorMessage: `cannot read ${entry.tag}.sql: ${msg}`,
       };
       log(`migration health: cannot read ${entry.tag}.sql — ${msg}`, "startup");
@@ -183,6 +237,7 @@ export async function runMigrationHealthCheck(pool: pg.Pool): Promise<MigrationH
       journalEntries: journal.entries.length,
       trackedHashes: 0,
       missing: [],
+      skipped: [],
       errorMessage: `cannot query drizzle.__drizzle_migrations: ${msg}`,
     };
     log(
@@ -194,9 +249,15 @@ export async function runMigrationHealthCheck(pool: pg.Pool): Promise<MigrationH
     return getMigrationHealth();
   }
 
-  const missing = expected
+  const unapplied = expected
     .filter(({ hash }) => !trackedHashes.has(hash))
     .map(({ tag }) => tag);
+
+  // Split unapplied migrations into genuinely-missing vs explicitly-allowlisted
+  // -as-skippable-on-this-environment. Only the former flips status to "stale".
+  const skippable = skippableTags();
+  const missing = unapplied.filter((tag) => !skippable.has(tag));
+  const skipped = unapplied.filter((tag) => skippable.has(tag));
 
   const status: MigrationHealthStatus = missing.length === 0 ? "ok" : "stale";
 
@@ -206,11 +267,17 @@ export async function runMigrationHealthCheck(pool: pg.Pool): Promise<MigrationH
     journalEntries: expected.length,
     trackedHashes: trackedHashes.size,
     missing,
+    skipped,
   };
 
   if (status === "ok") {
     log(
-      `migration health: OK — ${expected.length} journal entries / ${trackedHashes.size} tracked hashes`,
+      `migration health: OK — ${expected.length} journal entries / ${trackedHashes.size} tracked hashes` +
+        (skipped.length > 0
+          ? `. ${skipped.length} unapplied migration(s) allowlisted as environment-skippable ` +
+            `via MIGRATION_HEALTH_SKIPPABLE_TAGS (${skipped.join(", ")}) — reported under ` +
+            `\`skipped\` on /api/health, NOT silently ignored.`
+          : ""),
       "startup",
     );
   } else {

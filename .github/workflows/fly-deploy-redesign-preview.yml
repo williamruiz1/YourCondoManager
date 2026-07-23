@@ -1,0 +1,67 @@
+# Auto-deploy the REDESIGN branch to the private gated preview app on every push
+# to `redesign-staging-integration` (founder-os#11501 / ycm-redesign-9299 #3).
+#
+# WHY: the ~85% of the M1-M9 redesign lives on `redesign-staging-integration`
+# with NO deploy target — William can only review individual PR diffs + the
+# component gallery, not the actual restyled screens in context. This workflow
+# stands up one private, gated URL for the whole redesign.
+#
+# ISOLATION — this pipeline is SEPARATE from fly-deploy.yml's prod/staging
+# pipeline and NEVER touches `main`, `yourcondomanager` (prod), or
+# `yourcondomanager-staging`. It deploys ONLY the preview app, which runs with
+# APP_ENV=staging + OUTBOUND_SIDE_EFFECTS_DISABLED=1 (server/staging-guard.ts
+# sinks all outbound + refuses live Stripe) against its OWN isolated preview DB
+# — never Cherry Hill's real production ledger.
+#
+# REQUIRES: repo secret `FLY_REDESIGN_PREVIEW_API_TOKEN` — deploy-scoped token,
+# generated via `fly tokens create deploy -a yourcondomanager-redesign-preview`.
+
+name: Deploy (Fly) — redesign preview
+
+on:
+  push:
+    branches: [redesign-staging-integration]
+  workflow_dispatch:
+
+# Never cancel an in-flight deploy (migrations run in the release_command);
+# queue the newest instead. Mirrors fly-deploy.yml's hard-won lesson.
+concurrency:
+  group: fly-deploy-redesign-preview-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-preview:
+    name: check + deploy redesign preview
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install deps
+        run: npm ci
+
+      # Mirror the prod/staging CI gate: typecheck must be clean before deploy.
+      - name: npm run check (tsc)
+        run: npm run check
+
+      - uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # master 2026-05-20
+        with:
+          version: latest
+
+      - name: Deploy to redesign-preview (migrations run against the ISOLATED preview DB)
+        run: flyctl deploy -c fly.redesign-preview.toml --app yourcondomanager-redesign-preview --remote-only --strategy immediate
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_REDESIGN_PREVIEW_API_TOKEN }}
+          VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
+
+      - name: Smoke-test preview /api/health
+        run: |
+          set -euo pipefail
+          url="https://yourcondomanager-redesign-preview.fly.dev/api/health"
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$url" || echo 000)
+            echo "attempt $i: $url -> $code"
+            [ "$code" = "200" ] && { echo "preview health OK"; exit 0; }
+            sleep 6
+          done
+          echo "preview /api/health never returned 200"; exit 1
