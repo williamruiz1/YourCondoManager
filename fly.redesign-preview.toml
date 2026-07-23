@@ -1,0 +1,107 @@
+# fly.redesign-preview.toml — YourCondoManager REDESIGN PREVIEW environment (founder-os#11501)
+#
+# A THIRD Fly app (separate from prod `yourcondomanager` and staging
+# `yourcondomanager-staging`) that deploys the `redesign-staging-integration`
+# branch — the ~85% of the M1-M9 restyle that currently has NO live URL — so
+# William can click through the ACTUAL redesigned screens in context at one
+# private, gated URL (ycm-redesign-9299 done_criteria #3).
+#
+# SAFETY — this app must never act on the real world (mirrors fly.staging.toml
+# exactly, so it inherits server/staging-guard.ts):
+#   * OUTBOUND_SIDE_EFFECTS_DISABLED=1 / APP_ENV=staging  → email/SMS/push are
+#     routed to a sink (server/staging-guard.ts) and LIVE Stripe keys are refused.
+#   * DATABASE_URL is set (as a Fly secret) to a SEPARATE, ISOLATED preview DB —
+#     NEVER the prod `yourcondomanager-db` (Cherry Hill's real ledger). This is a
+#     money-app; the preview surface must not be able to read or write the real
+#     production ledger.
+#   * Stripe runs in TEST mode only (PLATFORM_STRIPE_SECRET_KEY = sk_test_..., or
+#     left unset so Stripe is "not configured").
+#   * Auth-gated — reuses the app's board-member/owner login (no anonymous access).
+#
+# Deploy:  flyctl deploy -c fly.redesign-preview.toml -a yourcondomanager-redesign-preview
+#          (automated on push to `redesign-staging-integration` via
+#           .github/workflows/fly-deploy-redesign-preview.yml — never touches main/prod)
+
+app = "yourcondomanager-redesign-preview"
+primary_region = "ewr"
+
+[deploy]
+  # Same Drizzle migration runner as prod/staging — the preview DB gets the same
+  # schema. Runs against the preview app's OWN isolated DATABASE_URL secret.
+  release_command = "node scripts/migrate.cjs"
+
+[build]
+  [build.args]
+    # Injected at build time from the VITE_GOOGLE_MAPS_API_KEY CI secret
+    # (founder-os#10743) — never committed. Mirrors prod/staging fly.toml; the
+    # no-committed-google-api-key guard test enforces this.
+    VITE_GOOGLE_MAPS_API_KEY = ""
+    VITE_SENTRY_DSN = ""
+    VITE_GA_MEASUREMENT_ID = ""
+    VITE_APP_ENV = "staging"
+
+[http_service]
+  internal_port = 5000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[http_service.concurrency]
+  type = "requests"
+  hard_limit = 250
+  soft_limit = 150
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "10s"
+  grace_period = "20s"
+  method = "GET"
+  path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# Mirror prod/staging's persistent uploads volume so deploys don't hit the
+# "volume mounted but app config does not specify a volume" drift-warning that
+# hard-fails headless `flyctl deploy --remote-only`. A dedicated `ycm_uploads`
+# volume is created on THIS app during provisioning (isolated from prod/staging).
+[mounts]
+  source = "ycm_uploads"
+  destination = "/data"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "5000"
+  APP_BASE_URL = "https://yourcondomanager-redesign-preview.fly.dev"
+  # --- preview kill-switch (server/staging-guard.ts) — identical to staging ---
+  APP_ENV = "staging"
+  OUTBOUND_SIDE_EFFECTS_DISABLED = "1"
+  YCM_STAGING = "1"
+  # Mirrors prod/staging's UPLOAD_DIR — writes land on the persistent
+  # `ycm_uploads` volume instead of the machine's ephemeral local disk.
+  UPLOAD_DIR = "/data/uploads"
+  # --- founder-os#14790: preview-only migration allowlist ---
+  # This app is the ONLY environment not on Neon. Prod and staging run Neon
+  # (migrated by founder-os#2470 after the 2026-05-25 SEV-1 —
+  # docs/incidents/2026-05-25-fly-postgres-down.md) and Neon ships `pgvector`.
+  # `yourcondomanager-redesign-preview-db` is an unmanaged Fly postgres-flex
+  # instance whose image has NO `vector` extension available at all — verified:
+  # `pg_available_extensions` lists postgis but no `vector`. So
+  # `0034_pgvector_extension` (CREATE EXTENSION vector) and its dependant
+  # `0035_document_embeddings` can NEVER apply here.
+  #
+  # Without this, those two permanently-unappliable migrations make the boot
+  # health check report "stale" → /api/health returns 503 → the [[http_service.
+  # checks]] block below fails → the Fly proxy 503s EVERY route on this app,
+  # over an AI-Assistant feature that is not reviewable on preview anyway.
+  #
+  # This var is set ONLY here. Prod/staging/dev/CI leave it unset and keep the
+  # unmodified OP #2476 guarantee (any unapplied migration ⇒ stale ⇒ 503).
+  # The two tags still appear under `skipped` on /api/health — visible, not hidden.
+  #
+  # BRIDGE, NOT DESTINATION: the durable fix is putting preview on Neon like
+  # every other environment. Tracked separately.
+  MIGRATION_HEALTH_SKIPPABLE_TAGS = "0034_pgvector_extension,0035_document_embeddings"
