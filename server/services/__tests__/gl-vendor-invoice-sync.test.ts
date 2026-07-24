@@ -44,9 +44,11 @@ vi.mock("../../db", () => {
             return chain;
           },
           leftJoin: () => chain,
+          innerJoin: () => chain,
           where: () => {
             if (chain._name === "vendor_invoices") return Promise.resolve(invoiceRows);
             if (chain._name === "owner_ledger_entries") return Promise.resolve(ownerRows);
+            if (chain._name === "gl_entries") return Promise.resolve([]);
             return Promise.resolve([]); // gl_accounts existing → none yet
           },
         };

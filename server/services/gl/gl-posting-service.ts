@@ -41,6 +41,10 @@ import {
 } from "./posting";
 import { isGlEnabledForAssociation } from "./flag";
 import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
+import {
+  compareCanonicalJournalShape,
+  GlJournalShapeDriftError,
+} from "./canonical-shape";
 
 export interface GlPostingResult {
   skipped: boolean;
@@ -230,6 +234,29 @@ export async function syncAssociationGl(
         .map((v) => `[${v.invariant}] ${v.detail}`)
         .join("; ")}`,
     );
+  }
+
+  // Shape-aware idempotency gate. The source-leg unique index prevents the
+  // exact same leg from being inserted twice, but it cannot retire an obsolete
+  // leg when posting policy changes (for example, an assessment income account
+  // moving from 4000 to 4200). Without this gate, a re-sync can append the new
+  // leg beside the old one and leave a three-leg, unbalanced journal.
+  //
+  // Normal runtime sync is additive only: it may complete missing canonical
+  // legs, but it may not delete or rewrite financial presentation. Any
+  // unexpected persisted shape is stopped here and handled by the separately
+  // gated, audited canonical-repair workflow.
+  const persistedSourceJournals = (await loadGlJournals(associationId)).filter(
+    (journal) =>
+      journal.sourceType === "owner_ledger_entry" ||
+      journal.sourceType === "vendor_invoice",
+  );
+  const shapeComparison = compareCanonicalJournalShape(
+    journals,
+    persistedSourceJournals,
+  );
+  if (shapeComparison.hasUnexpectedPersistedShape) {
+    throw new GlJournalShapeDriftError(shapeComparison);
   }
 
   const rows = toInsertRows(associationId, journals, accountByKey);
