@@ -368,6 +368,7 @@ import {
 } from "./portal-role-collapse";
 import { updatePaymentTransactionStatus } from "./services/payment-service";
 import { postSucceededPaymentTransactionLedgerEntry } from "./services/payment-transaction-ledger";
+import { stripeFetch } from "./services/stripe-fetch";
 import { sendPaymentReceiptEmail, getPortalReceiptList, getPaymentReceiptData } from "./services/payment-receipt-email";
 import {
   buildSpecMetadata,
@@ -6509,27 +6510,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Stripe-Account header (spec §1.1) — direct charges on the connected
       // HOA account when onboarding is complete. Without it, the charge lands
       // on YCM's platform account (legacy pre-Connect behavior).
-      const stripeHeaders: Record<string, string> = {
-        Authorization: `Bearer ${gateway.secretKey}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      };
-      if (connectedAccountId) {
-        stripeHeaders["Stripe-Account"] = connectedAccountId;
-      }
-
       // Idempotency: one hosted session per (link, amount, period). A network
       // retry of this POST returns the original session rather than creating a
       // second checkout for the same owner payment.
-      stripeHeaders["Idempotency-Key"] = paymentLinkCheckoutKey({
-        linkToken: link.token,
-        amountCents,
-        period: periodFromDate(),
-      });
-
-      const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+      const stripeResponse = await stripeFetch({
+        path: "/checkout/sessions",
         method: "POST",
-        headers: stripeHeaders,
-        body: sessionParams.toString(),
+        secretKey: gateway.secretKey,
+        body: sessionParams,
+        stripeAccount: connectedAccountId,
+        idempotencyKey: paymentLinkCheckoutKey({
+          linkToken: link.token,
+          amountCents,
+          period: periodFromDate(),
+        }),
       });
 
       const stripeBody = await stripeResponse.json().catch(() => null) as Record<string, unknown> | null;

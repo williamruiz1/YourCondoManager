@@ -11,6 +11,7 @@
 import crypto from "crypto";
 import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { db } from "../db";
+import { stripeFetch } from "./stripe-fetch";
 import { checkoutSessionKey, offSessionChargeKey } from "./stripe-idempotency";
 import {
   paymentTransactions,
@@ -273,24 +274,17 @@ export async function initiateStripeCheckout(params: {
     }
   }
 
-  const checkoutHeaders: Record<string, string> = {
-    Authorization: `Bearer ${params.secretKey}`,
-    "Content-Type": "application/x-www-form-urlencoded",
-  };
-  // Direct charge on the connected HOA account (spec §1.1). Required for the
-  // application fee to route to the platform balance and for per-HOA payouts.
-  if (params.stripeAccountHeader) {
-    checkoutHeaders["Stripe-Account"] = params.stripeAccountHeader;
-  }
-
-  // Idempotency: one hosted checkout session per logical transaction. A retry
-  // of this POST (network blip) returns the original session, never a second.
-  checkoutHeaders["Idempotency-Key"] = checkoutSessionKey(txn.id);
-
-  const stripeResponse = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+  // Direct charge on the connected HOA account (spec §1.1) via the Stripe-Account
+  // header — required for the application fee to route to the platform balance and
+  // for per-HOA payouts. Idempotency: one hosted checkout session per logical
+  // transaction; a retry of this POST returns the original session, never a second.
+  const stripeResponse = await stripeFetch({
+    path: "/checkout/sessions",
     method: "POST",
-    headers: checkoutHeaders,
-    body: sessionParams.toString(),
+    secretKey: params.secretKey,
+    body: sessionParams,
+    stripeAccount: params.stripeAccountHeader,
+    idempotencyKey: checkoutSessionKey(txn.id),
   });
 
   const stripeBody = (await stripeResponse.json().catch(() => null)) as Record<string, unknown> | null;
@@ -631,17 +625,12 @@ export async function ensureStripeCustomer(params: {
   customerParams.set("metadata[associationId]", params.associationId);
   customerParams.set("metadata[personId]", params.personId);
 
-  const customerHeaders: Record<string, string> = {
-    Authorization: `Bearer ${params.secretKey}`,
-    "Content-Type": "application/x-www-form-urlencoded",
-  };
-  if (params.stripeAccountHeader) {
-    customerHeaders["Stripe-Account"] = params.stripeAccountHeader;
-  }
-  const res = await fetch("https://api.stripe.com/v1/customers", {
+  const res = await stripeFetch({
+    path: "/customers",
     method: "POST",
-    headers: customerHeaders,
-    body: customerParams.toString(),
+    secretKey: params.secretKey,
+    body: customerParams,
+    stripeAccount: params.stripeAccountHeader,
   });
 
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
@@ -682,17 +671,12 @@ export async function initiateStripeSetupCheckout(params: {
   sessionParams.set("metadata[associationId]", params.associationId);
   sessionParams.set("metadata[personId]", params.personId);
 
-  const setupHeaders: Record<string, string> = {
-    Authorization: `Bearer ${params.secretKey}`,
-    "Content-Type": "application/x-www-form-urlencoded",
-  };
-  if (params.stripeAccountHeader) {
-    setupHeaders["Stripe-Account"] = params.stripeAccountHeader;
-  }
-  const res = await fetch("https://api.stripe.com/v1/checkout/sessions", {
+  const res = await stripeFetch({
+    path: "/checkout/sessions",
     method: "POST",
-    headers: setupHeaders,
-    body: sessionParams.toString(),
+    secretKey: params.secretKey,
+    body: sessionParams,
+    stripeAccount: params.stripeAccountHeader,
   });
 
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
@@ -792,26 +776,18 @@ export async function chargeOffSession(params: {
     intentParams.set("application_fee_amount", String(params.applicationFeeCents));
   }
 
-  const intentHeaders: Record<string, string> = {
-    Authorization: `Bearer ${params.secretKey}`,
-    "Content-Type": "application/x-www-form-urlencoded",
-  };
-  // Stripe-Account header makes this a direct charge on the connected HOA
-  // account (per spec §1.1). Required for application_fee_amount to route
-  // back to the platform; required for per-HOA payouts.
-  if (params.stripeAccountHeader) {
-    intentHeaders["Stripe-Account"] = params.stripeAccountHeader;
-  }
-
-  // Idempotency: one off-session intent per logical transaction. A retry of the
-  // off-session charge POST (network blip) returns the original intent rather
-  // than charging the owner's bank account a second time.
-  intentHeaders["Idempotency-Key"] = offSessionChargeKey(params.transactionId);
-
-  const res = await fetch("https://api.stripe.com/v1/payment_intents", {
+  // Stripe-Account header makes this a direct charge on the connected HOA account
+  // (spec §1.1) — required for application_fee_amount to route back to the platform
+  // and for per-HOA payouts. Idempotency: one off-session intent per logical
+  // transaction; a retry of this money POST returns the original intent rather than
+  // charging the owner's bank account a second time.
+  const res = await stripeFetch({
+    path: "/payment_intents",
     method: "POST",
-    headers: intentHeaders,
-    body: intentParams.toString(),
+    secretKey: params.secretKey,
+    body: intentParams,
+    stripeAccount: params.stripeAccountHeader,
+    idempotencyKey: offSessionChargeKey(params.transactionId),
   });
 
   const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
@@ -855,18 +831,12 @@ export async function fetchStripeCheckoutSession(params: {
   stripeAccountHeader?: string | null;
   sessionId: string;
 }): Promise<Record<string, unknown> | null> {
-  const fetchHeaders: Record<string, string> = {
-    Authorization: `Bearer ${params.secretKey}`,
-  };
-  if (params.stripeAccountHeader) {
-    fetchHeaders["Stripe-Account"] = params.stripeAccountHeader;
-  }
-  const res = await fetch(
-    `https://api.stripe.com/v1/checkout/sessions/${encodeURIComponent(params.sessionId)}?expand[]=setup_intent.payment_method`,
-    {
-      headers: fetchHeaders,
-    },
-  );
+  const res = await stripeFetch({
+    path: `/checkout/sessions/${encodeURIComponent(params.sessionId)}?expand[]=setup_intent.payment_method`,
+    method: "GET",
+    secretKey: params.secretKey,
+    stripeAccount: params.stripeAccountHeader,
+  });
   if (!res.ok) return null;
   return (await res.json().catch(() => null)) as Record<string, unknown> | null;
 }

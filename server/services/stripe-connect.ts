@@ -23,6 +23,7 @@
  */
 
 import { assertStripeKeySafe } from "../staging-guard";
+import { stripeFetch } from "./stripe-fetch";
 import { getSecret } from "../platform-secrets-store";
 
 export type StripeConnectStatus = "pending" | "active" | "restricted" | "disabled";
@@ -197,23 +198,17 @@ export async function callPlatformStripe<T = Record<string, unknown>>(
   if (!secretKey) {
     throw new Error("Platform Stripe secret key not configured");
   }
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${secretKey}`,
-  };
-  if (opts.body) {
-    headers["Content-Type"] = "application/x-www-form-urlencoded";
-  }
-  if (opts.stripeAccount) {
-    headers["Stripe-Account"] = opts.stripeAccount;
-  }
-  // Idempotency-Key only applies to POST (the money-moving / create verb).
-  if (opts.idempotencyKey && opts.method === "POST") {
-    headers["Idempotency-Key"] = opts.idempotencyKey;
-  }
-  const resp = await fetch(`https://api.stripe.com/v1${opts.path}`, {
+  // Request construction (headers / URL / fetch) is delegated to the canonical
+  // stripeFetch (founder-os#10780); key resolution, the staging guard, the parse
+  // fallback, and the normalized throw below stay here byte-for-byte. Retry stays
+  // off (default) so this call is unchanged.
+  const resp = await stripeFetch({
+    path: opts.path,
     method: opts.method,
-    headers,
-    body: opts.body ? opts.body.toString() : undefined,
+    secretKey,
+    body: opts.body ?? undefined,
+    stripeAccount: opts.stripeAccount,
+    idempotencyKey: opts.idempotencyKey,
   });
   const data = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
   if (!resp.ok) {

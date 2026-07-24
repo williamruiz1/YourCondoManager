@@ -6,6 +6,7 @@ import path from "path";
 import { promisify } from "util";
 import { inflateRawSync } from "zlib";
 import { db } from "./db";
+import { stripeFetch } from "./services/stripe-fetch";
 
 /**
  * A drizzle executor: either the base `db` handle or a `db.transaction` handle.
@@ -17,7 +18,6 @@ import { db } from "./db";
 type DbOrTx =
   | typeof db
   | Parameters<Parameters<(typeof db)["transaction"]>[0]>[0];
-
 import { isPortalAccessIdleExpired } from "./portal-expiry";
 import { sendPlatformEmail } from "./email-provider";
 import { maybeSyncAssociationGl } from "./services/gl/runtime-sync";
@@ -510,11 +510,10 @@ async function verifyStripeGatewayCredentials(payload: {
     throw new Error("Stripe publishable and secret keys must both be test or both be live");
   }
 
-  const response = await fetch("https://api.stripe.com/v1/account", {
+  const response = await stripeFetch({
+    path: "/account",
     method: "GET",
-    headers: {
-      Authorization: `Bearer ${payload.secretKey}`,
-    },
+    secretKey: payload.secretKey,
   });
 
   const body = await response.json().catch(() => null) as Record<string, unknown> | null;
