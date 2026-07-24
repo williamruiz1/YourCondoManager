@@ -48,6 +48,12 @@ import { resolve as resolvePath } from "node:path";
 const ROUTES_PATH = resolvePath(__dirname, "../server/routes.ts");
 const ROUTES_SRC = readFileSync(ROUTES_PATH, "utf8");
 
+// The vendor handlers were extracted to server/routes/vendors.ts (move-only,
+// founder-os#10758) — their alert-cache invalidation contract is unchanged, just
+// relocated, so the vendors audit scans the extracted module.
+const VENDORS_PATH = resolvePath(__dirname, "../server/routes/vendors.ts");
+const VENDORS_SRC = readFileSync(VENDORS_PATH, "utf8");
+
 /**
  * Locate a handler block by the unique route-registration line and return
  * the text from that line through the matching close of the
@@ -57,8 +63,8 @@ const ROUTES_SRC = readFileSync(ROUTES_PATH, "utf8");
  * at the correct closer even when the handler body contains nested
  * callbacks, IIFEs, or object literals.
  */
-function handlerRegion(routeLineMatcher: RegExp): string {
-  const match = ROUTES_SRC.match(routeLineMatcher);
+function handlerRegion(routeLineMatcher: RegExp, src: string = ROUTES_SRC): string {
+  const match = src.match(routeLineMatcher);
   if (!match) {
     throw new Error(
       `Could not find route registration matching ${routeLineMatcher}`,
@@ -66,28 +72,28 @@ function handlerRegion(routeLineMatcher: RegExp): string {
   }
   const startIdx = match.index!;
   // Find the opening `{` of the handler body (`async (req, res) => {`).
-  const bodyStartRel = ROUTES_SRC.slice(startIdx).search(/=>\s*\{/);
+  const bodyStartRel = src.slice(startIdx).search(/=>\s*\{/);
   if (bodyStartRel === -1) {
     // No handler body — return the registration line only.
-    return ROUTES_SRC.slice(startIdx, startIdx + 200);
+    return src.slice(startIdx, startIdx + 200);
   }
   // Position `i` at the opening `{` itself.
-  let i = startIdx + bodyStartRel + ROUTES_SRC.slice(startIdx + bodyStartRel).indexOf("{");
+  let i = startIdx + bodyStartRel + src.slice(startIdx + bodyStartRel).indexOf("{");
   let depth = 0;
-  for (; i < ROUTES_SRC.length; i++) {
-    const ch = ROUTES_SRC[i];
+  for (; i < src.length; i++) {
+    const ch = src[i];
     if (ch === "{") depth++;
     else if (ch === "}") {
       depth--;
       if (depth === 0) {
         // include the trailing `);` of the `app.post(... );` if present.
-        const tail = ROUTES_SRC.slice(i + 1, i + 5);
+        const tail = src.slice(i + 1, i + 5);
         const endExtra = tail.startsWith(");") ? 2 : 0;
-        return ROUTES_SRC.slice(startIdx, i + 1 + endExtra);
+        return src.slice(startIdx, i + 1 + endExtra);
       }
     }
   }
-  return ROUTES_SRC.slice(startIdx);
+  return src.slice(startIdx);
 }
 
 function assertInvalidationIn(regionName: string, region: string): void {
@@ -177,9 +183,11 @@ describe("Wave 15a — alert cache invalidation wiring (static audit)", () => {
   });
 
   it("Tier 2 / vendors: POST + PATCH invalidate", () => {
-    const post = handlerRegion(/app\.post\("\/api\/vendors",\s*requireAdmin/);
+    // Extracted to server/routes/vendors.ts (founder-os#10758) — scan there.
+    const post = handlerRegion(/app\.post\("\/api\/vendors",\s*requireAdmin/, VENDORS_SRC);
     const patch = handlerRegion(
       /app\.patch\("\/api\/vendors\/:id",\s*requireAdmin/,
+      VENDORS_SRC,
     );
     assertInvalidationIn("POST /api/vendors", post);
     assertInvalidationIn("PATCH /api/vendors/:id", patch);
