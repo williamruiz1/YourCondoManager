@@ -6,7 +6,7 @@
         "/home/runner/workspace/.pocketpm/bin/mcp.cjs"
       ],
       "env": {
-        "PPM_API_URL": "https://pocketpm.fly.dev",
+        "PPM_API_URL": "http://founder-mini:3000",
         "PPM_PROJECT_ID": "1e2da109-f6f6-431c-8dc0-f61b548a1b83"
       }
     }
