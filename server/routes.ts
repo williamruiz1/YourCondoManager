@@ -1846,7 +1846,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Detailed diagnostics endpoint — admin-only, shows DB state for deployment verification
   app.get("/api/health/details", requireAdmin, requireAdminRole(["platform-admin"]), async (_req, res) => {
     try {
-      const [countsResult, assocListResult, authResult, missingSched] = await Promise.all([
+      const [countsResult, assocListResult, authResult, missingSched, glProjectionHealth] = await Promise.all([
         db.execute(sql`
           SELECT
             (SELECT COUNT(*)::int FROM associations) AS associations,
@@ -1890,6 +1890,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           ORDER BY a.name
           LIMIT 20
         `),
+        // Aggregate only: never expose owner, unit, payment, provider, or
+        // amount details through the health endpoint.
+        db.execute(sql`
+          SELECT COUNT(*)::int AS active_failures
+          FROM financial_alerts
+          WHERE entity_type = 'gl-projection'
+            AND entity_id = 'owner-ledger-continuity'
+            AND severity = 'critical'
+            AND is_dismissed = 0
+        `),
       ]);
       const c = countsResult.rows[0] as any;
       const dbHost = process.env.PGHOST ?? "unknown";
@@ -1909,6 +1919,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           data: missingSched.rows,
         });
       }
+      const activeGlProjectionFailures = Number(
+        (glProjectionHealth.rows[0] as { active_failures?: number } | undefined)
+          ?.active_failures ?? 0,
+      );
+      if (activeGlProjectionFailures > 0) {
+        warnings.push({
+          code: "gl_projection_continuity_failure",
+          message:
+            `${activeGlProjectionFailures} association(s) have an active owner-ledger ` +
+            `to accounting-journal continuity failure. Automatic retry remains active; ` +
+            `review Financial Alerts before relying on generated statements.`,
+        });
+      }
 
       res.json({
         status: "ok",
@@ -1924,6 +1947,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           auth_users: c.auth_users,
           admin_users: c.admin_users,
           platform_admins: c.platform_admins,
+          active_gl_projection_failures: activeGlProjectionFailures,
         },
         associations: assocListResult.rows,
         recentAuthUsers: authResult.rows,

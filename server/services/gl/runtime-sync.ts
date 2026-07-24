@@ -46,6 +46,10 @@ import { reconcileFromOwnerLedger } from "./reconcile";
 import { syncAssociationGl, type GlPostingResult } from "./gl-posting-service";
 import type { OwnerLedgerEntryLike } from "./posting";
 import { ownerLedgerAmountDollars } from "@shared/owner-ledger-money";
+import {
+  recordGlProjectionFailure,
+  resolveGlProjectionFailure,
+} from "./projection-alerts";
 
 export type GlSyncOutcome =
   | { posted: false; reason: "not-enabled" | "reconcile-failed" | "error"; detail?: string }
@@ -114,11 +118,27 @@ export async function maybeSyncAssociationGl(
         `[gl] synced association=${associationId}${context ? ` (${context})` : ""}: ` +
           `+${outcome.result.legsInserted} legs (${outcome.result.journalsConsidered} journals)`,
       );
-    } else if (!outcome.posted && outcome.reason === "reconcile-failed") {
+    }
+    if (outcome.posted) {
+      await resolveGlProjectionFailure(associationId).catch((alertError: unknown) => {
+        console.error(
+          `[gl] could not resolve projection alert for association=${associationId}: ` +
+            `${alertError instanceof Error ? alertError.message : String(alertError)}`,
+        );
+      });
+    } else if (outcome.reason === "reconcile-failed") {
       // A reconcile miss is a data-quality signal worth a warning (never fatal).
       console.warn(
         `[gl] reconcile gate blocked GL sync for association=${associationId}` +
           `${context ? ` (${context})` : ""}: ${outcome.detail}`,
+      );
+      await recordGlProjectionFailure(associationId, "reconcile-failed").catch(
+        (alertError: unknown) => {
+          console.error(
+            `[gl] could not persist projection alert for association=${associationId}: ` +
+              `${alertError instanceof Error ? alertError.message : String(alertError)}`,
+          );
+        },
       );
     }
     return outcome;
@@ -127,6 +147,14 @@ export async function maybeSyncAssociationGl(
     console.error(
       `[gl] non-fatal GL sync error for association=${associationId}` +
         `${context ? ` (${context})` : ""}: ${err?.message ?? err}`,
+    );
+    await recordGlProjectionFailure(associationId, "error").catch(
+      (alertError: unknown) => {
+        console.error(
+          `[gl] could not persist projection alert for association=${associationId}: ` +
+            `${alertError instanceof Error ? alertError.message : String(alertError)}`,
+        );
+      },
     );
     return { posted: false, reason: "error", detail: err?.message ?? String(err) };
   }

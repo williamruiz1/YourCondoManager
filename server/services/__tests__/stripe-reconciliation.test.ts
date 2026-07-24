@@ -15,6 +15,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const projectionMocks = vi.hoisted(() => ({
+  maybeSyncAssociationGl: vi.fn(),
+}));
+
+vi.mock("../gl/runtime-sync", () => ({
+  maybeSyncAssociationGl: projectionMocks.maybeSyncAssociationGl,
+}));
+
 // ── Predicate-aware in-memory db fake ────────────────────────────────────────
 // We mock @shared/schema so each column access yields `{ _key: <jsKey> }`, and
 // mock drizzle-orm's operators to produce inspectable predicate objects. The
@@ -225,6 +233,16 @@ beforeEach(() => {
   idCounter = 0;
   mockBalanceTxns = [];
   mockPayout = {};
+  projectionMocks.maybeSyncAssociationGl.mockReset();
+  projectionMocks.maybeSyncAssociationGl.mockResolvedValue({
+    posted: true,
+    result: {
+      skipped: false,
+      accountsSeeded: 13,
+      journalsConsidered: 1,
+      legsInserted: 2,
+    },
+  });
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -341,6 +359,11 @@ describe("writeLedgerEntryForCharge (Gap C — idempotent)", () => {
     expect(retry.created).toBe(false);
     expect(retry.skipped).toBe("already_exists");
     expect(rowsFor(ownerLedgerEntries)).toHaveLength(1); // still just one
+    expect(projectionMocks.maybeSyncAssociationGl).toHaveBeenCalledTimes(2);
+    expect(projectionMocks.maybeSyncAssociationGl).toHaveBeenLastCalledWith(
+      "asn_1",
+      "payment:charge.succeeded:replay",
+    );
   });
 
   it("skips (does not throw) when required metadata is missing", async () => {
@@ -560,6 +583,10 @@ describe("writeReversalLedgerEntry (A-RECON-006 — refund/dispute reversal)", (
     expect(retry.skipped).toBe("already_exists");
     // one payment + exactly one reversal
     expect(rowsFor(ownerLedgerEntries).filter((r) => r.referenceId === "re_dup")).toHaveLength(1);
+    expect(projectionMocks.maybeSyncAssociationGl).toHaveBeenLastCalledWith(
+      "asn_1",
+      "payment:charge.refunded:reversal-replay",
+    );
   });
 
   it("dispute lost posts a reversal AND a separate fee entry (both idempotent)", async () => {

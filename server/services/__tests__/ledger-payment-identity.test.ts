@@ -25,6 +25,14 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+const projectionMocks = vi.hoisted(() => ({
+  maybeSyncAssociationGl: vi.fn(),
+}));
+
+vi.mock("../gl/runtime-sync", () => ({
+  maybeSyncAssociationGl: projectionMocks.maybeSyncAssociationGl,
+}));
+
 // ── Fake schema + drizzle-orm operators (predicate-aware, matches the repo's
 //    existing convention in stripe-reconciliation.test.ts) ────────────────
 type Pred =
@@ -131,6 +139,16 @@ import { postPaymentLedgerEntry } from "../ledger-payment-identity";
 beforeEach(() => {
   store = [];
   idCounter = 0;
+  projectionMocks.maybeSyncAssociationGl.mockReset();
+  projectionMocks.maybeSyncAssociationGl.mockResolvedValue({
+    posted: true,
+    result: {
+      skipped: false,
+      accountsSeeded: 13,
+      journalsConsidered: 1,
+      legsInserted: 2,
+    },
+  });
 });
 
 function baseInput(overrides: Record<string, unknown> = {}) {
@@ -148,6 +166,24 @@ function baseInput(overrides: Record<string, unknown> = {}) {
 }
 
 describe("postPaymentLedgerEntry — A-WEBHOOK-001 (cross-path identity collision)", () => {
+  it("owns the GL projection for a platform charge so callers cannot omit accounting", async () => {
+    const result = await postPaymentLedgerEntry(
+      baseInput({
+        referenceType: "stripe_charge",
+        referenceId: "ch_full_loop",
+        paymentIdentityKey: "pi_full_loop",
+        source: "charge.succeeded",
+      }),
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.glSyncOutcome.posted).toBe(true);
+    expect(projectionMocks.maybeSyncAssociationGl).toHaveBeenCalledWith(
+      "assoc-1",
+      "payment:charge.succeeded",
+    );
+  });
+
   it("models checkout.session.completed + payment_intent.succeeded for ONE PI → exactly one ledger credit", async () => {
     // processPaymentWebhookEvent posts referenceType='payment-webhook' with
     // referenceId=<paymentWebhookEvents row id> (DIFFERENT per Stripe event
@@ -164,6 +200,9 @@ describe("postPaymentLedgerEntry — A-WEBHOOK-001 (cross-path identity collisio
     expect(second.created).toBe(false);
     expect(second.entry?.id).toBe(first.entry?.id);
     expect(store.filter((r) => r.paymentIdentityKey === "pi_ABC123")).toHaveLength(1);
+    // A replay also runs the idempotent projection so a prior partial failure
+    // heals without creating a second owner-ledger credit.
+    expect(projectionMocks.maybeSyncAssociationGl).toHaveBeenCalledTimes(2);
   });
 
   it("models the per-HOA payment-webhook AND the platform stripe_charge writing for ONE charge → exactly one credit", async () => {
@@ -236,6 +275,27 @@ describe("postPaymentLedgerEntry — A-WEBHOOK-002 (concurrent duplicate insert)
     await expect(
       postPaymentLedgerEntry(baseInput({ referenceId: "ref-2", paymentIdentityKey: "pi_IDEMPOTENT" })),
     ).resolves.toEqual(expect.objectContaining({ created: false, entry: expect.objectContaining({ id: expect.any(String) }) }));
+  });
+
+  it("keeps the successful owner-ledger result when the derived GL projection reports a failure", async () => {
+    projectionMocks.maybeSyncAssociationGl.mockResolvedValue({
+      posted: false,
+      reason: "error",
+      detail: "synthetic failure",
+    });
+
+    const result = await postPaymentLedgerEntry(
+      baseInput({ referenceId: "ref-gl-failure", paymentIdentityKey: "pi_GL_FAILURE" }),
+    );
+
+    expect(result.created).toBe(true);
+    expect(result.entry?.id).toEqual(expect.any(String));
+    expect(result.glSyncOutcome).toEqual({
+      posted: false,
+      reason: "error",
+      detail: "synthetic failure",
+    });
+    expect(store).toHaveLength(1);
   });
 });
 

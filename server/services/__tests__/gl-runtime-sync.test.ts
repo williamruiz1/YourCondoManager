@@ -16,6 +16,16 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const alertMocks = vi.hoisted(() => ({
+  recordGlProjectionFailure: vi.fn(),
+  resolveGlProjectionFailure: vi.fn(),
+}));
+
+vi.mock("../gl/projection-alerts", () => ({
+  recordGlProjectionFailure: alertMocks.recordGlProjectionFailure,
+  resolveGlProjectionFailure: alertMocks.resolveGlProjectionFailure,
+}));
+
 // ── Mock the owner-ledger DB load. runtime-sync calls db.select().from().where()
 //    and maps rows; we return a programmable row set. ──────────────────────────
 let ledgerRows: any[] = [];
@@ -83,6 +93,10 @@ beforeEach(() => {
   delete process.env.GL_ENABLED_ASSOCIATIONS;
   reconcileSpy.mockClear();
   syncSpy.mockClear();
+  alertMocks.recordGlProjectionFailure.mockReset();
+  alertMocks.resolveGlProjectionFailure.mockReset();
+  alertMocks.recordGlProjectionFailure.mockResolvedValue(undefined);
+  alertMocks.resolveGlProjectionFailure.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -158,12 +172,18 @@ describe("maybeSyncAssociationGl — NON-FATAL best-effort wrapper", () => {
     const out = await maybeSyncAssociationGl(ASSOC, "payment-webhook");
     expect(out.posted).toBe(false);
     if (!out.posted) expect(out.reason).toBe("error");
+    expect(alertMocks.recordGlProjectionFailure).toHaveBeenCalledWith(
+      ASSOC,
+      "error",
+    );
     errSpy.mockRestore();
   });
 
   it("returns the not-enabled outcome cleanly when disabled (the common default)", async () => {
     const out = await maybeSyncAssociationGl(ASSOC, "autopay");
     expect(out).toEqual({ posted: false, reason: "not-enabled" });
+    expect(alertMocks.recordGlProjectionFailure).not.toHaveBeenCalled();
+    expect(alertMocks.resolveGlProjectionFailure).not.toHaveBeenCalled();
   });
 
   it("reports posted with the legs inserted on the happy path", async () => {
@@ -171,5 +191,24 @@ describe("maybeSyncAssociationGl — NON-FATAL best-effort wrapper", () => {
     const out = await maybeSyncAssociationGl(ASSOC, "payment-webhook");
     expect(out.posted).toBe(true);
     if (out.posted) expect(out.result.legsInserted).toBe(4);
+    expect(alertMocks.resolveGlProjectionFailure).toHaveBeenCalledWith(ASSOC);
+  });
+
+  it("persists a critical continuity alert when the reconcile gate blocks posting", async () => {
+    process.env.GL_ENABLED_ASSOCIATIONS = ASSOC;
+    reconcileOk = false;
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const out = await maybeSyncAssociationGl(ASSOC, "payment:charge.succeeded");
+
+    expect(out).toEqual(expect.objectContaining({
+      posted: false,
+      reason: "reconcile-failed",
+    }));
+    expect(alertMocks.recordGlProjectionFailure).toHaveBeenCalledWith(
+      ASSOC,
+      "reconcile-failed",
+    );
+    warnSpy.mockRestore();
   });
 });

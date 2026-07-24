@@ -46,6 +46,7 @@ import { getSecret } from "../platform-secrets-store";
 import { log } from "../logger";
 import { handleAchFailureEvent } from "../services/ach-failure-service";
 import { updatePaymentTransactionStatus } from "../services/payment-service";
+import { sendPaymentReceiptEmail } from "../services/payment-receipt-email";
 
 export type AdminRequest = Request & {
   adminUserId?: string;
@@ -438,11 +439,28 @@ export function registerStripeConnectRoutes(app: Express, deps: StripeConnectRou
           // or regress a status that already settled elsewhere.
           const chargeMeta = (charge.metadata ?? {}) as Record<string, string>;
           if (chargeMeta.transactionId || charge.payment_intent) {
-            await updatePaymentTransactionStatus({
+            const updatedTransaction = await updatePaymentTransactionStatus({
               transactionId: chargeMeta.transactionId,
               providerIntentId: charge.payment_intent ?? undefined,
               status: "succeeded",
             });
+            if (updatedTransaction?.status === "succeeded") {
+              // The per-association payment webhook normally sends this receipt.
+              // The platform Connect event is a full fallback path, so it must
+              // also close the owner-notification loop when that other event is
+              // delayed or absent. The receipt service is idempotent on the
+              // payment-transaction row, making dual delivery safe.
+              sendPaymentReceiptEmail({
+                transactionId: updatedTransaction.id,
+              }).catch((receiptError: unknown) => {
+                console.error(
+                  "[stripe-connect] payment receipt failed:",
+                  receiptError instanceof Error
+                    ? receiptError.message
+                    : String(receiptError),
+                );
+              });
+            }
           }
           return res.status(200).json({
             received: true,
