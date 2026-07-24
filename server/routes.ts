@@ -17828,6 +17828,13 @@ This is an automated enquiry from the Your Condo Manager marketing site.
       const eventId = event.id as string;
       const eventType = event.type as string;
       const eventObj = (event.data && typeof event.data === "object" ? (event.data as any).object : {}) as Record<string, unknown>;
+      // founder-os#1147 — `previous_attributes` shows exactly what changed on an
+      // update event (Stripe only includes it on *.updated). Used below to detect
+      // a genuine plan change (items/plan) so we email a plan-changed notice only
+      // when the plan actually moved — never on an unrelated field update.
+      const previousAttributes = (event.data && typeof event.data === "object"
+        ? ((event.data as any).previous_attributes ?? {})
+        : {}) as Record<string, unknown>;
 
       // Upsert webhook event record (idempotent)
       await db.insert(platformWebhookEvents).values({
@@ -17852,6 +17859,50 @@ This is an automated enquiry from the Your Condo Manager marketing site.
           const trialEnd = typeof eventObj.trial_end === "number" ? new Date(eventObj.trial_end * 1000) : undefined;
           const cancelAtEnd = (eventObj.cancel_at_period_end as boolean) ? 1 : 0;
           await storage.updatePlatformSubscription(sub.id, { status: newStatus as any, currentPeriodEnd: periodEnd, trialEndsAt: trialEnd, cancelAtPeriodEnd: cancelAtEnd });
+
+          // founder-os#1147 — plan-changed transactional email (acceptance
+          // criterion: emails include plan-changed). Fire ONLY on a genuine plan
+          // move: Stripe's `previous_attributes.items`/`.plan` is present only when
+          // the subscription's plan/price actually changed (the Stripe Customer
+          // Portal proration flow → `customer.subscription.updated`). Best-effort +
+          // non-crashing, mirroring the dunning/receipt emails. Not fired on
+          // deletions (that's the cancel path) or on unrelated field updates.
+          const planChanged = eventType === "customer.subscription.updated"
+            && (Object.prototype.hasOwnProperty.call(previousAttributes, "items")
+              || Object.prototype.hasOwnProperty.call(previousAttributes, "plan"));
+          if (planChanged && sub.adminEmail) {
+            const newPlanLabel = (eventObj.metadata && typeof eventObj.metadata === "object"
+              ? ((eventObj.metadata as Record<string, unknown>).plan as string | undefined)
+              : undefined) ?? sub.plan;
+            await sendPlatformEmail({
+              to: sub.adminEmail,
+              subject: "Your Your Condo Manager plan was updated",
+              html: `<p>Hi,</p><p>Your Your Condo Manager subscription plan has been updated to <strong>${newPlanLabel}</strong>. Any proration is reflected on your next invoice.</p><p><a href="https://app.yourcondomanager.org/app/settings/billing">View your billing settings →</a></p>`,
+              text: `Your Your Condo Manager subscription plan has been updated to ${newPlanLabel}. Any proration is reflected on your next invoice. View your billing settings at https://app.yourcondomanager.org/app/settings/billing`,
+            }).catch(() => {});
+          }
+        }
+        processed = true;
+      } else if (eventType === "customer.subscription.trial_will_end") {
+        // founder-os#1147 — trial-ending transactional email (acceptance
+        // criterion: emails include trial-ending). Stripe fires
+        // `customer.subscription.trial_will_end` ~3 days before the trial ends —
+        // the canonical Stripe pattern for a trial reminder (no custom scheduler
+        // needed for the D-3 touch). Best-effort + non-crashing.
+        const subId = eventObj.id as string;
+        const sub = subId ? await storage.getPlatformSubscriptionByStripeId(subId) : null;
+        if (sub?.adminEmail) {
+          const trialEndTs = typeof eventObj.trial_end === "number"
+            ? new Date((eventObj.trial_end as number) * 1000) : (sub.trialEndsAt ?? null);
+          const whenStr = trialEndTs
+            ? trialEndTs.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })
+            : "soon";
+          await sendPlatformEmail({
+            to: sub.adminEmail,
+            subject: "Your Your Condo Manager free trial is ending soon",
+            html: `<p>Hi,</p><p>Your free trial of your <strong>${sub.plan}</strong> Your Condo Manager subscription ends on <strong>${whenStr}</strong>.</p><p>Add a payment method now to keep your account active without interruption.</p><p><a href="https://app.yourcondomanager.org/app/settings/billing">Add a payment method →</a></p>`,
+            text: `Your free trial of your ${sub.plan} Your Condo Manager subscription ends on ${whenStr}. Add a payment method to keep your account active: https://app.yourcondomanager.org/app/settings/billing`,
+          }).catch(() => {});
         }
         processed = true;
       } else if (eventType === "invoice.payment_succeeded" || eventType === "invoice.paid") {
