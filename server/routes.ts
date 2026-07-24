@@ -1025,6 +1025,9 @@ type AdminRequest = Request & {
   adminUserEmail?: string;
   adminRole?: AdminRole;
   adminScopedAssociationIds?: string[];
+  // A-AUTH-004 (founder-os#10783): the read-write subset gated by
+  // `assertAssociationWriteScope` (populated in `applyAdminContext`).
+  adminWriteAssociationIds?: string[];
 };
 type PortalRequest = Request & {
   portalAccessId?: string;
@@ -1109,13 +1112,23 @@ async function applyAdminContext(req: AdminRequest, adminUser: { id: string; ema
       }
     }
     req.adminScopedAssociationIds = scopes.map((scope) => scope.associationId);
+    // A-AUTH-004 (founder-os#10783): the WRITE subset — associations whose scope
+    // VALUE is `read-write`. `assertAssociationWriteScope` gates mutations on this
+    // set once `ENFORCE_ADMIN_WRITE_SCOPE` is on; a `read-only` scope is absent
+    // here, so it reads but can no longer write. Value-blind until now — this is
+    // the plumbing that finally consumes the `scope` column.
+    req.adminWriteAssociationIds = scopes
+      .filter((scope) => scope.scope === "read-write")
+      .map((scope) => scope.associationId);
     debug("[applyAdminContext][scoped]", {
       email: adminUser.email,
       scopeCount: req.adminScopedAssociationIds.length,
       scopedAssociationIds: req.adminScopedAssociationIds,
+      writeScopeCount: req.adminWriteAssociationIds.length,
     });
   } else {
     req.adminScopedAssociationIds = [];
+    req.adminWriteAssociationIds = [];
     debug("[applyAdminContext][platform-admin] full access granted", { email: adminUser.email });
   }
   req.adminUserId = adminUser.id;
@@ -9788,7 +9801,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/ai/ingestion/rollout-policy", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = typeof req.query.associationId === "string" ? req.query.associationId : "";
-      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      assertAssociationInputScope(req as AdminRequest, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required." });
       const config = await storage.getTenantConfig(associationId);
       const mode = normalizeAiIngestionRolloutMode(config?.aiIngestionRolloutMode);
@@ -10819,7 +10832,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/communications/push-subscriber-count", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      assertAssociationInputScope(req, associationId || null);
+      assertAssociationInputScope(req, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const subs = await db.select().from(pushSubscriptions)
         .where(and(eq(pushSubscriptions.associationId, associationId), eq(pushSubscriptions.isActive, 1)));
@@ -10833,7 +10846,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/communications/sms-recipient-count", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      assertAssociationInputScope(req, associationId || null);
+      assertAssociationInputScope(req, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const accesses = await storage.getPortalAccesses(associationId);
       const allPersons = await storage.getPersons(associationId);
@@ -10852,7 +10865,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/communications/readiness", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      assertAssociationInputScope(req as AdminRequest, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const result = await storage.getAssociationContactReadiness(associationId);
       res.json(result);
@@ -10864,7 +10877,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/onboarding/completeness", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      assertAssociationInputScope(req as AdminRequest, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const result = await storage.getAssociationOnboardingCompleteness(associationId);
       res.json(result);
@@ -10876,7 +10889,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/onboarding/state", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      assertAssociationInputScope(req as AdminRequest, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const result = await storage.getAssociationOnboardingState(associationId);
       res.json(result);
@@ -11732,7 +11745,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/onboarding/invites", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      assertAssociationInputScope(req as AdminRequest, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const result = await storage.getOnboardingInvites(associationId);
       res.json(result);
@@ -11821,7 +11834,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/onboarding/submissions", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      assertAssociationInputScope(req as AdminRequest, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const result = await storage.getOnboardingSubmissions(associationId);
       res.json(result);
@@ -13724,7 +13737,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
     try {
       const result = await getEmailLog(getParam(req.params.id));
       if (!result) return res.status(404).json({ message: "Email log not found" });
-      assertAssociationInputScope(req as AdminRequest, result.associationId ?? null);
+      assertAssociationInputScope(req as AdminRequest, result.associationId ?? null, "read");
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -14411,7 +14424,7 @@ This is an automated enquiry from the Your Condo Manager marketing site.
   app.get("/api/communications/sms-delivery-logs", requireAdmin, requireAdminRole(["platform-admin", "board-officer", "assisted-board", "pm-assistant", "manager", "viewer"]), async (req: AdminRequest, res) => {
     try {
       const associationId = getAssociationIdQuery(req);
-      assertAssociationInputScope(req as AdminRequest, associationId || null);
+      assertAssociationInputScope(req as AdminRequest, associationId || null, "read");
       if (!associationId) return res.status(400).json({ message: "associationId is required" });
       const logs = await db.select().from(smsDeliveryLogs)
         .where(eq(smsDeliveryLogs.associationId, associationId))

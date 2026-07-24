@@ -24,7 +24,33 @@ import type { AdminRole } from "@shared/schema";
  * module's own `AdminRequest` (Express `Request` + these fields). */
 export interface ScopeAdminRequest {
   adminRole?: AdminRole;
+  /** Every association the admin is scoped to (read + write) — the presence set
+   * every READ is gated on (`assertAssociationScope`). */
   adminScopedAssociationIds?: string[];
+  /** The subset of `adminScopedAssociationIds` whose `admin_association_scopes.scope`
+   * value is `read-write` (A-AUTH-004, founder-os#10783). WRITES are gated on THIS
+   * set once `ENFORCE_ADMIN_WRITE_SCOPE` is on; a `read-only` scope is absent here
+   * and can therefore no longer mutate. Populated at the same site that builds
+   * `adminScopedAssociationIds`. */
+  adminWriteAssociationIds?: string[];
+}
+
+/**
+ * A-AUTH-004 write-scope enforcement flag (founder-os#10783). DEFAULT OFF.
+ *
+ * When OFF, `assertAssociationWriteScope` is exactly `assertAssociationScope`
+ * (presence-based) — the current, value-blind behavior, so shipping this change
+ * is a ZERO behavior change and cannot strip write access from any admin.
+ *
+ * When ON, a non-platform admin must have the association in its `read-write`
+ * set to mutate it. It MUST NOT be flipped on until every admin that legitimately
+ * writes has an explicit `read-write` grant provisioned (else auto-hydrated
+ * `read-only` admins lose write access) — that write-grant provisioning is the
+ * founder/ops gate this flag defers to (founder-os#10783 Dependency 2). Read via
+ * the env each call so an operator can flip it without a redeploy of this module.
+ */
+export function isAdminWriteScopeEnforced(): boolean {
+  return process.env.ENFORCE_ADMIN_WRITE_SCOPE === "true";
 }
 
 /**
@@ -98,17 +124,50 @@ export function assertAssociationScope(req: ScopeAdminRequest, associationId: st
   }
 }
 
+/**
+ * Assert a non-platform admin may MUTATE (write to) resources in `associationId`
+ * (A-AUTH-004, founder-os#10783). Fail-closed like `assertAssociationScope`
+ * (empty/missing/out-of-scope all DENY), PLUS — when `ENFORCE_ADMIN_WRITE_SCOPE`
+ * is on — the association must be in the admin's `read-write` set; a `read-only`
+ * scope reads but cannot write. platform-admin is unrestricted.
+ *
+ * With the flag OFF (default) this is EXACTLY `assertAssociationScope`
+ * (presence-based) — so wiring this at write handlers is a zero behavior change
+ * until write-grants are provisioned and the flag is flipped.
+ */
+export function assertAssociationWriteScope(req: ScopeAdminRequest, associationId: string): void {
+  // Same fail-closed presence semantics as a read (role/association/empty-scope all deny).
+  assertAssociationScope(req, associationId);
+  if (req.adminRole === "platform-admin") return;
+  if (!isAdminWriteScopeEnforced()) return; // flag OFF → presence-only (current behavior)
+  const writeAssociationIds = req.adminWriteAssociationIds ?? [];
+  if (!writeAssociationIds.includes(associationId)) {
+    // Read-only scope for a write: fail-closed with a distinct message so the
+    // 403 reads as "read-only" rather than "outside scope".
+    throw new Error("Association is read-only for this admin");
+  }
+}
+
 /** Like `assertAssociationScope`, but a missing associationId is an explicit
- * "associationId is required" for non-platform admins (used on write inputs). */
+ * "associationId is required" for non-platform admins. Documented as the guard
+ * for association-scoped INPUTS (request bodies) — which are writes by default,
+ * so `intent` defaults to `"write"` and routes through the write-scope check
+ * (A-AUTH-004, founder-os#10783). The handful of READ handlers that resolve an
+ * association from an input must pass `intent: "read"` explicitly. */
 export function assertAssociationInputScope(
   req: ScopeAdminRequest,
   associationId: string | null | undefined,
+  intent: "read" | "write" = "write",
 ): void {
   if (req.adminRole === "platform-admin") return;
   if (!associationId) {
     throw new Error("associationId is required");
   }
-  assertAssociationScope(req, associationId);
+  if (intent === "write") {
+    assertAssociationWriteScope(req, associationId);
+  } else {
+    assertAssociationScope(req, associationId);
+  }
 }
 
 /**
