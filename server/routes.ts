@@ -351,6 +351,7 @@ import { registerAdminReconciliationRoutes } from "./routes/admin-reconciliation
 import { registerAdminPaymentsRoutes } from "./routes/admin-payments";
 import { registerAdminDisbursementRoutes } from "./routes/admin-disbursements";
 import { registerAgentActionRoutes } from "./routes/agent-actions";
+import { registerOwnerFaqTriageRoutes } from "./routes/owner-faq-triage";
 import { registerBoardMemoryRoutes } from "./routes/board-memory";
 import { registerArcRoutes } from "./routes/arc";
 import { registerViolationTriageRoutes } from "./routes/violation-triage";
@@ -1644,6 +1645,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     getAssociationIdQuery,
     assertAssociationScope,
   });
+
+  // Owner-FAQ triage intake (founder-os#9476, W1). Owner submits a routine
+  // inquiry via the portal; the agent classifies -> grounds -> drafts -> files
+  // it into the queue above. Default is queue-for-review, not auto-send.
+  registerOwnerFaqTriageRoutes(app, { requirePortal });
 
   // Cross-board-cycle institutional memory (founder-os#9475, W1). A queryable
   // decision log that survives board turnover — L1 read-only surface (no
