@@ -38,7 +38,6 @@ import {
 import { markTransactionForRetry, getDelinquencySettings } from "../services/retry-service";
 import { resolveConnectChargeRouting } from "../services/stripe-connect-resolver";
 import { computeApplicationFeeCents } from "../services/stripe-charge-metadata";
-import { maybeSyncAssociationGl } from "../services/gl/runtime-sync";
 import { postPaymentLedgerEntry } from "../services/ledger-payment-identity";
 
 // ── Re-usable types (mirrored from routes.ts) ────────────────────────────────
@@ -293,13 +292,6 @@ export async function runAutopayCollectionForAssociation(
         });
         ledgerEntryId = ledgerResult.entry?.id ?? null;
 
-        // YCM Financial Core — dues-to-GL wiring. The confirmed autopay charge is
-        // now in the owner ledger (system of record). Post it into the PARALLEL
-        // fund-aware GL so it reaches the financial statements. BEST-EFFORT +
-        // NON-FATAL: a GL sync failure must never break the autopay run — the
-        // money is already recorded. Per-association + reconcile-to-cent gated,
-        // idempotent on re-run.
-        await maybeSyncAssociationGl(associationId, "autopay");
       }
 
       // Record the run

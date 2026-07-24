@@ -44,6 +44,10 @@ import { db } from "../db";
 import { ownerLedgerEntries, type OwnerLedgerEntry } from "@shared/schema";
 import { log } from "../logger";
 import { ownerLedgerV1Amount } from "@shared/owner-ledger-money";
+import {
+  maybeSyncAssociationGl,
+  type GlSyncOutcome,
+} from "./gl/runtime-sync";
 
 const AUDIT_SOURCE = "ledger-payment-identity";
 
@@ -75,11 +79,44 @@ export interface PostPaymentLedgerEntryInput {
 export interface PostPaymentLedgerEntryResult {
   created: boolean;
   entry: OwnerLedgerEntry | null;
+  /**
+   * The immediate derived-accounting outcome. The owner ledger remains the
+   * payment system of record, so a projection failure is returned and alerted
+   * rather than allowed to erase or duplicate a successful payment.
+   */
+  glSyncOutcome: GlSyncOutcome;
 }
 
 function normalizeKey(key: string | null | undefined): string | null {
   const trimmed = key?.trim();
   return trimmed ? trimmed : null;
+}
+
+async function completeAccountingProjection(
+  input: PostPaymentLedgerEntryInput,
+  result: Omit<PostPaymentLedgerEntryResult, "glSyncOutcome">,
+): Promise<PostPaymentLedgerEntryResult> {
+  const glSyncOutcome = await ensurePaymentAccountingProjection({
+    associationId: input.associationId,
+    source: input.source,
+  });
+  return { ...result, glSyncOutcome };
+}
+
+/**
+ * Complete (or re-complete) the derived accounting projection for a payment
+ * event. The canonical writer calls this for both new and duplicate payments;
+ * exact provider-event replay guards may also call it after proving that the
+ * owner-ledger row already exists.
+ */
+export async function ensurePaymentAccountingProjection(input: {
+  associationId: string;
+  source: string;
+}): Promise<GlSyncOutcome> {
+  return maybeSyncAssociationGl(
+    input.associationId,
+    `payment:${input.source}`,
+  );
 }
 
 export async function postPaymentLedgerEntry(
@@ -122,7 +159,10 @@ export async function postPaymentLedgerEntry(
         `[${input.source}] wrote ledger entry id=${inserted.id} identity=${key} ref=${logRef} amount=${input.amount}`,
         AUDIT_SOURCE,
       );
-      return { created: true, entry: ownerLedgerV1Amount(inserted) };
+      return completeAccountingProjection(input, {
+        created: true,
+        entry: ownerLedgerV1Amount(inserted),
+      });
     }
 
     // Conflict — some other event/endpoint already posted this payment_intent.
@@ -143,7 +183,10 @@ export async function postPaymentLedgerEntry(
       `[${input.source}] skip ledger write — payment identity already recorded identity=${key} existing=${existing?.id ?? "unknown"} attempted-ref=${logRef}`,
       AUDIT_SOURCE,
     );
-    return { created: false, entry: existing ? ownerLedgerV1Amount(existing) : null };
+    return completeAccountingProjection(input, {
+      created: false,
+      entry: existing ? ownerLedgerV1Amount(existing) : null,
+    });
   }
 
   // No canonical payment identity available. Fall back to the EXACT
@@ -161,7 +204,10 @@ export async function postPaymentLedgerEntry(
     .limit(1);
   if (existing) {
     log(`[${input.source}] skip ledger write — reference already exists ref=${logRef} id=${existing.id}`, AUDIT_SOURCE);
-    return { created: false, entry: ownerLedgerV1Amount(existing) };
+    return completeAccountingProjection(input, {
+      created: false,
+      entry: ownerLedgerV1Amount(existing),
+    });
   }
 
   const [inserted] = await db
@@ -180,5 +226,8 @@ export async function postPaymentLedgerEntry(
     })
     .returning();
   log(`[${input.source}] wrote ledger entry id=${inserted.id} (no payment identity key) ref=${logRef} amount=${input.amount}`, AUDIT_SOURCE);
-  return { created: true, entry: ownerLedgerV1Amount(inserted) };
+  return completeAccountingProjection(input, {
+    created: true,
+    entry: ownerLedgerV1Amount(inserted),
+  });
 }

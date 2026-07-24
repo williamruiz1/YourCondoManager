@@ -1,0 +1,935 @@
+{
+  "audit": {
+    "title": "YCM Owner Payment-to-Accounting Continuity Audit",
+    "mode": "repair-and-certify",
+    "scope": "Successful owner payments, duplicate/replay handling, derived GL projection failure recovery, and payment reversal projection",
+    "environments": [
+      "production-read-only",
+      "local-isolated-test"
+    ],
+    "criticality": "critical",
+    "observed_at": "2026-07-24T17:33:12Z",
+    "authorities": {
+      "requirements": "Approved YCM Continuity Correction and Bank Rules/HOA Accounting R2 mandates",
+      "code": "YourCondoManager branch fix/ycm-gl-canonical-shape-repair at base 05ae79afcfa98d14f4a6cb8a7986b9c2db855e83 plus this repair",
+      "data": "Production owner ledger, payment transactions, webhook records, and derived GL inspected read-only using aggregate evidence",
+      "provider": "Stripe signed webhook contract; no new provider action performed",
+      "deployment": "Existing staged-release and protected production release gates"
+    },
+    "diagrams": {
+      "system_context": "audit-report.md#system-context"
+    }
+  },
+  "actors": [
+    {
+      "id": "owner",
+      "name": "Association owner",
+      "role": "Pays an association obligation and reads payment history"
+    },
+    {
+      "id": "financial-operator",
+      "name": "Association financial operator",
+      "role": "Reviews financial alerts, ledgers, and statements within association scope"
+    },
+    {
+      "id": "ycm-automation",
+      "name": "YCM payment and accounting automation",
+      "role": "Validates provider events, writes canonical payment truth, derives journals, and retries gaps"
+    },
+    {
+      "id": "stripe",
+      "name": "Stripe",
+      "role": "External payment provider and signed-event authority"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "CAP-PAY-001",
+      "name": "Settle an owner payment through ledger, accounting, statements, and receipt",
+      "actor_ids": [
+        "owner",
+        "financial-operator",
+        "ycm-automation",
+        "stripe"
+      ],
+      "ui_entrypoints": [
+        "Owner Portal payment controls",
+        "Owner Portal ledger and receipt history",
+        "Financial statements"
+      ],
+      "backend_paths": [
+        "signed payment webhooks",
+        "postPaymentLedgerEntry",
+        "maybeSyncAssociationGl",
+        "sendPaymentReceiptEmail"
+      ],
+      "workflow_ids": [
+        "WF-PAY-001"
+      ],
+      "reconciliation": "mapped"
+    },
+    {
+      "id": "CAP-PAY-002",
+      "name": "Deduplicate and safely replay a payment event",
+      "actor_ids": [
+        "ycm-automation",
+        "stripe"
+      ],
+      "ui_entrypoints": [
+        "none — provider retry/replay"
+      ],
+      "backend_paths": [
+        "payment identity unique key",
+        "writeLedgerEntryForCharge replay guard",
+        "ensurePaymentAccountingProjection"
+      ],
+      "workflow_ids": [
+        "WF-PAY-002"
+      ],
+      "reconciliation": "backend-only"
+    },
+    {
+      "id": "CAP-PAY-003",
+      "name": "Detect and recover a missed accounting projection",
+      "actor_ids": [
+        "financial-operator",
+        "ycm-automation"
+      ],
+      "ui_entrypoints": [
+        "Financial Alerts",
+        "platform health details"
+      ],
+      "backend_paths": [
+        "recordGlProjectionFailure",
+        "runGlProjectionContinuitySweep",
+        "resolveGlProjectionFailure"
+      ],
+      "workflow_ids": [
+        "WF-PAY-003"
+      ],
+      "reconciliation": "mapped"
+    },
+    {
+      "id": "CAP-PAY-004",
+      "name": "Project a refund or chargeback reversal into accounting",
+      "actor_ids": [
+        "financial-operator",
+        "ycm-automation",
+        "stripe"
+      ],
+      "ui_entrypoints": [
+        "Financial ledger and statements"
+      ],
+      "backend_paths": [
+        "signed Stripe refund/dispute webhook",
+        "writeReversalLedgerEntry",
+        "ensurePaymentAccountingProjection"
+      ],
+      "workflow_ids": [
+        "WF-PAY-004"
+      ],
+      "reconciliation": "mapped"
+    }
+  ],
+  "workflows": [
+    {
+      "id": "WF-PAY-001",
+      "name": "Settled owner payment reaches accounting",
+      "actor_ids": [
+        "owner",
+        "financial-operator",
+        "ycm-automation",
+        "stripe"
+      ],
+      "risk": "critical",
+      "trigger": "Stripe sends a signed success event after an owner payment settles",
+      "entrypoints": [
+        "Owner Portal payment",
+        "per-association payment webhook",
+        "platform Connect webhook"
+      ],
+      "preconditions": [
+        "Provider signature and timestamp pass",
+        "Association, unit, person, and payment identity resolve in one association",
+        "Association is in the GL cohort for journal projection"
+      ],
+      "terminal_outcomes": [
+        "One owner-ledger credit exists",
+        "One balanced cash and Accounts Receivable journal exists",
+        "Transaction is succeeded",
+        "Owner receipt is sent or safely retryable",
+        "Statements derive from the journal"
+      ],
+      "invariants": [
+        "Zero cross-association reference",
+        "Zero duplicate owner credit",
+        "Journal debits equal credits",
+        "GL Accounts Receivable equals owner subledger",
+        "Receipt is idempotent",
+        "Projection failure never erases payment truth"
+      ],
+      "happy_path": [
+        "Validate signed provider event",
+        "Update payment transaction to succeeded",
+        "Insert or resolve canonical owner-ledger payment",
+        "Reconcile and project canonical GL journal",
+        "Send idempotent receipt",
+        "Read ledger, receipt, and statements"
+      ],
+      "alternate_paths": [
+        "Platform Connect completes the workflow when the per-association webhook is delayed or absent",
+        "ACH may remain pending until the provider success event"
+      ],
+      "failure_paths": [
+        "Invalid provider event fails before mutation",
+        "GL failure preserves ledger truth and enters WF-PAY-003",
+        "Receipt failure clears its sent marker so retry remains possible"
+      ],
+      "systems": [
+        "Owner Portal",
+        "YCM payment routes",
+        "Stripe",
+        "payment_transactions",
+        "owner_ledger_entries",
+        "gl_entries",
+        "receipt service",
+        "statement service"
+      ],
+      "data": {
+        "inputs": [
+          "Signed Stripe event and trusted local payment transaction"
+        ],
+        "writes": [
+          "Payment transaction terminal status",
+          "Immutable owner-ledger payment row",
+          "Derived balanced GL journal",
+          "Receipt sent marker"
+        ],
+        "reads": [
+          "Owner ledger",
+          "Receipt history",
+          "Financial statements"
+        ],
+        "retention": [
+          "Financial records and supporting evidence follow the approved minimum seven-year policy"
+        ]
+      },
+      "process": {
+        "sync_steps": [
+          "Webhook validation",
+          "Payment status update",
+          "Canonical ledger write",
+          "Immediate GL projection"
+        ],
+        "async_steps": [
+          "Stripe webhook delivery",
+          "Receipt provider delivery",
+          "Five-minute continuity recovery"
+        ],
+        "external_dependencies": [
+          "Stripe",
+          "Configured receipt email provider"
+        ]
+      },
+      "notifications": [
+        {
+          "event": "Owner payment succeeded",
+          "audience": "Owning person for the paid unit",
+          "channel": "Email plus Owner Portal receipt history",
+          "trigger_point": "Local payment transaction reaches succeeded",
+          "template": "receipt-payment",
+          "delivery_evidence": "EV-PAY-003",
+          "failure_handling": "Sent marker is cleared on provider failure so retry remains possible; failures are logged"
+        }
+      ],
+      "controls": {
+        "authorization": [
+          "Owner Portal session and server-side payment-route checks"
+        ],
+        "validation": [
+          "Stripe signature and timestamp",
+          "Positive amount",
+          "Required association/unit/person metadata"
+        ],
+        "tenant_scope": [
+          "Association IDs must agree across signed metadata, transaction, unit, and owner-ledger write"
+        ],
+        "privacy": [
+          "No payment credentials are stored in audit evidence"
+        ],
+        "idempotency": [
+          "Association plus canonical payment identity",
+          "Exact charge reference",
+          "GL source-leg unique identity",
+          "Receipt sent marker"
+        ],
+        "audit_trail": [
+          "Provider event record",
+          "Payment transaction",
+          "Owner ledger",
+          "GL source linkage"
+        ]
+      },
+      "observability": {
+        "logs": [
+          "ledger-payment-identity",
+          "stripe-recon",
+          "gl runtime sync"
+        ],
+        "metrics": [
+          "automation sweep projection counts",
+          "aggregate active projection failures"
+        ],
+        "alerts": [
+          "Critical association-scoped Financial Alert"
+        ],
+        "correlation_ids": [
+          "provider event ID",
+          "payment intent identity",
+          "ledger source ID",
+          "journal source ID"
+        ]
+      },
+      "recovery": {
+        "retry": [
+          "Provider replay and five-minute continuity sweep re-run idempotent projection"
+        ],
+        "compensation": [
+          "Payment truth remains in owner ledger while GL is derived and recoverable"
+        ],
+        "manual_recovery": [
+          "Protected canonical GL repair after read-only audit, snapshot, and approval reference"
+        ]
+      },
+      "continuity": {
+        "entry": "pass",
+        "identity_scope": "pass",
+        "validation": "pass",
+        "orchestration_state": "pass",
+        "data_projection": "pass",
+        "async_idempotency": "pass",
+        "provider": "pass",
+        "notifications": "pass",
+        "user_outcome": "gated",
+        "audit_operations": "pass",
+        "privacy_retention": "pass"
+      },
+      "diagrams": {
+        "sequence": "audit-report.md#wf-pay-001--settled-owner-payment-reaches-accounting",
+        "state": "audit-report.md#wf-pay-001--settled-owner-payment-reaches-accounting",
+        "data_lineage": "audit-report.md#wf-pay-001--settled-owner-payment-reaches-accounting"
+      },
+      "evidence": [
+        {
+          "id": "EV-PAY-001",
+          "layer": "code",
+          "claim": "The canonical payment writer owns immediate GL projection for new and duplicate payment identities",
+          "result": "pass",
+          "locator": "server/services/ledger-payment-identity.ts#postPaymentLedgerEntry",
+          "environment": "branch",
+          "observed_at": "2026-07-24T17:33:12Z"
+        },
+        {
+          "id": "EV-PAY-003",
+          "layer": "test",
+          "claim": "Signed Connect success posts ledger, marks transaction succeeded, and invokes the idempotent receipt fallback",
+          "result": "pass",
+          "locator": "server/routes/__tests__/stripe-connect.test.ts",
+          "environment": "local-isolated-vitest",
+          "observed_at": "2026-07-24T17:34:24Z"
+        },
+        {
+          "id": "EV-PAY-004",
+          "layer": "data",
+          "claim": "Read-only production RCA bounded the pre-repair state to one missing $330 payment journal and $330 Accounts Receivable drift",
+          "result": "pass",
+          "locator": "aggregate production canonical GL audit; private rows omitted",
+          "environment": "production-read-only",
+          "observed_at": "2026-07-24T17:33:12Z"
+        },
+        {
+          "id": "EV-PAY-013",
+          "layer": "test",
+          "claim": "Projection alerts exclude private payment identifiers and resolve only after success",
+          "result": "pass",
+          "locator": "server/services/__tests__/gl-projection-alerts.test.ts",
+          "environment": "local-isolated-vitest",
+          "observed_at": "2026-07-24T17:34:24Z"
+        }
+      ],
+      "gaps": [],
+      "status": "gated"
+    },
+    {
+      "id": "WF-PAY-002",
+      "name": "Duplicate or replayed payment heals without duplication",
+      "actor_ids": [
+        "ycm-automation",
+        "stripe"
+      ],
+      "risk": "critical",
+      "trigger": "A duplicate, cross-path, concurrent, or manually replayed provider event arrives",
+      "entrypoints": [
+        "Stripe webhook retry",
+        "cross-path payment webhook",
+        "payout reconciliation"
+      ],
+      "preconditions": [
+        "An owner-ledger payment may already exist for the same association and canonical identity"
+      ],
+      "terminal_outcomes": [
+        "Exactly one owner-ledger economic payment exists",
+        "Accounting projection is checked or healed",
+        "No duplicate receipt is sent"
+      ],
+      "invariants": [
+        "Identity is scoped by association",
+        "Concurrent writes converge on one payment",
+        "GL journal legs remain exactly once",
+        "Replay can heal but cannot duplicate"
+      ],
+      "happy_path": [
+        "Resolve exact event or canonical payment identity",
+        "Return the existing owner-ledger row",
+        "Re-run idempotent accounting projection",
+        "Return a truthful already-exists result"
+      ],
+      "alternate_paths": [
+        "The same payment may arrive through per-association webhook, platform Connect, autopay, or payout reconciliation"
+      ],
+      "failure_paths": [
+        "Projection failure enters the alert and continuity-sweep workflow without changing payment identity"
+      ],
+      "systems": [
+        "Stripe webhooks",
+        "canonical payment writer",
+        "owner ledger",
+        "derived GL"
+      ],
+      "data": {
+        "inputs": [
+          "Provider event ID and canonical payment identity"
+        ],
+        "writes": [
+          "No new owner-ledger row on duplicate",
+          "Only missing canonical GL legs may be inserted"
+        ],
+        "reads": [
+          "Existing owner-ledger row",
+          "Existing GL journal shape"
+        ],
+        "retention": [
+          "Original financial event and source linkage remain retained"
+        ]
+      },
+      "process": {
+        "sync_steps": [
+          "Identity collision",
+          "Existing-row resolution",
+          "Idempotent GL projection"
+        ],
+        "async_steps": [
+          "Provider retry or out-of-order delivery"
+        ],
+        "external_dependencies": [
+          "Stripe event delivery"
+        ]
+      },
+      "notifications": [
+        {
+          "event": "Duplicate payment event",
+          "audience": "not-applicable",
+          "channel": "none",
+          "trigger_point": "identity collision",
+          "template": "not-applicable",
+          "delivery_evidence": "EV-PAY-006",
+          "failure_handling": "A duplicate intentionally does not generate a second receipt"
+        }
+      ],
+      "controls": {
+        "authorization": [
+          "Signed provider event boundary"
+        ],
+        "validation": [
+          "Association, identity, and exact reference comparison"
+        ],
+        "tenant_scope": [
+          "Unique identity includes association ID"
+        ],
+        "privacy": [
+          "Recovery logs use identifiers without raw provider payload"
+        ],
+        "idempotency": [
+          "Database unique payment identity",
+          "Exact provider reference",
+          "GL source-leg unique key"
+        ],
+        "audit_trail": [
+          "Existing owner-ledger row and provider event remain linked"
+        ]
+      },
+      "observability": {
+        "logs": [
+          "Existing-payment skip with source and identity"
+        ],
+        "metrics": [
+          "Projection sweep reconciled and failed counters"
+        ],
+        "alerts": [
+          "Projection failure alert only when healing fails"
+        ],
+        "correlation_ids": [
+          "payment identity key",
+          "provider charge/reference ID"
+        ]
+      },
+      "recovery": {
+        "retry": [
+          "Every duplicate event re-runs projection",
+          "Five-minute sweep retries independently of provider delivery"
+        ],
+        "compensation": [
+          "not-applicable — no duplicate economic write is created"
+        ],
+        "manual_recovery": [
+          "Protected canonical GL repair when persisted shape is noncanonical"
+        ]
+      },
+      "continuity": {
+        "entry": "pass",
+        "identity_scope": "pass",
+        "validation": "pass",
+        "orchestration_state": "pass",
+        "data_projection": "pass",
+        "async_idempotency": "pass",
+        "provider": "pass",
+        "notifications": "not-applicable",
+        "user_outcome": "gated",
+        "audit_operations": "pass",
+        "privacy_retention": "pass"
+      },
+      "diagrams": {
+        "sequence": "audit-report.md#wf-pay-002--duplicate-or-replayed-payment-heals-without-duplication",
+        "state": "audit-report.md#wf-pay-002--duplicate-or-replayed-payment-heals-without-duplication",
+        "data_lineage": "audit-report.md#wf-pay-002--duplicate-or-replayed-payment-heals-without-duplication"
+      },
+      "evidence": [
+        {
+          "id": "EV-PAY-005",
+          "layer": "test",
+          "claim": "Exact, cross-path, concurrent, and payout replay scenarios remain exactly once and re-run projection",
+          "result": "pass",
+          "locator": "server/services/__tests__/stripe-reconciliation.test.ts and ledger-payment-identity.test.ts",
+          "environment": "local-isolated-vitest",
+          "observed_at": "2026-07-24T17:34:24Z"
+        },
+        {
+          "id": "EV-PAY-006",
+          "layer": "code",
+          "claim": "The receipt service uses a sent marker to suppress duplicate owner receipts",
+          "result": "pass",
+          "locator": "server/services/payment-receipt-email.ts#sendPaymentReceiptEmail",
+          "environment": "branch",
+          "observed_at": "2026-07-24T17:33:12Z"
+        }
+      ],
+      "gaps": [],
+      "status": "gated"
+    },
+    {
+      "id": "WF-PAY-003",
+      "name": "Projection failure alerts and self-recovers",
+      "actor_ids": [
+        "financial-operator",
+        "ycm-automation"
+      ],
+      "risk": "critical",
+      "trigger": "GL reconcile, canonical-shape, database, or post-commit process failure prevents journal completion",
+      "entrypoints": [
+        "Immediate canonical projection",
+        "five-minute automation sweep",
+        "Financial Alerts",
+        "platform health details"
+      ],
+      "preconditions": [
+        "Owner-ledger payment truth exists",
+        "Association is in the enabled GL cohort"
+      ],
+      "terminal_outcomes": [
+        "Payment remains recorded",
+        "One critical association-scoped alert is visible",
+        "Aggregate health shows an active failure",
+        "A later successful projection dismisses the alert"
+      ],
+      "invariants": [
+        "A GL failure is non-fatal to payment truth",
+        "Alert contains no owner/unit/payment/amount/provider details",
+        "One alert row per association",
+        "One failing association does not abort peers",
+        "Disabled associations are untouched"
+      ],
+      "happy_path": [
+        "Catch projection failure",
+        "Upsert deterministic critical alert",
+        "Expose aggregate health warning",
+        "Retry in the automation sweep",
+        "Dismiss alert only after successful canonical sync"
+      ],
+      "alternate_paths": [
+        "A provider replay may recover before the scheduled sweep"
+      ],
+      "failure_paths": [
+        "Persistent failure leaves alert active and retries on later cycles",
+        "Alert persistence failure is logged and does not alter payment truth"
+      ],
+      "systems": [
+        "runtime GL sync",
+        "financial_alerts",
+        "Financial Alerts UI",
+        "health details",
+        "automation sweep"
+      ],
+      "data": {
+        "inputs": [
+          "Association ID and generic failure class"
+        ],
+        "writes": [
+          "Deterministic critical financial alert",
+          "Dismissal only after successful recovery"
+        ],
+        "reads": [
+          "Distinct owner-ledger association IDs",
+          "Aggregate active failure count"
+        ],
+        "retention": [
+          "The deterministic alert row is retained and dismissed rather than deleted"
+        ]
+      },
+      "process": {
+        "sync_steps": [
+          "Failure capture",
+          "Critical alert upsert"
+        ],
+        "async_steps": [
+          "Five-minute recovery sweep"
+        ],
+        "external_dependencies": [
+          "not-applicable"
+        ]
+      },
+      "notifications": [
+        {
+          "event": "Owner-ledger to GL continuity failure",
+          "audience": "Scoped association financial operators and platform operations",
+          "channel": "Financial Alerts UI and aggregate platform health warning",
+          "trigger_point": "Reconcile or runtime projection failure",
+          "template": "Accounting journal continuity failure",
+          "delivery_evidence": "EV-PAY-009",
+          "failure_handling": "The alert reopens on every failed cycle and resolves only after a successful projection"
+        }
+      ],
+      "controls": {
+        "authorization": [
+          "Financial Alerts route is admin-authenticated and association-scoped",
+          "Health details is platform-admin only"
+        ],
+        "validation": [
+          "Only reconcile-failed and runtime-error classes are accepted"
+        ],
+        "tenant_scope": [
+          "Alert key and row carry the affected association ID"
+        ],
+        "privacy": [
+          "Generic message omits raw error, owner, unit, payment, amount, and provider details"
+        ],
+        "idempotency": [
+          "Deterministic alert primary key",
+          "Idempotent GL sync"
+        ],
+        "audit_trail": [
+          "Alert row and system dismissal actor"
+        ]
+      },
+      "observability": {
+        "logs": [
+          "GL context and generic failure",
+          "automation sweep result"
+        ],
+        "metrics": [
+          "scanned",
+          "enabled",
+          "reconciled",
+          "skipped",
+          "failed",
+          "active_gl_projection_failures"
+        ],
+        "alerts": [
+          "Critical Financial Alert"
+        ],
+        "correlation_ids": [
+          "association ID",
+          "deterministic alert ID"
+        ]
+      },
+      "recovery": {
+        "retry": [
+          "Immediate provider replay",
+          "five-minute continuity sweep"
+        ],
+        "compensation": [
+          "Owner ledger remains the financial authority until derived GL catches up"
+        ],
+        "manual_recovery": [
+          "Protected canonical repair when unexpected persisted journal shape blocks additive sync"
+        ]
+      },
+      "continuity": {
+        "entry": "pass",
+        "identity_scope": "pass",
+        "validation": "pass",
+        "orchestration_state": "pass",
+        "data_projection": "pass",
+        "async_idempotency": "pass",
+        "provider": "not-applicable",
+        "notifications": "pass",
+        "user_outcome": "gated",
+        "audit_operations": "pass",
+        "privacy_retention": "pass"
+      },
+      "diagrams": {
+        "sequence": "audit-report.md#wf-pay-003--projection-failure-alerts-and-self-recovers",
+        "state": "audit-report.md#wf-pay-003--projection-failure-alerts-and-self-recovers",
+        "data_lineage": "audit-report.md#wf-pay-003--projection-failure-alerts-and-self-recovers"
+      },
+      "evidence": [
+        {
+          "id": "EV-PAY-007",
+          "layer": "test",
+          "claim": "Reconcile/runtime failures remain non-fatal to payment truth and persist a critical alert",
+          "result": "pass",
+          "locator": "server/services/__tests__/gl-runtime-sync.test.ts",
+          "environment": "local-isolated-vitest",
+          "observed_at": "2026-07-24T17:34:24Z"
+        },
+        {
+          "id": "EV-PAY-008",
+          "layer": "test",
+          "claim": "The continuity sweep isolates associations and retries only enabled cohorts",
+          "result": "pass",
+          "locator": "server/services/__tests__/gl-projection-sweep.test.ts",
+          "environment": "local-isolated-vitest",
+          "observed_at": "2026-07-24T17:34:24Z"
+        },
+        {
+          "id": "EV-PAY-009",
+          "layer": "test",
+          "claim": "A deterministic private-data-minimized alert is created and resolves only after success",
+          "result": "pass",
+          "locator": "server/services/__tests__/gl-projection-alerts.test.ts",
+          "environment": "local-isolated-vitest",
+          "observed_at": "2026-07-24T17:34:24Z"
+        },
+        {
+          "id": "EV-PAY-010",
+          "layer": "code",
+          "claim": "Admin health exposes only the aggregate active-failure count and Financial Alerts remains association-scoped",
+          "result": "pass",
+          "locator": "server/routes.ts#/api/health/details and /api/financial/alerts",
+          "environment": "branch",
+          "observed_at": "2026-07-24T17:33:12Z"
+        }
+      ],
+      "gaps": [],
+      "status": "gated"
+    },
+    {
+      "id": "WF-PAY-004",
+      "name": "Refund or chargeback reversal reaches accounting",
+      "actor_ids": [
+        "financial-operator",
+        "ycm-automation",
+        "stripe"
+      ],
+      "risk": "critical",
+      "trigger": "Stripe sends a signed successful refund or lost-dispute event",
+      "entrypoints": [
+        "platform Connect charge.refunded webhook",
+        "platform Connect charge.dispute.closed webhook"
+      ],
+      "preconditions": [
+        "Original recorded Stripe charge exists",
+        "Refund succeeded or dispute status is lost"
+      ],
+      "terminal_outcomes": [
+        "One positive owner-ledger adjustment restores the amount owed",
+        "One balanced derived adjustment journal exists",
+        "Replay does not duplicate the reversal or journal"
+      ],
+      "invariants": [
+        "Scope is inherited from the original charge",
+        "Non-succeeded refund does not reverse",
+        "Non-lost dispute does not reverse",
+        "Principal and fee are separately idempotent",
+        "GL remains balanced"
+      ],
+      "happy_path": [
+        "Validate signed event and terminal provider state",
+        "Resolve original charge scope",
+        "Insert idempotent positive owner-ledger adjustment",
+        "Immediately ensure accounting projection"
+      ],
+      "alternate_paths": [
+        "Won dispute leaves the payment intact",
+        "Partial refunds create partial adjustments"
+      ],
+      "failure_paths": [
+        "Missing original charge skips safely",
+        "Projection failure enters WF-PAY-003",
+        "Duplicate reversal re-runs projection without a second adjustment"
+      ],
+      "systems": [
+        "Stripe Connect webhook",
+        "owner ledger",
+        "canonical GL projection",
+        "financial statements"
+      ],
+      "data": {
+        "inputs": [
+          "Signed refund or dispute event",
+          "Original charge ledger row"
+        ],
+        "writes": [
+          "Positive owner-ledger adjustment",
+          "Derived balanced GL adjustment journal"
+        ],
+        "reads": [
+          "Original charge scope",
+          "Ledger and statements"
+        ],
+        "retention": [
+          "Original payment and reversal remain separately attributable"
+        ]
+      },
+      "process": {
+        "sync_steps": [
+          "Provider state validation",
+          "Original charge lookup",
+          "Reversal write",
+          "Accounting projection"
+        ],
+        "async_steps": [
+          "Stripe refund/dispute webhook delivery",
+          "continuity sweep if projection is interrupted"
+        ],
+        "external_dependencies": [
+          "Stripe"
+        ]
+      },
+      "notifications": [
+        {
+          "event": "Derived accounting reversal completed",
+          "audience": "not-applicable to this accounting-projection boundary",
+          "channel": "none",
+          "trigger_point": "not-applicable",
+          "template": "not-applicable",
+          "delivery_evidence": "EV-PAY-012",
+          "failure_handling": "Projection failure is visible through WF-PAY-003"
+        }
+      ],
+      "controls": {
+        "authorization": [
+          "Signed Stripe webhook boundary"
+        ],
+        "validation": [
+          "Positive amount",
+          "refund succeeded",
+          "dispute lost",
+          "original charge exists"
+        ],
+        "tenant_scope": [
+          "Association, unit, and person are inherited from the original recorded charge"
+        ],
+        "privacy": [
+          "No new provider payload or private details are copied into alerts"
+        ],
+        "idempotency": [
+          "Reference type plus refund/dispute ID",
+          "GL source-leg identity"
+        ],
+        "audit_trail": [
+          "Original charge reference",
+          "reversal reference",
+          "GL source linkage"
+        ]
+      },
+      "observability": {
+        "logs": [
+          "Stripe reversal source and stable reference"
+        ],
+        "metrics": [
+          "Projection sweep and active-failure aggregate"
+        ],
+        "alerts": [
+          "Projection failure enters WF-PAY-003"
+        ],
+        "correlation_ids": [
+          "charge ID",
+          "refund/dispute ID",
+          "ledger entry ID"
+        ]
+      },
+      "recovery": {
+        "retry": [
+          "Duplicate reversal webhook re-runs projection",
+          "continuity sweep recovers after interruption"
+        ],
+        "compensation": [
+          "Reversal is an attributable adjustment rather than mutation of the original payment"
+        ],
+        "manual_recovery": [
+          "Protected canonical repair when persisted journal shape is noncanonical"
+        ]
+      },
+      "continuity": {
+        "entry": "pass",
+        "identity_scope": "pass",
+        "validation": "pass",
+        "orchestration_state": "pass",
+        "data_projection": "pass",
+        "async_idempotency": "pass",
+        "provider": "pass",
+        "notifications": "not-applicable",
+        "user_outcome": "gated",
+        "audit_operations": "pass",
+        "privacy_retention": "pass"
+      },
+      "diagrams": {
+        "sequence": "audit-report.md#wf-pay-004--refund-or-chargeback-reversal-reaches-accounting",
+        "state": "audit-report.md#wf-pay-004--refund-or-chargeback-reversal-reaches-accounting",
+        "data_lineage": "audit-report.md#wf-pay-004--refund-or-chargeback-reversal-reaches-accounting"
+      },
+      "evidence": [
+        {
+          "id": "EV-PAY-011",
+          "layer": "test",
+          "claim": "Refund and lost-dispute reversals are scoped, state-guarded, idempotent, and re-project accounting",
+          "result": "pass",
+          "locator": "server/services/__tests__/stripe-reconciliation.test.ts and server/routes/__tests__/stripe-connect.test.ts",
+          "environment": "local-isolated-vitest",
+          "observed_at": "2026-07-24T17:34:24Z"
+        },
+        {
+          "id": "EV-PAY-012",
+          "layer": "code",
+          "claim": "Adjustment journals feed the derived ledger and statement model",
+          "result": "pass",
+          "locator": "server/services/gl/posting.ts#postOwnerLedgerEntry and statements service",
+          "environment": "branch",
+          "observed_at": "2026-07-24T17:33:12Z"
+        }
+      ],
+      "gaps": [],
+      "status": "gated"
+    }
+  ]
+}

@@ -241,16 +241,21 @@ vi.mock("../../services/stripe-reconciliation", () => ({
 // transactionId) so a route-level "replay after succeeded" test proves the
 // end-to-end wiring can't double-post either.
 const updateStatusCalls: Array<Record<string, unknown>> = [];
-const fakePaymentTransactions = new Map<string, { status: string; providerIntentId: string | null }>();
+const fakePaymentTransactions = new Map<string, { id: string; status: string; providerIntentId: string | null }>();
 const TERMINAL = new Set(["succeeded", "failed", "canceled", "reversed"]);
 vi.mock("../../services/payment-service", () => ({
   updatePaymentTransactionStatus: vi.fn(
     async (input: { transactionId?: string; providerIntentId?: string; status: string }) => {
       updateStatusCalls.push(input);
       const key = input.transactionId ?? input.providerIntentId ?? "";
-      const existing = fakePaymentTransactions.get(key) ?? { status: "initiated", providerIntentId: null };
+      const existing = fakePaymentTransactions.get(key) ?? {
+        id: input.transactionId ?? `txn-for-${key}`,
+        status: "initiated",
+        providerIntentId: null,
+      };
       if (TERMINAL.has(existing.status)) return existing; // idempotent no-op, mirrors the real guard
       const updated = {
+        id: existing.id,
         status: input.status,
         providerIntentId: existing.providerIntentId ?? input.providerIntentId ?? null,
       };
@@ -258,6 +263,14 @@ vi.mock("../../services/payment-service", () => ({
       return updated;
     },
   ),
+}));
+
+const receiptCalls: Array<{ transactionId: string }> = [];
+vi.mock("../../services/payment-receipt-email", () => ({
+  sendPaymentReceiptEmail: vi.fn(async (input: { transactionId: string }) => {
+    receiptCalls.push(input);
+    return { sent: true, skipped: false };
+  }),
 }));
 
 // Now import the route registrar (mocks above must be set first).
@@ -325,6 +338,7 @@ beforeEach(() => {
   reversalWriteCalls.length = 0;
   reconciliationReportFixture = [];
   updateStatusCalls.length = 0;
+  receiptCalls.length = 0;
   fakePaymentTransactions.clear();
   stripeMockAccount = {
     id: "acct_test_001",
@@ -1047,6 +1061,7 @@ describe("platform Connect webhook — charge.succeeded flips payment_transactio
         providerIntentId: "pi_settle_1",
         status: "succeeded",
       });
+      expect(receiptCalls).toEqual([{ transactionId: "txn-settle-1" }]);
     });
   });
 

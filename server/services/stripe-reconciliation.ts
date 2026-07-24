@@ -34,7 +34,10 @@ import {
   type StripePayoutItem,
 } from "../../shared/schema";
 import { log } from "../logger";
-import { postPaymentLedgerEntry } from "./ledger-payment-identity";
+import {
+  ensurePaymentAccountingProjection,
+  postPaymentLedgerEntry,
+} from "./ledger-payment-identity";
 import {
   listPayoutBalanceTransactions,
   retrievePayout,
@@ -186,7 +189,10 @@ export async function writeLedgerEntryForCharge(
   // Layer 1 — exact retry of THIS charge (webhook re-delivery). Preserves the
   // pre-existing per-charge idempotency check + skip-reason unchanged.
   const existing = await db
-    .select({ id: ownerLedgerEntries.id })
+    .select({
+      id: ownerLedgerEntries.id,
+      associationId: ownerLedgerEntries.associationId,
+    })
     .from(ownerLedgerEntries)
     .where(
       and(
@@ -196,6 +202,10 @@ export async function writeLedgerEntryForCharge(
     )
     .limit(1);
   if (existing[0]) {
+    await ensurePaymentAccountingProjection({
+      associationId: existing[0].associationId,
+      source: `${input.source}:replay`,
+    });
     log(`[${input.source}] ledger entry already exists key=${idempotencyKey} id=${existing[0].id}`, AUDIT_SOURCE);
     return { created: false, ledgerEntryId: existing[0].id, skipped: "already_exists" };
   }
@@ -263,7 +273,10 @@ export async function writeReversalLedgerEntry(
 
   // Idempotency: a prior delivery of this same refund/dispute may have posted it.
   const existing = await db
-    .select({ id: ownerLedgerEntries.id })
+    .select({
+      id: ownerLedgerEntries.id,
+      associationId: ownerLedgerEntries.associationId,
+    })
     .from(ownerLedgerEntries)
     .where(
       and(
@@ -273,6 +286,10 @@ export async function writeReversalLedgerEntry(
     )
     .limit(1);
   if (existing[0]) {
+    await ensurePaymentAccountingProjection({
+      associationId: existing[0].associationId,
+      source: `${input.source}:reversal-replay`,
+    });
     log(`[${input.source}] reversal already exists key=${idempotencyKey} id=${existing[0].id}`, AUDIT_SOURCE);
     return { created: false, ledgerEntryId: existing[0].id, skipped: "already_exists" };
   }
@@ -320,6 +337,10 @@ export async function writeReversalLedgerEntry(
     `[${input.source}] wrote reversal id=${created.id} key=${idempotencyKey} amount=${input.amountCents / 100} at=${new Date().toISOString()}`,
     AUDIT_SOURCE,
   );
+  await ensurePaymentAccountingProjection({
+    associationId: original[0].associationId,
+    source: `${input.source}:reversal`,
+  });
   return { created: true, ledgerEntryId: created.id, skipped: undefined };
 }
 
