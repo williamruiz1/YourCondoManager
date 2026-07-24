@@ -1,39 +1,53 @@
-# Google Maps API Key — Restriction Runbook
+# Runbook — Google Maps API key restriction (audit R-5, founder-os#8541)
 
-**Source:** founder-os#8541 (production-readiness audit 2026-07-03, finding R-5)
-**Key at issue:** `VITE_GOOGLE_MAPS_API_KEY` committed in `fly.toml` (build-time env) and echoed in `INSTALL-OBSERVABILITY.md`.
-**Why committed-and-client-exposed is OK *only if restricted*:** Vite inlines `VITE_*` vars into the client bundle, so this key is public **by design** — every Maps JS key is. The security model is Google-console restrictions, not secrecy. An **unrestricted** public key = anyone can burn quota / run up billing on it (the R-5 risk).
+**Key location:** `fly.toml:32` commits `VITE_GOOGLE_MAPS_API_KEY` (`AIzaSyCsb1…dR8`).
+Client-exposed **by design** — Vite inlines `VITE_*` vars into the browser bundle, and the
+Maps JavaScript API is called from the browser, so the key is public no matter where it is
+stored. **The ONLY real protections for a browser Maps key are Google-console restrictions**
+(referrer allowlist + API allowlist + quota cap). Moving it to a "secret" changes nothing.
 
-## What the app actually uses (verified in code, 2026-07-03)
+## What the app actually uses (probed 2026-07-03)
 
-`client/src/lib/maps-loader.ts` loads the **Maps JavaScript API** (weekly channel) via `@googlemaps/js-api-loader` and imports these libraries: `core`, `maps`, `places`, `marker`, `geocoding`. Consumers: `new-association.tsx` (address autocomplete) + `building-pin-editor.tsx` (pin placement). No Static Maps, no server-side Maps calls, no other Google APIs on this key.
+- Loader: `client/src/lib/maps-loader.ts` — `@googlemaps/js-api-loader` v2
+  (`setOptions` + `importLibrary`), Maps **JavaScript** API only. No Static Maps, no
+  server-side Maps calls anywhere in the repo.
+- Libraries loaded: `core`, `maps`, `places`, `marker`, `geocoding`
+  (→ console-side that is **Maps JavaScript API**, **Places API**, **Geocoding API**).
+- Callers: `client/src/pages/new-association.tsx`, `client/src/components/building-pin-editor.tsx`
+  — all degrade gracefully when the key is absent (`hasMapsApiKey` false → plain-text inputs).
 
-Graceful degradation is already built in: with no/blocked key, `loadGoogleMaps()` returns `null` and the UI falls back to plain-text inputs — so over-restricting fails soft, not hard.
+## Required restriction state (the checklist)
 
-## The one [WILLIAM] step — console restriction (~3 minutes)
+| # | Restriction | Value |
+|---|---|---|
+| 1 | Application restriction | **Websites (HTTP referrers)** |
+| 2 | Referrer allowlist | `https://yourcondomanager.org/*` · `https://*.yourcondomanager.org/*` · `https://yourcondomanager.fly.dev/*` · (dev, optional) `http://localhost:*/*` |
+| 3 | API restrictions | **Restrict key** → exactly: Maps JavaScript API, Places API, Geocoding API |
+| 4 | Quota cap (per API above) | Maps JS: 10,000 loads/day · Places: 1,000/day · Geocoding: 1,000/day — generous for current usage (admin-only map surfaces), tight enough that a scraped key cannot run a meaningful bill |
+| 5 | Billing alert | Budget alert at $25/mo on the owning project |
 
-Everything below happens at https://console.cloud.google.com/apis/credentials (William's Google account — not reachable from the fleet). Open the key ending in `…LvdR8`, then:
+## The single [WILLIAM] step
 
-1. **Application restrictions → Websites** (HTTP referrers), add exactly:
-   - `https://app.yourcondomanager.org/*`
-   - `https://yourcondomanager.org/*`
-   - `https://www.yourcondomanager.org/*`
-   - `https://yourcondomanager.fly.dev/*`
-   - `http://localhost:*` *(keeps local dev working; drop it if you prefer dev to use a separate key)*
-2. **API restrictions → Restrict key**, allow ONLY:
-   - Maps JavaScript API
-   - Places API *(the JS `places` library authorizes against it)*
-   - Geocoding API *(the JS `geocoding` library authorizes against it)*
-3. **Quotas** (APIs & Services → Maps JavaScript API → Quotas): cap *Map loads per day* at **1,000** (current usage is a handful/day; raise later if a real customer wave needs it). Repeat a sane cap for Places/Geocoding requests per day if offered.
-4. Save. Changes take up to 5 minutes.
+Everything above lives in the Google Cloud console under **William's Google account** — the
+fleet has no credential for it (correctly). One trip:
 
-**Verify after saving (fleet can do this part):** load `https://app.yourcondomanager.org` → new-association page → address field autocompletes (referrer allowed). Then from any non-allowed origin (e.g. a local file), a Maps JS load with this key must show `RefererNotAllowedMapError` in the console.
+> **[WILLIAM]** console.cloud.google.com → select the project owning the key → *APIs & Services
+> → Credentials* → click the key ending `…dR8` → set **Application restrictions = Websites** and
+> paste the 4 referrers from row 2 → set **API restrictions = Restrict key** and tick the 3 APIs
+> from row 3 → Save. Then *APIs & Services → Enabled APIs* → each of the 3 APIs → *Quotas* → set
+> the row-4 caps; and *Billing → Budgets & alerts* → $25/mo alert. (~5 minutes, one screen flow.)
 
-**Rotation trigger:** if the console shows the key was UNRESTRICTED for a long window AND usage/billing spikes appear in the metrics, rotate (Credentials → Regenerate key) and update `fly.toml:32` + redeploy; the old key dies on regenerate.
+## Verification after the trip
 
-## Fleet-side status (done)
+From any machine (no credentials needed — the restrictions are observable from outside):
 
-- [x] Confirmed which APIs/libraries the key must allow (above) — nothing else needs enabling.
-- [x] Confirmed the client degrades gracefully if the key is blocked/absent (`maps-loader.ts` null path).
-- [x] This runbook merged at `docs/runbooks/maps-api-key.md`.
-- [ ] **[WILLIAM]** the console step above — the single residual action.
+```bash
+# Referrer restriction live: a request WITHOUT an allowed referrer must be rejected
+curl -s "https://maps.googleapis.com/maps/api/js?key=AIzaSyCsb1tCLccLzdaKgCm4263A32S0Z0LvdR8" | head -c 200
+# EXPECT: RefererNotAllowedMapError / "API keys with referer restrictions cannot be used with this API" class error
+# The app itself must still load maps at https://yourcondomanager.org (allowed referrer).
+```
+
+Record the probe output below this line when run:
+
+- [ ] probe recorded (date · output)
