@@ -71,6 +71,14 @@ export const ACTION_TYPE_LEVELS: Record<string, AgentActionLevel> = {
   // correction is always possible; still requires an approval unless the
   // association's L2 autonomy toggle is on for this type.
   "reversible.distribute_meeting_packet": "L2",
+  // Owner-FAQ triage grounded reply send (founder-os#9476, W1). Sending a
+  // grounded, ready-to-send reply to a routine owner inquiry is reversible in
+  // the sense that a correction/follow-up is always possible; default is
+  // queue-for-review, and the per-association L2 autonomy toggle on this
+  // exact type is what lets the triage agent auto-send. The advisory-only
+  // "other"/needs-data case files as "suggest.owner_faq_reply" (L1) above —
+  // never this type — so it can never auto-send.
+  "reversible.send_owner_faq_reply": "L2",
   // ARC workflow plumbing (founder-os#9481, W2). Moving a request through intake
   // and routing is reversible workflow plumbing — the agent may do it (L2). The
   // approve/deny DECISION is L4 (member-affecting) below.
